@@ -92,7 +92,8 @@
                     <h:HelixViewport3D x:Name="Viewport" 
                                      Background="White"
                                      ShowCoordinateSystem="True"
-                                     ShowViewCube="True">
+                                     ShowViewCube="True"
+                                     MouseLeftButtonDown="Viewport_MouseLeftButtonDown">
                         
                         <!-- Lighting -->
                         <h:DefaultLights/>

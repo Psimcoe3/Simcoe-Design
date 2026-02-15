@@ -1,4 +1,5 @@
 ﻿using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Media3D;
 using Microsoft.Win32;
@@ -15,6 +16,7 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
     private string? _currentFilePath;
+    private readonly Dictionary<ModelVisual3D, ElectricalComponent> _visualToComponentMap = new();
     
     public MainWindow()
     {
@@ -86,7 +88,7 @@ public partial class MainWindow : Window
     
     private void UpdateViewport()
     {
-        // Clear existing models
+        // Clear existing models and mapping
         var itemsToRemove = Viewport.Children.OfType<ModelVisual3D>()
             .Where(m => m.Content is GeometryModel3D).ToList();
         
@@ -94,6 +96,8 @@ public partial class MainWindow : Window
         {
             Viewport.Children.Remove(item);
         }
+        
+        _visualToComponentMap.Clear();
         
         // Add components to viewport
         foreach (var component in _viewModel.Components)
@@ -107,10 +111,24 @@ public partial class MainWindow : Window
         var visual = new ModelVisual3D();
         var geometry = CreateComponentGeometry(component);
         
-        var material = new DiffuseMaterial(new SolidColorBrush(
-            (Color)ColorConverter.ConvertFromString(component.Parameters.Color)));
+        var color = (Color)ColorConverter.ConvertFromString(component.Parameters.Color);
+        var material = new DiffuseMaterial(new SolidColorBrush(color));
         
-        var model = new GeometryModel3D(geometry, material);
+        Material appliedMaterial;
+        if (component == _viewModel.SelectedComponent)
+        {
+            // Highlight selected component with an emissive glow
+            var materialGroup = new MaterialGroup();
+            materialGroup.Children.Add(material);
+            materialGroup.Children.Add(new EmissiveMaterial(new SolidColorBrush(Color.FromArgb(80, 255, 165, 0))));
+            appliedMaterial = materialGroup;
+        }
+        else
+        {
+            appliedMaterial = material;
+        }
+        
+        var model = new GeometryModel3D(geometry, appliedMaterial);
         
         // Apply transformations
         var transformGroup = new Transform3DGroup();
@@ -124,6 +142,7 @@ public partial class MainWindow : Window
         visual.Content = model;
         
         Viewport.Children.Add(visual);
+        _visualToComponentMap[visual] = component;
     }
     
     private MeshGeometry3D CreateComponentGeometry(ElectricalComponent component)
@@ -184,6 +203,21 @@ public partial class MainWindow : Window
         {
             _viewModel.AddComponent(component.Type);
         }
+    }
+    
+    private void Viewport_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var position = e.GetPosition(Viewport);
+        var hits = Viewport3DHelper.FindHits(Viewport.Viewport, position);
+        
+        var matchedComponent = hits?
+            .Select(hit => hit.Visual)
+            .OfType<ModelVisual3D>()
+            .Where(visual => _visualToComponentMap.ContainsKey(visual))
+            .Select(visual => _visualToComponentMap[visual])
+            .FirstOrDefault();
+        
+        _viewModel.SelectedComponent = matchedComponent;
     }
     
     private void ApplyProperties_Click(object sender, RoutedEventArgs e)
