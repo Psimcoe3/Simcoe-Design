@@ -26,6 +26,12 @@
    dotnet run --project ElectricalComponentSandbox/ElectricalComponentSandbox.csproj
    ```
 
+5. **Create a Desktop Shortcut** (optional)
+   ```bash
+   create-shortcut.bat
+   ```
+   This creates a shortcut on your desktop so you can launch the app with a double-click.
+
 ## Quick Usage
 
 ### Create a Component

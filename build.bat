@@ -41,5 +41,8 @@ echo Or navigate to:
 echo   ElectricalComponentSandbox\bin\Release\net8.0-windows\
 echo   and run ElectricalComponentSandbox.exe
 echo.
+echo To create a desktop shortcut:
+echo   Run create-shortcut.bat
+echo.
 
 pause
