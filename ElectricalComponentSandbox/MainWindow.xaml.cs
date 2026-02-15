@@ -22,6 +22,12 @@ public partial class MainWindow : Window
     private ModelVisual3D? _draggedHandle = null;
     private Point _lastMousePosition;
     
+    // Constants for bend point visualization
+    private const double BendPointHandleRadius = 0.3;
+    private const double ElbowRadiusRatio = 0.6; // Ratio of elbow sphere to conduit diameter
+    private static readonly Color EditModeButtonColor = Color.FromRgb(255, 200, 100);
+    private static readonly Color BendPointHandleColor = Colors.Orange;
+    
     public MainWindow()
     {
         InitializeComponent();
@@ -203,7 +209,7 @@ public partial class MainWindow : Window
             if (i < pathPoints.Count - 2)
             {
                 // Add a small sphere at bend points for visual continuity
-                builder.AddSphere(end, conduit.Diameter * 0.6, 12, 12);
+                builder.AddSphere(end, conduit.Diameter * ElbowRadiusRatio, 12, 12);
             }
         }
     }
@@ -545,7 +551,7 @@ public partial class MainWindow : Window
         // Update button appearance
         if (_isEditingConduitPath)
         {
-            EditConduitPathButton.Background = new SolidColorBrush(Color.FromRgb(255, 200, 100));
+            EditConduitPathButton.Background = new SolidColorBrush(EditModeButtonColor);
             EditConduitPathButton.Content = "Exit Edit Mode";
             
             if (_viewModel.SelectedComponent is ConduitComponent)
@@ -606,9 +612,9 @@ public partial class MainWindow : Window
     {
         var visual = new ModelVisual3D();
         var builder = new MeshBuilder();
-        builder.AddSphere(new Point3D(0, 0, 0), 0.3, 12, 12);
+        builder.AddSphere(new Point3D(0, 0, 0), BendPointHandleRadius, 12, 12);
         
-        var material = new DiffuseMaterial(new SolidColorBrush(Colors.Orange));
+        var material = new DiffuseMaterial(new SolidColorBrush(BendPointHandleColor));
         var emissive = new EmissiveMaterial(new SolidColorBrush(Color.FromArgb(100, 255, 165, 0)));
         var materialGroup = new MaterialGroup();
         materialGroup.Children.Add(material);
