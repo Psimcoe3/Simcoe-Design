@@ -43,6 +43,7 @@
             </MenuItem>
             <MenuItem Header="Edit">
                 <MenuItem Header="Delete Selected" Click="DeleteComponent_Click"/>
+                <MenuItem Header="Delete Last Bend Point" Click="DeleteLastBendPoint_Click"/>
             </MenuItem>
             <MenuItem Header="View">
                 <MenuItem Header="Show Grid" IsCheckable="True" IsChecked="{Binding ShowGrid}"/>

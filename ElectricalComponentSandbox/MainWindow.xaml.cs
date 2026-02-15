@@ -304,24 +304,37 @@ public partial class MainWindow : Window
             return;
         
         var position = e.GetPosition(Viewport);
-        var delta = position - _lastMousePosition;
         
         // Find which bend point this handle represents
         int handleIndex = _bendPointHandles.IndexOf(_draggedHandle);
-        if (handleIndex >= 0 && handleIndex < conduit.BendPoints.Count)
+        if (handleIndex >= 0)
         {
-            // Simple approximation: move in XY plane based on mouse delta
-            var scaleFactor = 0.1; // Adjust sensitivity
-            var currentPoint = conduit.BendPoints[handleIndex];
-            
-            conduit.BendPoints[handleIndex] = new Point3D(
-                currentPoint.X + delta.X * scaleFactor,
-                currentPoint.Y - delta.Y * scaleFactor, // Invert Y for screen coordinates
-                currentPoint.Z
-            );
-            
-            UpdateViewport();
-            ShowBendPointHandles();
+            // For bend points within the list
+            if (handleIndex < conduit.BendPoints.Count)
+            {
+                var currentPoint = conduit.BendPoints[handleIndex];
+                
+                // Use ray casting to get a new 3D position
+                var hits = Viewport3DHelper.FindHits(Viewport.Viewport, position);
+                if (hits != null && hits.Any())
+                {
+                    var hitPoint = hits.First().Position;
+                    var offset = hitPoint - _viewModel.SelectedComponent.Position;
+                    var newPoint = new Point3D(offset.X, offset.Y, offset.Z);
+                    
+                    // Apply snap to grid if enabled
+                    if (_viewModel.SnapToGrid)
+                    {
+                        newPoint.X = Math.Round(newPoint.X / _viewModel.GridSize) * _viewModel.GridSize;
+                        newPoint.Y = Math.Round(newPoint.Y / _viewModel.GridSize) * _viewModel.GridSize;
+                        newPoint.Z = Math.Round(newPoint.Z / _viewModel.GridSize) * _viewModel.GridSize;
+                    }
+                    
+                    conduit.BendPoints[handleIndex] = newPoint;
+                    UpdateViewport();
+                    ShowBendPointHandles();
+                }
+            }
         }
         
         _lastMousePosition = position;
@@ -350,6 +363,25 @@ public partial class MainWindow : Window
                     ShowBendPointHandles();
                 }
             }
+        }
+    }
+    
+    private void DeleteLastBendPoint_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedComponent is ConduitComponent conduit && conduit.BendPoints.Count > 0)
+        {
+            conduit.BendPoints.RemoveAt(conduit.BendPoints.Count - 1);
+            UpdateViewport();
+            UpdatePropertiesPanel();
+            
+            if (_isEditingConduitPath)
+            {
+                ShowBendPointHandles();
+            }
+        }
+        else
+        {
+            MessageBox.Show("No bend points to delete.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
     
@@ -510,22 +542,34 @@ public partial class MainWindow : Window
     {
         _isEditingConduitPath = !_isEditingConduitPath;
         
+        // Update button appearance
         if (_isEditingConduitPath)
         {
+            EditConduitPathButton.Background = new SolidColorBrush(Color.FromRgb(255, 200, 100));
+            EditConduitPathButton.Content = "Exit Edit Mode";
+            
             if (_viewModel.SelectedComponent is ConduitComponent)
             {
                 ShowBendPointHandles();
-                MessageBox.Show("Edit Mode: Click on conduit to add bend points, drag handles to move them. Click toggle again to exit.", 
+                MessageBox.Show("Edit Mode Active:\n" +
+                    "• Click on conduit to add bend points\n" +
+                    "• Drag orange handles to move bend points\n" +
+                    "• Use 'Clear All Bend Points' to reset\n" +
+                    "• Click 'Exit Edit Mode' when done", 
                     "Edit Conduit Path", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else
             {
                 _isEditingConduitPath = false;
+                EditConduitPathButton.Background = System.Windows.SystemColors.ControlBrush;
+                EditConduitPathButton.Content = "Edit Conduit Path";
                 MessageBox.Show("Please select a conduit component first.", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
         else
         {
+            EditConduitPathButton.Background = System.Windows.SystemColors.ControlBrush;
+            EditConduitPathButton.Content = "Edit Conduit Path";
             HideBendPointHandles();
         }
     }
