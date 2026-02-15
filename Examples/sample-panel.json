@@ -1,0 +1,33 @@
+{
+  "$type": "ElectricalComponentSandbox.Models.PanelComponent, ElectricalComponentSandbox",
+  "CircuitCount": 42,
+  "Amperage": 200.0,
+  "PanelType": "Distribution Panel",
+  "Id": "example-panel-001",
+  "Name": "Main Distribution Panel",
+  "Type": "Panel",
+  "Position": {
+    "X": 0.0,
+    "Y": 0.0,
+    "Z": 10.0
+  },
+  "Rotation": {
+    "X": 0.0,
+    "Y": 0.0,
+    "Z": 0.0
+  },
+  "Scale": {
+    "X": 1.0,
+    "Y": 1.0,
+    "Z": 1.0
+  },
+  "Parameters": {
+    "Width": 20.0,
+    "Height": 30.0,
+    "Depth": 6.0,
+    "Material": "Steel",
+    "Elevation": 60.0,
+    "Color": "#696969"
+  },
+  "Constraints": []
+}
