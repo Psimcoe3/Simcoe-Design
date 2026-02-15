@@ -1,0 +1,33 @@
+{
+  "$type": "ElectricalComponentSandbox.Models.ConduitComponent, ElectricalComponentSandbox",
+  "Diameter": 2.0,
+  "Length": 20.0,
+  "ConduitType": "EMT",
+  "Id": "example-conduit-001",
+  "Name": "2-inch EMT Conduit",
+  "Type": "Conduit",
+  "Position": {
+    "X": 0.0,
+    "Y": 0.0,
+    "Z": 0.0
+  },
+  "Rotation": {
+    "X": 0.0,
+    "Y": 0.0,
+    "Z": 0.0
+  },
+  "Scale": {
+    "X": 1.0,
+    "Y": 1.0,
+    "Z": 1.0
+  },
+  "Parameters": {
+    "Width": 2.0,
+    "Height": 2.0,
+    "Depth": 20.0,
+    "Material": "Steel",
+    "Elevation": 10.0,
+    "Color": "#A9A9A9"
+  },
+  "Constraints": []
+}
