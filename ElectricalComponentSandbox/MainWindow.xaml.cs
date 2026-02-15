@@ -23,10 +23,6 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
         
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
-        
-        // Add value converters
-        Resources.Add("NullToVisibilityConverter", new NullToVisibilityConverter());
-        Resources.Add("NotNullToVisibilityConverter", new NotNullToVisibilityConverter());
     }
     
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -341,32 +337,5 @@ public partial class MainWindow : Window
     private void Exit_Click(object sender, RoutedEventArgs e)
     {
         Close();
-    }
-}
-
-// Value Converters
-public class NullToVisibilityConverter : System.Windows.Data.IValueConverter
-{
-    public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
-    {
-        return value == null ? Visibility.Visible : Visibility.Collapsed;
-    }
-    
-    public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
-    {
-        throw new NotImplementedException();
-    }
-}
-
-public class NotNullToVisibilityConverter : System.Windows.Data.IValueConverter
-{
-    public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
-    {
-        return value != null ? Visibility.Visible : Visibility.Collapsed;
-    }
-    
-    public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
-    {
-        throw new NotImplementedException();
     }
 }
