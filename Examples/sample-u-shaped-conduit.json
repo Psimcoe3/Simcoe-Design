@@ -1,0 +1,57 @@
+{
+  "$type": "ElectricalComponentSandbox.Models.ConduitComponent, ElectricalComponentSandbox",
+  "Diameter": 0.75,
+  "Length": 30.0,
+  "ConduitType": "EMT",
+  "BendPoints": [
+    {
+      "X": 0.0,
+      "Y": 0.0,
+      "Z": 8.0
+    },
+    {
+      "X": 6.0,
+      "Y": 0.0,
+      "Z": 8.0
+    },
+    {
+      "X": 6.0,
+      "Y": 0.0,
+      "Z": 2.0
+    },
+    {
+      "X": 12.0,
+      "Y": 0.0,
+      "Z": 2.0
+    }
+  ],
+  "BendRadius": 1.0,
+  "BendType": "Degree90",
+  "Id": "example-u-shaped-conduit",
+  "Name": "U-shaped EMT Conduit",
+  "Type": "Conduit",
+  "Position": {
+    "X": -6.0,
+    "Y": 0.0,
+    "Z": 0.0
+  },
+  "Rotation": {
+    "X": 0.0,
+    "Y": 0.0,
+    "Z": 0.0
+  },
+  "Scale": {
+    "X": 1.0,
+    "Y": 1.0,
+    "Z": 1.0
+  },
+  "Parameters": {
+    "Width": 0.75,
+    "Height": 0.75,
+    "Depth": 30.0,
+    "Material": "Steel",
+    "Elevation": 10.0,
+    "Color": "#4169E1"
+  },
+  "Constraints": []
+}

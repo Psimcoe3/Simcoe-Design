@@ -1,0 +1,52 @@
+{
+  "$type": "ElectricalComponentSandbox.Models.ConduitComponent, ElectricalComponentSandbox",
+  "Diameter": 1.0,
+  "Length": 20.0,
+  "ConduitType": "EMT",
+  "BendPoints": [
+    {
+      "X": 0.0,
+      "Y": 0.0,
+      "Z": 10.0
+    },
+    {
+      "X": 5.0,
+      "Y": 0.0,
+      "Z": 10.0
+    },
+    {
+      "X": 5.0,
+      "Y": 0.0,
+      "Z": 15.0
+    }
+  ],
+  "BendRadius": 1.0,
+  "BendType": "Degree90",
+  "Id": "example-bent-conduit-001",
+  "Name": "L-shaped EMT Conduit",
+  "Type": "Conduit",
+  "Position": {
+    "X": 0.0,
+    "Y": 0.0,
+    "Z": 0.0
+  },
+  "Rotation": {
+    "X": 0.0,
+    "Y": 0.0,
+    "Z": 0.0
+  },
+  "Scale": {
+    "X": 1.0,
+    "Y": 1.0,
+    "Z": 1.0
+  },
+  "Parameters": {
+    "Width": 1.0,
+    "Height": 1.0,
+    "Depth": 15.0,
+    "Material": "Steel",
+    "Elevation": 10.0,
+    "Color": "#808080"
+  },
+  "Constraints": []
+}

@@ -14,6 +14,7 @@ A desktop application for designing and editing parametric electrical constructi
 - **Property Panel**: Real-time editing of component properties
 - **File Operations**: Save and load custom component files (.ecomp format)
 - **JSON Export**: Export components to JSON format for integration with other tools
+- **Interactive Conduit Bending**: Click and drag to create complex conduit paths with multiple bends (NEW!)
 
 ### Technology Stack
 
@@ -66,6 +67,21 @@ Alternatively, open `ElectricalComponentSandbox.sln` in Visual Studio and build/
 - **Rotation**: Set rotation angles around X, Y, Z axes
 - **Scale**: Components support scaling (implementation in progress)
 
+#### Creating Conduit Bends (Interactive Path Editing)
+
+1. Create or select a conduit component
+2. Click the "Edit Conduit Path" button in the toolbar
+3. The button will turn orange to indicate edit mode is active
+4. Click anywhere on the conduit or in the 3D space to add bend points
+5. Orange spherical handles will appear at each bend point
+6. Drag these handles to adjust the position of bend points
+7. The conduit will automatically render as connected segments with elbows at bends
+8. To remove bend points:
+   - Use Edit → Delete Last Bend Point to remove the most recent bend
+   - Use the "Clear All Bend Points" button in the Properties panel to reset the conduit
+9. Click "Exit Edit Mode" to finish editing
+10. Enable "Snap to Grid" from the View menu for precise positioning
+
 #### File Operations
 
 - **New**: Create a new empty workspace (File → New)
@@ -86,6 +102,13 @@ Alternatively, open `ElectricalComponentSandbox.sln` in Visual Studio and build/
 - Cylindrical electrical conduit
 - Configurable diameter and length
 - Material options (EMT, PVC, etc.)
+- **Interactive Bending**: Create multi-segment conduits with bends
+  - Click "Edit Conduit Path" button to enter edit mode
+  - Click on the conduit to add bend points
+  - Drag orange handles to adjust bend positions
+  - Supports 90° and 45° bends
+  - Automatic elbow rendering at bend points
+  - Clear individual or all bend points via Edit menu or Properties panel
 
 #### Box
 - Electrical junction boxes
