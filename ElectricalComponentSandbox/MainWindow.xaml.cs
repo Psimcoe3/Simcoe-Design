@@ -546,7 +546,17 @@ public partial class MainWindow : Window
     
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
-        if (Keyboard.Modifiers == ModifierKeys.Control)
+        var modifiers = Keyboard.Modifiers;
+        
+        if (modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            if (e.Key == Key.S)
+            {
+                SaveFileAs_Click(sender, e);
+                e.Handled = true;
+            }
+        }
+        else if (modifiers == ModifierKeys.Control)
         {
             switch (e.Key)
             {
@@ -556,10 +566,6 @@ public partial class MainWindow : Window
                     break;
                 case Key.O:
                     OpenFile_Click(sender, e);
-                    e.Handled = true;
-                    break;
-                case Key.S when Keyboard.Modifiers.HasFlag(ModifierKeys.Shift):
-                    SaveFileAs_Click(sender, e);
                     e.Handled = true;
                     break;
                 case Key.S:
@@ -572,15 +578,18 @@ public partial class MainWindow : Window
                     break;
             }
         }
-        else if (e.Key == Key.Delete)
+        else if (modifiers == ModifierKeys.None)
         {
-            DeleteComponent_Click(sender, e);
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Escape && _isEditingConduitPath)
-        {
-            ToggleEditConduitPath_Click(sender, e);
-            e.Handled = true;
+            if (e.Key == Key.Delete)
+            {
+                DeleteComponent_Click(sender, e);
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Escape && _isEditingConduitPath)
+            {
+                ToggleEditConduitPath_Click(sender, e);
+                e.Handled = true;
+            }
         }
     }
     
