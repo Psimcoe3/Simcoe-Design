@@ -84,11 +84,11 @@ Alternatively, open `ElectricalComponentSandbox.sln` in Visual Studio and build/
 
 #### File Operations
 
-- **New**: Create a new empty workspace (File → New)
-- **Open**: Load a saved component file (File → Open)
-- **Save**: Save the current component (File → Save)
-- **Save As**: Save to a new file (File → Save As)
-- **Export JSON**: Export component to JSON format (File → Export JSON)
+- **New**: Create a new empty workspace (File → New or Ctrl+N)
+- **Open**: Load a saved component file (File → Open or Ctrl+O)
+- **Save**: Save the current component (File → Save or Ctrl+S)
+- **Save As**: Save to a new file (File → Save As or Ctrl+Shift+S)
+- **Export JSON**: Export component to JSON format (File → Export JSON or Ctrl+E)
 
 #### Grid and Snap
 
@@ -132,6 +132,29 @@ Custom binary format for saving component data with full type information.
 
 #### JSON Export
 Standard JSON format for component data, suitable for integration with other systems.
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+N | New file |
+| Ctrl+O | Open file |
+| Ctrl+S | Save file |
+| Ctrl+Shift+S | Save As |
+| Ctrl+E | Export to JSON |
+| Delete | Delete selected component |
+| Escape | Exit conduit edit mode |
+
+### Running Tests
+
+The project includes a comprehensive unit test suite covering models, services, and viewmodels.
+
+```bash
+# Build and run tests (requires Windows)
+dotnet test ElectricalComponentSandbox.Tests/ElectricalComponentSandbox.Tests.csproj
+```
+
+*Note: Tests require Windows OS to run due to WPF framework dependencies.*
 
 ### Future Enhancements
 

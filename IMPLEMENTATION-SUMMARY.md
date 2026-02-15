@@ -155,6 +155,7 @@ All components support:
 ✅ Export to standard JSON format  
 ✅ Use grid and snap for precise placement  
 ✅ Browse component library  
+✅ Keyboard shortcuts for common operations
 
 ### Developer Features
 ✅ Clean MVVM architecture  
@@ -163,6 +164,7 @@ All components support:
 ✅ Type-safe models with inheritance  
 ✅ Comprehensive documentation  
 ✅ Example code for component creation  
+✅ Unit test suite with xUnit
 
 ### Quality Assurance
 ✅ No security vulnerabilities  
@@ -177,14 +179,19 @@ All components support:
 - ✅ **Build Tests**: Successful compilation in both Debug and Release
 - ✅ **Security Scan**: CodeQL analysis completed with 0 alerts
 - ✅ **Dependency Check**: No vulnerabilities found
+- ✅ **Unit Tests**: xUnit test project with comprehensive coverage
+  - Model tests (ConduitComponent, BoxComponent, PanelComponent, SupportComponent)
+  - Service tests (ComponentFileService save/load/export round-trips)
+  - ViewModel tests (MainViewModel add, delete, move, rotate, scale, property changes)
 
 ### Manual Testing Required
-⚠️ **Runtime Testing**: Application requires Windows for manual verification
+⚠️ **Runtime Testing**: Application and tests require Windows for execution
 - Component creation and selection
 - 3D viewport interaction
 - Property editing and updates
 - File save/load operations
 - JSON export functionality
+- Keyboard shortcuts
 
 *Note: Application was built on Linux for cross-platform compatibility but requires Windows OS to run due to WPF framework requirements.*
 
@@ -217,28 +224,40 @@ Simcoe-Design/
 ├── Examples/
 │   ├── sample-conduit.json           # Example conduit
 │   └── sample-panel.json             # Example panel
-└── ElectricalComponentSandbox/
-    ├── ElectricalComponentSandbox.csproj
-    ├── App.xaml / App.xaml.cs
-    ├── MainWindow.xaml / MainWindow.xaml.cs
+├── ElectricalComponentSandbox/
+│   ├── ElectricalComponentSandbox.csproj
+│   ├── App.xaml / App.xaml.cs
+│   ├── MainWindow.xaml / MainWindow.xaml.cs
+│   ├── Models/
+│   │   ├── ElectricalComponent.cs    # Base model
+│   │   ├── ConduitComponent.cs
+│   │   ├── BoxComponent.cs
+│   │   ├── PanelComponent.cs
+│   │   └── SupportComponent.cs
+│   ├── ViewModels/
+│   │   └── MainViewModel.cs          # Main view model
+│   ├── Services/
+│   │   └── ComponentFileService.cs   # File operations
+│   └── Examples/
+│       └── ComponentExamples.cs      # Sample components
+└── ElectricalComponentSandbox.Tests/
+    ├── ElectricalComponentSandbox.Tests.csproj
     ├── Models/
-    │   ├── ElectricalComponent.cs    # Base model
-    │   ├── ConduitComponent.cs
-    │   ├── BoxComponent.cs
-    │   ├── PanelComponent.cs
-    │   └── SupportComponent.cs
-    ├── ViewModels/
-    │   └── MainViewModel.cs          # Main view model
+    │   ├── ElectricalComponentTests.cs
+    │   ├── ConduitComponentTests.cs
+    │   ├── BoxComponentTests.cs
+    │   ├── PanelComponentTests.cs
+    │   └── SupportComponentTests.cs
     ├── Services/
-    │   └── ComponentFileService.cs   # File operations
-    └── Examples/
-        └── ComponentExamples.cs      # Sample components
+    │   └── ComponentFileServiceTests.cs
+    └── ViewModels/
+        └── MainViewModelTests.cs
 ```
 
 ## Known Limitations
 
 1. **Platform**: Windows-only (WPF requirement)
-2. **Testing**: Manual runtime testing not performed (requires Windows)
+2. **Testing**: Tests require Windows OS to run (WPF dependency)
 3. **Multi-selection**: Not yet implemented
 4. **Undo/Redo**: Not implemented in MVP
 5. **Constraints**: Model support exists but UI not implemented

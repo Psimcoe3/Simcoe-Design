@@ -544,6 +544,55 @@ public partial class MainWindow : Window
         Close();
     }
     
+    private void Window_KeyDown(object sender, KeyEventArgs e)
+    {
+        var modifiers = Keyboard.Modifiers;
+        
+        if (modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            if (e.Key == Key.S)
+            {
+                SaveFileAs_Click(sender, e);
+                e.Handled = true;
+            }
+        }
+        else if (modifiers == ModifierKeys.Control)
+        {
+            switch (e.Key)
+            {
+                case Key.N:
+                    NewFile_Click(sender, e);
+                    e.Handled = true;
+                    break;
+                case Key.O:
+                    OpenFile_Click(sender, e);
+                    e.Handled = true;
+                    break;
+                case Key.S:
+                    SaveFile_Click(sender, e);
+                    e.Handled = true;
+                    break;
+                case Key.E:
+                    ExportJson_Click(sender, e);
+                    e.Handled = true;
+                    break;
+            }
+        }
+        else if (modifiers == ModifierKeys.None)
+        {
+            if (e.Key == Key.Delete)
+            {
+                DeleteComponent_Click(sender, e);
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Escape && _isEditingConduitPath)
+            {
+                ToggleEditConduitPath_Click(sender, e);
+                e.Handled = true;
+            }
+        }
+    }
+    
     private void ToggleEditConduitPath_Click(object sender, RoutedEventArgs e)
     {
         _isEditingConduitPath = !_isEditingConduitPath;
