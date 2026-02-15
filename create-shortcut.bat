@@ -15,14 +15,7 @@ if not exist "%EXE_PATH%" (
 
 echo Creating desktop shortcut...
 
-powershell -NoProfile -Command ^
-    "$ws = New-Object -ComObject WScript.Shell; ^
-     $sc = $ws.CreateShortcut('%SHORTCUT_PATH%'); ^
-     $sc.TargetPath = '%EXE_PATH%'; ^
-     $sc.WorkingDirectory = '%EXE_DIR%'; ^
-     $sc.Description = 'Electrical Component Sandbox - Parametric Electrical Component Designer'; ^
-     $sc.IconLocation = '%EXE_PATH%,0'; ^
-     $sc.Save()"
+powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut('%SHORTCUT_PATH%'); $sc.TargetPath = '%EXE_PATH%'; $sc.WorkingDirectory = '%EXE_DIR%'; $sc.Description = 'Electrical Component Sandbox - Parametric Electrical Component Designer'; $sc.IconLocation = '%EXE_PATH%,0'; $sc.Save()"
 
 if %errorlevel% equ 0 (
     echo.
