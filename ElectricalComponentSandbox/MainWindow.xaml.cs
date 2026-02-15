@@ -210,21 +210,14 @@ public partial class MainWindow : Window
         var position = e.GetPosition(Viewport);
         var hits = Viewport3DHelper.FindHits(Viewport.Viewport, position);
         
-        if (hits != null && hits.Count > 0)
-        {
-            foreach (var hit in hits)
-            {
-                var visual = hit.Visual;
-                if (visual is ModelVisual3D modelVisual && _visualToComponentMap.TryGetValue(modelVisual, out var component))
-                {
-                    _viewModel.SelectedComponent = component;
-                    return;
-                }
-            }
-        }
+        var matchedComponent = hits?
+            .Select(hit => hit.Visual)
+            .OfType<ModelVisual3D>()
+            .Where(visual => _visualToComponentMap.ContainsKey(visual))
+            .Select(visual => _visualToComponentMap[visual])
+            .FirstOrDefault();
         
-        // Clicked on empty space - deselect
-        _viewModel.SelectedComponent = null;
+        _viewModel.SelectedComponent = matchedComponent;
     }
     
     private void ApplyProperties_Click(object sender, RoutedEventArgs e)
