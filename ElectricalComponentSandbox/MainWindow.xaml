@@ -57,6 +57,8 @@
             <Button Content="Panel" Click="AddPanel_Click"/>
             <Button Content="Support" Click="AddSupport_Click"/>
             <Separator/>
+            <Button x:Name="EditConduitPathButton" Content="Edit Conduit Path" Click="ToggleEditConduitPath_Click"/>
+            <Separator/>
             <TextBlock Text="Grid Size:" VerticalAlignment="Center"/>
             <TextBox Text="{Binding GridSize}" Width="50"/>
         </ToolBar>
@@ -178,6 +180,17 @@
                                 
                                 <TextBlock Text="Color:"/>
                                 <TextBox x:Name="ColorTextBox"/>
+                                
+                                <!-- Conduit-specific Properties -->
+                                <StackPanel x:Name="ConduitProperties" Visibility="Collapsed">
+                                    <TextBlock Text="Conduit Settings" FontWeight="Bold" Margin="0,10,0,0"/>
+                                    
+                                    <TextBlock Text="Bend Points:"/>
+                                    <TextBlock x:Name="BendPointsTextBlock" Text="0" Foreground="Gray" FontStyle="Italic" Margin="5,0,0,5"/>
+                                    
+                                    <Button x:Name="ClearBendPointsButton" Content="Clear All Bend Points" 
+                                            Click="ClearBendPoints_Click" Margin="5"/>
+                                </StackPanel>
                                 
                                 <!-- Actions -->
                                 <Button Content="Apply Changes" Click="ApplyProperties_Click" Margin="0,10,0,0"/>

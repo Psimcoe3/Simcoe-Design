@@ -17,6 +17,10 @@ public partial class MainWindow : Window
     private readonly MainViewModel _viewModel;
     private string? _currentFilePath;
     private readonly Dictionary<ModelVisual3D, ElectricalComponent> _visualToComponentMap = new();
+    private bool _isEditingConduitPath = false;
+    private readonly List<ModelVisual3D> _bendPointHandles = new();
+    private ModelVisual3D? _draggedHandle = null;
+    private Point _lastMousePosition;
     
     public MainWindow()
     {
@@ -66,6 +70,17 @@ public partial class MainWindow : Window
         MaterialTextBox.Text = component.Parameters.Material;
         ElevationTextBox.Text = component.Parameters.Elevation.ToString("F2");
         ColorTextBox.Text = component.Parameters.Color;
+        
+        // Update conduit-specific properties
+        if (component is ConduitComponent conduit)
+        {
+            ConduitProperties.Visibility = Visibility.Visible;
+            BendPointsTextBlock.Text = conduit.BendPoints.Count.ToString();
+        }
+        else
+        {
+            ConduitProperties.Visibility = Visibility.Collapsed;
+        }
     }
     
     private void ClearPropertiesPanel()
@@ -154,8 +169,7 @@ public partial class MainWindow : Window
             case ComponentType.Conduit:
                 if (component is ConduitComponent conduit)
                 {
-                    builder.AddCylinder(new Point3D(0, 0, 0), new Point3D(0, 0, conduit.Length), 
-                        conduit.Diameter, 20);
+                    CreateConduitGeometry(builder, conduit);
                 }
                 break;
                 
@@ -170,6 +184,28 @@ public partial class MainWindow : Window
         }
         
         return builder.ToMesh();
+    }
+    
+    private void CreateConduitGeometry(MeshBuilder builder, ConduitComponent conduit)
+    {
+        var pathPoints = conduit.GetPathPoints();
+        
+        // Create cylinders for each segment
+        for (int i = 0; i < pathPoints.Count - 1; i++)
+        {
+            var start = pathPoints[i];
+            var end = pathPoints[i + 1];
+            
+            // Add cylinder segment
+            builder.AddCylinder(start, end, conduit.Diameter, 20);
+            
+            // Add elbow/bend at connection points (except at the last point)
+            if (i < pathPoints.Count - 2)
+            {
+                // Add a small sphere at bend points for visual continuity
+                builder.AddSphere(end, conduit.Diameter * 0.6, 12, 12);
+            }
+        }
     }
     
     private void AddConduit_Click(object sender, RoutedEventArgs e)
@@ -210,6 +246,42 @@ public partial class MainWindow : Window
         var position = e.GetPosition(Viewport);
         var hits = Viewport3DHelper.FindHits(Viewport.Viewport, position);
         
+        if (_isEditingConduitPath && _viewModel.SelectedComponent is ConduitComponent conduit)
+        {
+            // Check if clicking on a bend point handle
+            var handleHit = hits?
+                .Select(hit => hit.Visual)
+                .OfType<ModelVisual3D>()
+                .FirstOrDefault(v => _bendPointHandles.Contains(v));
+            
+            if (handleHit != null)
+            {
+                // Start dragging the handle
+                _draggedHandle = handleHit;
+                _lastMousePosition = position;
+                Viewport.MouseMove += Viewport_MouseMove;
+                Viewport.MouseLeftButtonUp += Viewport_MouseLeftButtonUp;
+                e.Handled = true;
+                return;
+            }
+            
+            // Otherwise, add a new bend point at the clicked location
+            var rayHit = hits?.FirstOrDefault();
+            if (rayHit != null)
+            {
+                var hitPoint = rayHit.Position;
+                // Convert to local coordinates
+                var offset = hitPoint - _viewModel.SelectedComponent.Position;
+                var localPoint = new Point3D(offset.X, offset.Y, offset.Z);
+                
+                conduit.BendPoints.Add(localPoint);
+                ShowBendPointHandles();
+                UpdateViewport();
+                e.Handled = true;
+                return;
+            }
+        }
+        
         var matchedComponent = hits?
             .Select(hit => hit.Visual)
             .OfType<ModelVisual3D>()
@@ -218,6 +290,67 @@ public partial class MainWindow : Window
             .FirstOrDefault();
         
         _viewModel.SelectedComponent = matchedComponent;
+        
+        // Update handles if in edit mode
+        if (_isEditingConduitPath && matchedComponent is ConduitComponent)
+        {
+            ShowBendPointHandles();
+        }
+    }
+    
+    private void Viewport_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (_draggedHandle == null || _viewModel.SelectedComponent is not ConduitComponent conduit)
+            return;
+        
+        var position = e.GetPosition(Viewport);
+        var delta = position - _lastMousePosition;
+        
+        // Find which bend point this handle represents
+        int handleIndex = _bendPointHandles.IndexOf(_draggedHandle);
+        if (handleIndex >= 0 && handleIndex < conduit.BendPoints.Count)
+        {
+            // Simple approximation: move in XY plane based on mouse delta
+            var scaleFactor = 0.1; // Adjust sensitivity
+            var currentPoint = conduit.BendPoints[handleIndex];
+            
+            conduit.BendPoints[handleIndex] = new Point3D(
+                currentPoint.X + delta.X * scaleFactor,
+                currentPoint.Y - delta.Y * scaleFactor, // Invert Y for screen coordinates
+                currentPoint.Z
+            );
+            
+            UpdateViewport();
+            ShowBendPointHandles();
+        }
+        
+        _lastMousePosition = position;
+    }
+    
+    private void Viewport_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        _draggedHandle = null;
+        Viewport.MouseMove -= Viewport_MouseMove;
+        Viewport.MouseLeftButtonUp -= Viewport_MouseLeftButtonUp;
+    }
+    
+    private void ClearBendPoints_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedComponent is ConduitComponent conduit)
+        {
+            if (MessageBox.Show("Clear all bend points from this conduit?", "Confirm", 
+                MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+            {
+                conduit.BendPoints.Clear();
+                UpdateViewport();
+                UpdatePropertiesPanel();
+                
+                if (_isEditingConduitPath)
+                {
+                    ShowBendPointHandles();
+                }
+            }
+        }
     }
     
     private void ApplyProperties_Click(object sender, RoutedEventArgs e)
@@ -371,5 +504,84 @@ public partial class MainWindow : Window
     private void Exit_Click(object sender, RoutedEventArgs e)
     {
         Close();
+    }
+    
+    private void ToggleEditConduitPath_Click(object sender, RoutedEventArgs e)
+    {
+        _isEditingConduitPath = !_isEditingConduitPath;
+        
+        if (_isEditingConduitPath)
+        {
+            if (_viewModel.SelectedComponent is ConduitComponent)
+            {
+                ShowBendPointHandles();
+                MessageBox.Show("Edit Mode: Click on conduit to add bend points, drag handles to move them. Click toggle again to exit.", 
+                    "Edit Conduit Path", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                _isEditingConduitPath = false;
+                MessageBox.Show("Please select a conduit component first.", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        else
+        {
+            HideBendPointHandles();
+        }
+    }
+    
+    private void ShowBendPointHandles()
+    {
+        HideBendPointHandles();
+        
+        if (_viewModel.SelectedComponent is not ConduitComponent conduit)
+            return;
+        
+        var pathPoints = conduit.GetPathPoints();
+        
+        // Skip first point (origin), create handles for bend points and end point
+        for (int i = 1; i < pathPoints.Count; i++)
+        {
+            var point = pathPoints[i];
+            var handle = CreateBendPointHandle(point);
+            _bendPointHandles.Add(handle);
+            Viewport.Children.Add(handle);
+        }
+    }
+    
+    private void HideBendPointHandles()
+    {
+        foreach (var handle in _bendPointHandles)
+        {
+            Viewport.Children.Remove(handle);
+        }
+        _bendPointHandles.Clear();
+    }
+    
+    private ModelVisual3D CreateBendPointHandle(Point3D position)
+    {
+        var visual = new ModelVisual3D();
+        var builder = new MeshBuilder();
+        builder.AddSphere(new Point3D(0, 0, 0), 0.3, 12, 12);
+        
+        var material = new DiffuseMaterial(new SolidColorBrush(Colors.Orange));
+        var emissive = new EmissiveMaterial(new SolidColorBrush(Color.FromArgb(100, 255, 165, 0)));
+        var materialGroup = new MaterialGroup();
+        materialGroup.Children.Add(material);
+        materialGroup.Children.Add(emissive);
+        
+        var model = new GeometryModel3D(builder.ToMesh(), materialGroup);
+        
+        // Apply position from selected component's transform
+        if (_viewModel.SelectedComponent != null)
+        {
+            var transformGroup = new Transform3DGroup();
+            var globalPos = _viewModel.SelectedComponent.Position + new Vector3D(position.X, position.Y, position.Z);
+            transformGroup.Children.Add(new TranslateTransform3D(globalPos.X, globalPos.Y, globalPos.Z));
+            model.Transform = transformGroup;
+        }
+        
+        visual.Content = model;
+        return visual;
     }
 }
