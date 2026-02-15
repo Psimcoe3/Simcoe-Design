@@ -27,11 +27,21 @@ public class ComponentFileService
     
     public async Task SaveComponentAsync(ElectricalComponent component, string filePath)
     {
+        await SerializeComponentAsync(component, filePath, includeTypeInfo: true);
+    }
+    
+    public async Task ExportToJsonAsync(ElectricalComponent component, string filePath)
+    {
+        await SerializeComponentAsync(component, filePath, includeTypeInfo: false);
+    }
+    
+    private async Task SerializeComponentAsync(ElectricalComponent component, string filePath, bool includeTypeInfo)
+    {
         try
         {
             var settings = new JsonSerializerSettings
             {
-                TypeNameHandling = TypeNameHandling.Auto,
+                TypeNameHandling = includeTypeInfo ? TypeNameHandling.Auto : TypeNameHandling.None,
                 Formatting = Formatting.Indented
             };
             var json = JsonConvert.SerializeObject(component, settings);
@@ -40,23 +50,6 @@ public class ComponentFileService
         catch (Exception ex)
         {
             throw new InvalidOperationException($"Failed to save component: {ex.Message}", ex);
-        }
-    }
-    
-    public async Task ExportToJsonAsync(ElectricalComponent component, string filePath)
-    {
-        try
-        {
-            var settings = new JsonSerializerSettings
-            {
-                Formatting = Formatting.Indented
-            };
-            var json = JsonConvert.SerializeObject(component, settings);
-            await File.WriteAllTextAsync(filePath, json);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException($"Failed to export component: {ex.Message}", ex);
         }
     }
     
