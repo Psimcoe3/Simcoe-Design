@@ -28,6 +28,11 @@ public partial class MainWindow : Window
     private static readonly Color EditModeButtonColor = Color.FromRgb(255, 200, 100);
     private static readonly Color BendPointHandleColor = Colors.Orange;
     
+    // Constants for smooth conduit rendering
+    private const int MaxSegmentResolution = 50; // Maximum interpolation points per segment
+    private const int MinSegmentResolution = 5;  // Minimum interpolation points per segment
+    private const double ResolutionScaleFactor = 10.0; // Scale factor for bend radius to resolution
+    
     public MainWindow()
     {
         InitializeComponent();
@@ -228,8 +233,8 @@ public partial class MainWindow : Window
         
         // Number of interpolated points per segment
         // Higher values = smoother curves but more geometry
-        // Cap at 50 to prevent excessive geometry with large bend radii
-        int segmentResolution = Math.Min(50, Math.Max(5, (int)(bendRadius * 10)));
+        int segmentResolution = Math.Min(MaxSegmentResolution, 
+            Math.Max(MinSegmentResolution, (int)(bendRadius * ResolutionScaleFactor)));
         
         for (int i = 0; i < controlPoints.Count - 1; i++)
         {
