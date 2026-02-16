@@ -228,7 +228,8 @@ public partial class MainWindow : Window
         
         // Number of interpolated points per segment
         // Higher values = smoother curves but more geometry
-        int segmentResolution = Math.Max(5, (int)(bendRadius * 10));
+        // Cap at 50 to prevent excessive geometry with large bend radii
+        int segmentResolution = Math.Min(50, Math.Max(5, (int)(bendRadius * 10)));
         
         for (int i = 0; i < controlPoints.Count - 1; i++)
         {
@@ -689,6 +690,15 @@ public partial class MainWindow : Window
             EditConduitPathButton.Background = System.Windows.SystemColors.ControlBrush;
             EditConduitPathButton.Content = "Edit Conduit Path";
             HideBendPointHandles();
+            
+            // Release mouse capture if currently dragging
+            if (_draggedHandle != null)
+            {
+                _draggedHandle = null;
+                Mouse.Capture(null);
+                Viewport.MouseMove -= Viewport_MouseMove;
+                Viewport.MouseLeftButtonUp -= Viewport_MouseLeftButtonUp;
+            }
         }
     }
     
