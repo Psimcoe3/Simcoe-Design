@@ -28,6 +28,11 @@ public partial class MainWindow : Window
     private static readonly Color EditModeButtonColor = Color.FromRgb(255, 200, 100);
     private static readonly Color BendPointHandleColor = Colors.Orange;
     
+    // Constants for smooth conduit rendering
+    private const int MaxSegmentResolution = 50; // Maximum interpolation points per segment
+    private const int MinSegmentResolution = 5;  // Minimum interpolation points per segment
+    private const double ResolutionScaleFactor = 10.0; // Scale factor for bend radius to resolution
+    
     public MainWindow()
     {
         InitializeComponent();
@@ -196,22 +201,84 @@ public partial class MainWindow : Window
     {
         var pathPoints = conduit.GetPathPoints();
         
-        // Create cylinders for each segment
-        for (int i = 0; i < pathPoints.Count - 1; i++)
+        // For conduits with only 2 points (start and end), use straight segment
+        if (pathPoints.Count == 2)
         {
-            var start = pathPoints[i];
-            var end = pathPoints[i + 1];
-            
-            // Add cylinder segment
-            builder.AddCylinder(start, end, conduit.Diameter, 20);
-            
-            // Add elbow/bend at connection points (except at the last point)
-            if (i < pathPoints.Count - 2)
+            builder.AddCylinder(pathPoints[0], pathPoints[1], conduit.Diameter, 20);
+            return;
+        }
+        
+        // For conduits with bends, create smooth curves using Catmull-Rom spline
+        var smoothPoints = GenerateSmoothPath(pathPoints, conduit.BendRadius);
+        
+        // Create tube geometry along the smooth path
+        if (smoothPoints.Count >= 2)
+        {
+            for (int i = 0; i < smoothPoints.Count - 1; i++)
             {
-                // Add a small sphere at bend points for visual continuity
-                builder.AddSphere(end, conduit.Diameter * ElbowRadiusRatio, 12, 12);
+                builder.AddCylinder(smoothPoints[i], smoothPoints[i + 1], conduit.Diameter, 20);
             }
         }
+    }
+    
+    /// <summary>
+    /// Generates a smooth path through the given points using Catmull-Rom spline interpolation
+    /// </summary>
+    private List<Point3D> GenerateSmoothPath(List<Point3D> controlPoints, double bendRadius)
+    {
+        var smoothPoints = new List<Point3D>();
+        
+        if (controlPoints.Count < 2)
+            return smoothPoints;
+        
+        // Number of interpolated points per segment
+        // Higher values = smoother curves but more geometry
+        int segmentResolution = Math.Min(MaxSegmentResolution, 
+            Math.Max(MinSegmentResolution, (int)(bendRadius * ResolutionScaleFactor)));
+        
+        for (int i = 0; i < controlPoints.Count - 1; i++)
+        {
+            // Get control points for Catmull-Rom spline
+            // P0, P1, P2, P3 where we interpolate between P1 and P2
+            Point3D p0 = (i == 0) ? controlPoints[i] : controlPoints[i - 1];
+            Point3D p1 = controlPoints[i];
+            Point3D p2 = controlPoints[i + 1];
+            Point3D p3 = (i + 2 < controlPoints.Count) ? controlPoints[i + 2] : controlPoints[i + 1];
+            
+            // Interpolate between p1 and p2
+            for (int j = 0; j < segmentResolution; j++)
+            {
+                double t = (double)j / segmentResolution;
+                Point3D interpolated = CatmullRomInterpolate(p0, p1, p2, p3, t);
+                smoothPoints.Add(interpolated);
+            }
+        }
+        
+        // Add the final point
+        smoothPoints.Add(controlPoints[controlPoints.Count - 1]);
+        
+        return smoothPoints;
+    }
+    
+    /// <summary>
+    /// Catmull-Rom spline interpolation between p1 and p2
+    /// </summary>
+    private Point3D CatmullRomInterpolate(Point3D p0, Point3D p1, Point3D p2, Point3D p3, double t)
+    {
+        double t2 = t * t;
+        double t3 = t2 * t;
+        
+        // Catmull-Rom basis matrix coefficients
+        double c0 = -0.5 * t3 + t2 - 0.5 * t;
+        double c1 = 1.5 * t3 - 2.5 * t2 + 1.0;
+        double c2 = -1.5 * t3 + 2.0 * t2 + 0.5 * t;
+        double c3 = 0.5 * t3 - 0.5 * t2;
+        
+        double x = c0 * p0.X + c1 * p1.X + c2 * p2.X + c3 * p3.X;
+        double y = c0 * p0.Y + c1 * p1.Y + c2 * p2.Y + c3 * p3.Y;
+        double z = c0 * p0.Z + c1 * p1.Z + c2 * p2.Z + c3 * p3.Z;
+        
+        return new Point3D(x, y, z);
     }
     
     private void AddConduit_Click(object sender, RoutedEventArgs e)
@@ -265,6 +332,7 @@ public partial class MainWindow : Window
                 // Start dragging the handle
                 _draggedHandle = handleHit;
                 _lastMousePosition = position;
+                Mouse.Capture(Viewport);
                 Viewport.MouseMove += Viewport_MouseMove;
                 Viewport.MouseLeftButtonUp += Viewport_MouseLeftButtonUp;
                 e.Handled = true;
@@ -281,8 +349,8 @@ public partial class MainWindow : Window
                 var localPoint = new Point3D(offset.X, offset.Y, offset.Z);
                 
                 conduit.BendPoints.Add(localPoint);
-                ShowBendPointHandles();
                 UpdateViewport();
+                ShowBendPointHandles();
                 e.Handled = true;
                 return;
             }
@@ -349,6 +417,7 @@ public partial class MainWindow : Window
     private void Viewport_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         _draggedHandle = null;
+        Mouse.Capture(null);
         Viewport.MouseMove -= Viewport_MouseMove;
         Viewport.MouseLeftButtonUp -= Viewport_MouseLeftButtonUp;
     }
@@ -626,6 +695,15 @@ public partial class MainWindow : Window
             EditConduitPathButton.Background = System.Windows.SystemColors.ControlBrush;
             EditConduitPathButton.Content = "Edit Conduit Path";
             HideBendPointHandles();
+            
+            // Release mouse capture if currently dragging
+            if (_draggedHandle != null)
+            {
+                _draggedHandle = null;
+                Mouse.Capture(null);
+                Viewport.MouseMove -= Viewport_MouseMove;
+                Viewport.MouseLeftButtonUp -= Viewport_MouseLeftButtonUp;
+            }
         }
     }
     
