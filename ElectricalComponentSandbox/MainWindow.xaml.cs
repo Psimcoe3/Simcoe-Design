@@ -26,8 +26,6 @@ public partial class MainWindow : Window
     private Point _lastMousePosition;
     
     // 2D canvas state
-    private bool _isPanning2D = false;
-    private Point _panStart2D;
     private bool _isDragging2D = false;
     private FrameworkElement? _draggedElement2D = null;
     private readonly Dictionary<FrameworkElement, ElectricalComponent> _canvasToComponentMap = new();
@@ -469,9 +467,7 @@ public partial class MainWindow : Window
             return;
         }
         
-        // Start panning with middle mouse or when not hitting component
-        _isPanning2D = true;
-        _panStart2D = pos;
+        // No component hit
         PlanCanvas.CaptureMouse();
     }
     
@@ -491,7 +487,6 @@ public partial class MainWindow : Window
     
     private void PlanCanvas_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        _isPanning2D = false;
         _isDragging2D = false;
         _draggedElement2D = null;
         PlanCanvas.ReleaseMouseCapture();

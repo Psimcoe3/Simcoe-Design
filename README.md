@@ -45,7 +45,7 @@ dotnet build ElectricalComponentSandbox/ElectricalComponentSandbox.csproj
 dotnet run --project ElectricalComponentSandbox/ElectricalComponentSandbox.csproj
 ```
 
-Alternatively, open `ElectricalComponentSandbox.sln` in Visual Studio and build/run from there.
+Alternatively, open `ElectricalComponentSandbox.slnx` in Visual Studio and build/run from there.
 
 ### Usage
 

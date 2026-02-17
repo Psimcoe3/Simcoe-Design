@@ -21,21 +21,35 @@ The Electrical Component Sandbox is a WPF desktop application built using the MV
 
 ```
 ElectricalComponentSandbox/
+├── Converters/                # WPF value converters
+│   ├── NotNullToVisibilityConverter.cs
+│   └── NullToVisibilityConverter.cs
+├── Examples/                  # Example components
+│   └── ComponentExamples.cs      # Sample component factory
 ├── Models/                    # Data models
-│   ├── ElectricalComponent.cs    # Base component class
-│   ├── ConduitComponent.cs       # Conduit-specific model
+│   ├── ElectricalComponent.cs    # Base component class + ComponentType enum
 │   ├── BoxComponent.cs           # Box-specific model
+│   ├── CableTrayComponent.cs     # Cable tray model
+│   ├── ConduitComponent.cs       # Conduit-specific model
+│   ├── HangerComponent.cs        # Hanger/threaded rod model
+│   ├── Layer.cs                  # Drawing layer model
 │   ├── PanelComponent.cs         # Panel-specific model
+│   ├── PdfUnderlay.cs            # PDF underlay reference model
+│   ├── ProjectModel.cs           # Top-level project model for save/load
 │   └── SupportComponent.cs       # Support-specific model
-├── ViewModels/               # View models (MVVM pattern)
+├── Services/                  # Business logic services
+│   ├── BomExportService.cs       # Bill of Materials CSV export
+│   ├── ComponentFileService.cs   # Component file I/O (.ecomp format)
+│   ├── PdfCalibrationService.cs  # PDF scale calibration
+│   ├── ProjectFileService.cs     # Project file I/O (.ecproj format)
+│   ├── SnapService.cs            # Endpoint/midpoint/intersection snapping
+│   ├── UndoRedoService.cs        # Undo/redo with command pattern
+│   └── UnitConversionService.cs  # Imperial/metric unit conversion
+├── ViewModels/                # View models (MVVM pattern)
 │   └── MainViewModel.cs          # Main window view model
-├── Views/                    # XAML views (currently in root)
-│   ├── MainWindow.xaml           # Main window UI
-│   └── MainWindow.xaml.cs        # Main window code-behind
-├── Services/                 # Business logic services
-│   └── ComponentFileService.cs   # File I/O operations
-└── Examples/                 # Example components
-    └── ComponentExamples.cs      # Sample component factory
+├── App.xaml / App.xaml.cs     # Application entry point
+├── MainWindow.xaml / .xaml.cs # Main window UI and code-behind
+└── AssemblyInfo.cs            # Assembly metadata
 ```
 
 ### Design Patterns
@@ -46,7 +60,9 @@ ElectricalComponentSandbox/
 - **ViewModels**: Business logic, data binding, and UI state management
 
 #### Repository Pattern
-- `ComponentFileService`: Encapsulates all file I/O operations
+- `ComponentFileService`: Encapsulates component file I/O operations
+- `ProjectFileService`: Handles full project save/load
+- `BomExportService`: Bill of Materials CSV generation
 - Separates data access logic from business logic
 
 #### Factory Pattern
@@ -59,8 +75,10 @@ ElectricalComponentSandbox/
 
 ```
 ElectricalComponent (abstract)
-├── ConduitComponent
 ├── BoxComponent
+├── CableTrayComponent
+├── ConduitComponent
+├── HangerComponent
 ├── PanelComponent
 └── SupportComponent
 ```

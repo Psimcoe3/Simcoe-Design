@@ -115,3 +115,9 @@ $RECYCLE.BIN/
 # Others
 node_modules/
 *.swp
+
+# Publish output
+publish/
+
+# Reference documents (large binary files)
+References/
