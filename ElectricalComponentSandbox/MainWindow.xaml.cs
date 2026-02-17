@@ -1077,10 +1077,10 @@ public partial class MainWindow : Window
             {
                 ShowBendPointHandles();
                 MessageBox.Show("Edit Mode Active:\n" +
-                    "\u2022 Click on conduit to add bend points\n" +
-                    "\u2022 Drag orange handles to move bend points\n" +
-                    "\u2022 Use 'Clear All Bend Points' to reset\n" +
-                    "\u2022 Click 'Exit Edit Mode' when done", 
+                    "• Click on conduit to add bend points\n" +
+                    "• Drag orange handles to move bend points\n" +
+                    "• Use 'Clear All Bend Points' to reset\n" +
+                    "• Click 'Exit Edit Mode' when done", 
                     "Edit Conduit Path", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else
