@@ -34,36 +34,56 @@
         <!-- Top Menu -->
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="File">
-                <MenuItem Header="New" Click="NewFile_Click" InputGestureText="Ctrl+N"/>
-                <MenuItem Header="Open..." Click="OpenFile_Click" InputGestureText="Ctrl+O"/>
-                <MenuItem Header="Save" Click="SaveFile_Click" InputGestureText="Ctrl+S"/>
-                <MenuItem Header="Save As..." Click="SaveFileAs_Click" InputGestureText="Ctrl+Shift+S"/>
+                <MenuItem Header="New Project" Click="NewProject_Click" InputGestureText="Ctrl+N"/>
+                <MenuItem Header="Open Project..." Click="OpenProject_Click" InputGestureText="Ctrl+O"/>
+                <MenuItem Header="Save Project" Click="SaveProject_Click" InputGestureText="Ctrl+S"/>
+                <MenuItem Header="Save Project As..." Click="SaveProjectAs_Click" InputGestureText="Ctrl+Shift+S"/>
+                <Separator/>
+                <MenuItem Header="Import PDF Underlay..." Click="ImportPdf_Click"/>
                 <Separator/>
                 <MenuItem Header="Export JSON..." Click="ExportJson_Click" InputGestureText="Ctrl+E"/>
+                <MenuItem Header="Export BOM CSV..." Click="ExportBomCsv_Click"/>
                 <Separator/>
                 <MenuItem Header="Exit" Click="Exit_Click"/>
             </MenuItem>
             <MenuItem Header="Edit">
+                <MenuItem Header="Undo" Click="Undo_Click" InputGestureText="Ctrl+Z"/>
+                <MenuItem Header="Redo" Click="Redo_Click" InputGestureText="Ctrl+Y"/>
+                <Separator/>
                 <MenuItem Header="Delete Selected" Click="DeleteComponent_Click" InputGestureText="Delete"/>
                 <MenuItem Header="Delete Last Bend Point" Click="DeleteLastBendPoint_Click"/>
             </MenuItem>
             <MenuItem Header="View">
                 <MenuItem Header="Show Grid" IsCheckable="True" IsChecked="{Binding ShowGrid}"/>
                 <MenuItem Header="Snap to Grid" IsCheckable="True" IsChecked="{Binding SnapToGrid}"/>
+                <Separator/>
+                <MenuItem Header="2D Plan View" Click="Show2DView_Click"/>
+                <MenuItem Header="3D Viewport" Click="Show3DView_Click"/>
             </MenuItem>
         </Menu>
         
         <!-- Toolbar -->
         <ToolBar DockPanel.Dock="Top">
+            <Button Content="Undo" Click="Undo_Click" ToolTip="Undo (Ctrl+Z)"/>
+            <Button Content="Redo" Click="Redo_Click" ToolTip="Redo (Ctrl+Y)"/>
+            <Separator/>
             <Button Content="Conduit" Click="AddConduit_Click"/>
             <Button Content="Box" Click="AddBox_Click"/>
             <Button Content="Panel" Click="AddPanel_Click"/>
             <Button Content="Support" Click="AddSupport_Click"/>
+            <Button Content="Cable Tray" Click="AddCableTray_Click"/>
+            <Button Content="Hanger" Click="AddHanger_Click"/>
             <Separator/>
             <Button x:Name="EditConduitPathButton" Content="Edit Conduit Path" Click="ToggleEditConduitPath_Click"/>
             <Separator/>
             <TextBlock Text="Grid Size:" VerticalAlignment="Center"/>
             <TextBox Text="{Binding GridSize}" Width="50"/>
+            <Separator/>
+            <TextBlock Text="Units:" VerticalAlignment="Center"/>
+            <ComboBox x:Name="UnitSystemCombo" Width="80" SelectionChanged="UnitSystem_Changed">
+                <ComboBoxItem Content="Imperial" IsSelected="True"/>
+                <ComboBoxItem Content="Metric"/>
+            </ComboBox>
         </ToolBar>
         
         <!-- Main Content -->
@@ -74,45 +94,98 @@
                 <ColumnDefinition Width="300"/>
             </Grid.ColumnDefinitions>
             
-            <!-- Library Browser -->
+            <!-- Library Browser + Layers -->
             <Border Grid.Column="0" BorderBrush="Gray" BorderThickness="0,0,1,0">
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Top" Text="Component Library" 
                              FontWeight="Bold" FontSize="14" 
                              Padding="10" Background="LightGray"/>
-                    <ListBox x:Name="LibraryListBox" 
+                    <ListBox x:Name="LibraryListBox" DockPanel.Dock="Top" Height="200"
                            ItemsSource="{Binding LibraryComponents}"
                            DisplayMemberPath="Name"
                            MouseDoubleClick="LibraryItem_DoubleClick"/>
+                    
+                    <!-- Layers Panel -->
+                    <TextBlock DockPanel.Dock="Top" Text="Layers" 
+                             FontWeight="Bold" FontSize="14" 
+                             Padding="10" Background="LightGray"/>
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="5">
+                        <Button Content="Add" Click="AddLayer_Click" Padding="5,2" Margin="2"/>
+                        <Button Content="Remove" Click="RemoveLayer_Click" Padding="5,2" Margin="2"/>
+                    </StackPanel>
+                    <ListBox x:Name="LayerListBox"
+                           ItemsSource="{Binding Layers}"
+                           DisplayMemberPath="Name"
+                           SelectionChanged="LayerListBox_SelectionChanged"/>
                 </DockPanel>
             </Border>
             
-            <!-- 3D Viewport -->
+            <!-- 2D/3D Viewport Tab -->
             <Border Grid.Column="1" BorderBrush="Gray" BorderThickness="0,0,1,0">
                 <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="3D Viewport" 
-                             FontWeight="Bold" FontSize="14" 
-                             Padding="10" Background="LightGray"/>
-                    
-                    <h:HelixViewport3D x:Name="Viewport" 
-                                     Background="White"
-                                     ShowCoordinateSystem="True"
-                                     ShowViewCube="True"
-                                     MouseLeftButtonDown="Viewport_MouseLeftButtonDown">
+                    <TabControl x:Name="ViewTabs" DockPanel.Dock="Top">
+                        <!-- 3D Viewport Tab -->
+                        <TabItem Header="3D Viewport">
+                            <h:HelixViewport3D x:Name="Viewport" 
+                                             Background="White"
+                                             ShowCoordinateSystem="True"
+                                             ShowViewCube="True"
+                                             MouseLeftButtonDown="Viewport_MouseLeftButtonDown">
+                                
+                                <!-- Lighting -->
+                                <h:DefaultLights/>
+                                
+                                <!-- Grid -->
+                                <h:GridLinesVisual3D x:Name="GridLines" 
+                                                    Visible="{Binding ShowGrid}"
+                                                    Width="100"
+                                                    Length="100"
+                                                    MinorDistance="1"
+                                                    MajorDistance="10"
+                                                    Thickness="0.01"
+                                                    Fill="LightGray"/>
+                            </h:HelixViewport3D>
+                        </TabItem>
                         
-                        <!-- Lighting -->
-                        <h:DefaultLights/>
-                        
-                        <!-- Grid -->
-                        <h:GridLinesVisual3D x:Name="GridLines" 
-                                           Visible="{Binding ShowGrid}"
-                                           Width="100"
-                                           Length="100"
-                                           MinorDistance="1"
-                                           MajorDistance="10"
-                                           Thickness="0.01"
-                                           Fill="LightGray"/>
-                    </h:HelixViewport3D>
+                        <!-- 2D Plan View Tab -->
+                        <TabItem Header="2D Plan View">
+                            <Grid>
+                                <!-- PDF underlay controls -->
+                                <DockPanel>
+                                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" 
+                                              Background="#F0F0F0" Margin="0">
+                                        <TextBlock Text="PDF:" VerticalAlignment="Center" Margin="5"/>
+                                        <Button Content="Import PDF" Click="ImportPdf_Click" Padding="5,2" Margin="2"/>
+                                        <TextBlock Text="Opacity:" VerticalAlignment="Center" Margin="5,0,0,0"/>
+                                        <Slider x:Name="PdfOpacitySlider" Width="100" Minimum="0" Maximum="1" 
+                                              Value="0.5" VerticalAlignment="Center" 
+                                              ValueChanged="PdfOpacity_Changed"/>
+                                        <CheckBox x:Name="PdfLockCheck" Content="Lock" 
+                                                VerticalAlignment="Center" Margin="5" IsChecked="True"
+                                                Checked="PdfLock_Changed" Unchecked="PdfLock_Changed"/>
+                                        <Button Content="Calibrate Scale" Click="CalibrateScale_Click" Padding="5,2" Margin="2"/>
+                                    </StackPanel>
+                                    
+                                    <!-- 2D Canvas with pan/zoom -->
+                                    <ScrollViewer x:Name="PlanScrollViewer" 
+                                                HorizontalScrollBarVisibility="Auto"
+                                                VerticalScrollBarVisibility="Auto">
+                                        <Canvas x:Name="PlanCanvas" 
+                                              Width="2000" Height="2000"
+                                              Background="White"
+                                              MouseLeftButtonDown="PlanCanvas_MouseLeftButtonDown"
+                                              MouseMove="PlanCanvas_MouseMove"
+                                              MouseLeftButtonUp="PlanCanvas_MouseLeftButtonUp"
+                                              MouseWheel="PlanCanvas_MouseWheel">
+                                            <Canvas.LayoutTransform>
+                                                <ScaleTransform x:Name="PlanCanvasScale" ScaleX="1" ScaleY="1"/>
+                                            </Canvas.LayoutTransform>
+                                        </Canvas>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Grid>
+                        </TabItem>
+                    </TabControl>
                 </DockPanel>
             </Border>
             
@@ -141,6 +214,11 @@
                                 
                                 <TextBlock Text="Type:"/>
                                 <TextBox x:Name="TypeTextBox" IsReadOnly="True"/>
+                                
+                                <TextBlock Text="Layer:"/>
+                                <ComboBox x:Name="LayerComboBox" 
+                                        ItemsSource="{Binding Layers}" 
+                                        DisplayMemberPath="Name" Margin="5"/>
                                 
                                 <!-- Transform Properties -->
                                 <TextBlock Text="Transform" FontWeight="Bold" Margin="0,10,0,0"/>

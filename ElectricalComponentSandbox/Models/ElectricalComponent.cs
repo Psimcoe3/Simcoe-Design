@@ -22,6 +22,9 @@ public abstract class ElectricalComponent
     
     // Constraints
     public List<string> Constraints { get; set; } = new();
+    
+    // Layer assignment
+    public string LayerId { get; set; } = "default";
 }
 
 public enum ComponentType
@@ -29,7 +32,9 @@ public enum ComponentType
     Conduit,
     Box,
     Panel,
-    Support
+    Support,
+    CableTray,
+    Hanger
 }
 
 public class ComponentParameters
