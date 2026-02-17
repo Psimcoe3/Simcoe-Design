@@ -7,9 +7,6 @@
 *.userosscache
 *.sln.docstates
 
-# User-specific files (MonoDevelop/Xamarin Studio)
-*.userprefs
-
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/
@@ -32,20 +29,12 @@ x86/
 *.VisualState.xml
 TestResult.xml
 
-# Build Results of an ATL Project
-[Dd]ebugPS/
-[Rr]eleasePS/
-dlldata.c
-
 # .NET Core
 project.lock.json
 project.fragment.lock.json
 artifacts/
 
 # Files built by Visual Studio
-*_i.c
-*_p.c
-*_h.h
 *.ilk
 *.meta
 *.obj
@@ -64,12 +53,7 @@ artifacts/
 *.tmp_proj
 *_wpftmp.csproj
 *.log
-*.vspscc
-*.vssscc
 .builds
-*.pidb
-*.svclog
-*.scc
 
 # Visual Studio profiler
 *.psess
@@ -81,9 +65,6 @@ artifacts/
 _ReSharper*/
 *.[Rr]e[Ss]harper
 *.DotSettings.user
-
-# JustCode is a .NET coding add-in
-.JustCode
 
 # TeamCity is a build add-in
 _TeamCity*
