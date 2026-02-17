@@ -22,4 +22,14 @@ public class PdfUnderlay
     /// Calibrated pixels-per-unit ratio (set by two-point calibration)
     /// </summary>
     public double PixelsPerUnit { get; set; } = 1.0;
+
+    /// <summary>
+    /// Separate X-axis scale factor for non-uniform calibration (doc units per real unit)
+    /// </summary>
+    public double ScaleX { get; set; } = 1.0;
+
+    /// <summary>
+    /// Separate Y-axis scale factor for non-uniform calibration (doc units per real unit)
+    /// </summary>
+    public double ScaleY { get; set; } = 1.0;
 }
