@@ -47,6 +47,55 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
         
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
+        
+        ActionLogService.Instance.Log(LogCategory.Application, "MainWindow initialized");
+        Closed += (s, e) =>
+        {
+            ActionLogService.Instance.LogSeparator("SESSION SUMMARY");
+            ActionLogService.Instance.Log(LogCategory.Application, "Final state",
+                $"Components: {_viewModel.Components.Count}, Layers: {_viewModel.Layers.Count}, " +
+                $"Units: {_viewModel.UnitSystemName}, Grid: {_viewModel.GridSize}");
+            ActionLogService.Instance.Log(LogCategory.Application, "MainWindow closed");
+        };
+    }
+    
+    // ===== Window-Level Input Logging (captures ALL clicks, keys, scrolls) =====
+    
+    protected override void OnPreviewMouseLeftButtonDown(MouseButtonEventArgs e)
+    {
+        var source = e.OriginalSource as FrameworkElement;
+        var name = source?.Name;
+        if (string.IsNullOrEmpty(name)) name = source?.GetType().Name ?? "Unknown";
+        var pos = e.GetPosition(this);
+        ActionLogService.Instance.Log(LogCategory.Input, "Left click",
+            $"Element: {name}, Position: ({pos.X:F0}, {pos.Y:F0})");
+        base.OnPreviewMouseLeftButtonDown(e);
+    }
+    
+    protected override void OnPreviewMouseRightButtonDown(MouseButtonEventArgs e)
+    {
+        var source = e.OriginalSource as FrameworkElement;
+        var name = source?.Name;
+        if (string.IsNullOrEmpty(name)) name = source?.GetType().Name ?? "Unknown";
+        var pos = e.GetPosition(this);
+        ActionLogService.Instance.Log(LogCategory.Input, "Right click",
+            $"Element: {name}, Position: ({pos.X:F0}, {pos.Y:F0})");
+        base.OnPreviewMouseRightButtonDown(e);
+    }
+    
+    protected override void OnPreviewMouseWheel(MouseWheelEventArgs e)
+    {
+        ActionLogService.Instance.Log(LogCategory.Input, "Mouse wheel",
+            $"Delta: {e.Delta}, Direction: {(e.Delta > 0 ? "Up" : "Down")}");
+        base.OnPreviewMouseWheel(e);
+    }
+    
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        var modifiers = Keyboard.Modifiers;
+        var modStr = modifiers != ModifierKeys.None ? $"{modifiers}+" : "";
+        ActionLogService.Instance.Log(LogCategory.Input, "Key press", $"Key: {modStr}{e.Key}");
+        base.OnPreviewKeyDown(e);
     }
     
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -584,6 +633,8 @@ public partial class MainWindow : Window
     {
         if (LayerListBox.SelectedItem is Layer layer)
         {
+            ActionLogService.Instance.Log(LogCategory.Layer, "Active layer changed",
+                $"Name: {layer.Name}, Id: {layer.Id}");
             _viewModel.ActiveLayer = layer;
         }
     }
@@ -596,7 +647,9 @@ public partial class MainWindow : Window
 
         if (UnitSystemCombo?.SelectedItem is ComboBoxItem item)
         {
-            _viewModel.UnitSystemName = item.Content?.ToString() ?? "Imperial";
+            var system = item.Content?.ToString() ?? "Imperial";
+            ActionLogService.Instance.Log(LogCategory.View, "Unit system changed", $"System: {system}");
+            _viewModel.UnitSystemName = system;
         }
     }
     
@@ -604,12 +657,14 @@ public partial class MainWindow : Window
     
     private void Show2DView_Click(object sender, RoutedEventArgs e)
     {
+        ActionLogService.Instance.Log(LogCategory.View, "Switched to 2D Plan View");
         ViewTabs.SelectedIndex = 1;
         Update2DCanvas();
     }
     
     private void Show3DView_Click(object sender, RoutedEventArgs e)
     {
+        ActionLogService.Instance.Log(LogCategory.View, "Switched to 3D Viewport");
         ViewTabs.SelectedIndex = 0;
     }
     
@@ -617,6 +672,7 @@ public partial class MainWindow : Window
     
     private void ImportPdf_Click(object sender, RoutedEventArgs e)
     {
+        ActionLogService.Instance.Log(LogCategory.FileOperation, "Import PDF dialog requested");
         var dialog = new OpenFileDialog
         {
             Filter = "PDF Files (*.pdf)|*.pdf|Image Files (*.png;*.jpg;*.bmp)|*.png;*.jpg;*.bmp|All Files (*.*)|*.*",
@@ -631,6 +687,7 @@ public partial class MainWindow : Window
                 Opacity = PdfOpacitySlider.Value,
                 IsLocked = PdfLockCheck.IsChecked ?? true
             };
+            ActionLogService.Instance.Log(LogCategory.FileOperation, "PDF imported", $"File: {dialog.FileName}");
             
             MessageBox.Show($"Underlay imported: {System.IO.Path.GetFileName(dialog.FileName)}\n" +
                 "Use 'Calibrate Scale' to set the drawing scale.", 
@@ -642,6 +699,7 @@ public partial class MainWindow : Window
     {
         if (_viewModel?.PdfUnderlay != null)
         {
+            ActionLogService.Instance.Log(LogCategory.View, "PDF opacity changed", $"Value: {e.NewValue:F2}");
             _viewModel.PdfUnderlay.Opacity = e.NewValue;
         }
     }
@@ -650,12 +708,15 @@ public partial class MainWindow : Window
     {
         if (_viewModel?.PdfUnderlay != null)
         {
-            _viewModel.PdfUnderlay.IsLocked = PdfLockCheck.IsChecked ?? true;
+            var locked = PdfLockCheck.IsChecked ?? true;
+            ActionLogService.Instance.Log(LogCategory.View, "PDF lock changed", $"Locked: {locked}");
+            _viewModel.PdfUnderlay.IsLocked = locked;
         }
     }
     
     private void CalibrateScale_Click(object sender, RoutedEventArgs e)
     {
+        ActionLogService.Instance.Log(LogCategory.View, "Calibrate scale requested");
         if (_viewModel.PdfUnderlay == null)
         {
             MessageBox.Show("Please import a PDF underlay first.", "No Underlay", 
@@ -703,6 +764,8 @@ public partial class MainWindow : Window
                 var localPoint = new Point3D(offset.X, offset.Y, offset.Z);
                 
                 conduit.BendPoints.Add(localPoint);
+                ActionLogService.Instance.Log(LogCategory.Edit, "Bend point added",
+                    $"Conduit: {conduit.Name}, Point: ({localPoint.X:F2}, {localPoint.Y:F2}, {localPoint.Z:F2}), Total: {conduit.BendPoints.Count}");
                 UpdateViewport();
                 ShowBendPointHandles();
                 e.Handled = true;
@@ -776,6 +839,8 @@ public partial class MainWindow : Window
             if (MessageBox.Show("Clear all bend points from this conduit?", "Confirm", 
                 MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
             {
+                ActionLogService.Instance.Log(LogCategory.Edit, "Bend points cleared",
+                    $"Conduit: {conduit.Name}, Points removed: {conduit.BendPoints.Count}");
                 conduit.BendPoints.Clear();
                 UpdateViewport();
                 UpdatePropertiesPanel();
@@ -792,6 +857,9 @@ public partial class MainWindow : Window
     {
         if (_viewModel.SelectedComponent is ConduitComponent conduit && conduit.BendPoints.Count > 0)
         {
+            var removed = conduit.BendPoints[conduit.BendPoints.Count - 1];
+            ActionLogService.Instance.Log(LogCategory.Edit, "Last bend point deleted",
+                $"Conduit: {conduit.Name}, Removed: ({removed.X:F2}, {removed.Y:F2}, {removed.Z:F2}), Remaining: {conduit.BendPoints.Count - 1}");
             conduit.BendPoints.RemoveAt(conduit.BendPoints.Count - 1);
             UpdateViewport();
             UpdatePropertiesPanel();
@@ -811,6 +879,8 @@ public partial class MainWindow : Window
     {
         var component = _viewModel.SelectedComponent;
         if (component == null) return;
+        ActionLogService.Instance.Log(LogCategory.Property, "Applying property changes",
+            $"Component: {component.Name}, Type: {component.Type}");
         
         try
         {
@@ -841,10 +911,14 @@ public partial class MainWindow : Window
             
             UpdateViewport();
             Update2DCanvas();
+            ActionLogService.Instance.Log(LogCategory.Property, "Properties applied",
+                $"Name: {component.Name}, Pos: ({component.Position.X:F2}, {component.Position.Y:F2}, {component.Position.Z:F2}), " +
+                $"Material: {component.Parameters.Material}, Color: {component.Parameters.Color}");
             MessageBox.Show("Properties updated successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
+            ActionLogService.Instance.LogError(LogCategory.Property, "Failed to apply properties", ex);
             MessageBox.Show($"Error updating properties: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -853,6 +927,7 @@ public partial class MainWindow : Window
     
     private void NewProject_Click(object sender, RoutedEventArgs e)
     {
+        ActionLogService.Instance.Log(LogCategory.FileOperation, "New project requested");
         if (MessageBox.Show("Create a new project? Any unsaved changes will be lost.", "New Project", 
             MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
         {
@@ -867,6 +942,7 @@ public partial class MainWindow : Window
             var defaultLayer = Layer.CreateDefault();
             _viewModel.Layers.Add(defaultLayer);
             _viewModel.ActiveLayer = defaultLayer;
+            ActionLogService.Instance.Log(LogCategory.FileOperation, "New project created");
             
             UpdateViewport();
             Update2DCanvas();
@@ -875,6 +951,7 @@ public partial class MainWindow : Window
     
     private async void OpenProject_Click(object sender, RoutedEventArgs e)
     {
+        ActionLogService.Instance.Log(LogCategory.FileOperation, "Open project dialog requested");
         var dialog = new OpenFileDialog
         {
             Filter = Services.ProjectFileService.GetFileFilter(),
@@ -891,12 +968,14 @@ public partial class MainWindow : Window
                     _viewModel.LoadFromProject(project);
                     _currentFilePath = dialog.FileName;
                     Title = $"Electrical Component Sandbox - {System.IO.Path.GetFileName(dialog.FileName)}";
+                    ActionLogService.Instance.Log(LogCategory.FileOperation, "Project opened", $"File: {dialog.FileName}");
                     UpdateViewport();
                     Update2DCanvas();
                 }
             }
             catch (Exception ex)
             {
+                ActionLogService.Instance.LogError(LogCategory.FileOperation, "Failed to open project", ex);
                 MessageBox.Show($"Error opening project: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -904,6 +983,8 @@ public partial class MainWindow : Window
     
     private async void SaveProject_Click(object sender, RoutedEventArgs e)
     {
+        ActionLogService.Instance.Log(LogCategory.FileOperation, "Save project requested",
+            $"Current path: {_currentFilePath ?? "(none)"}");
         if (string.IsNullOrEmpty(_currentFilePath))
         {
             SaveProjectAs_Click(sender, e);
@@ -915,6 +996,7 @@ public partial class MainWindow : Window
     
     private async void SaveProjectAs_Click(object sender, RoutedEventArgs e)
     {
+        ActionLogService.Instance.Log(LogCategory.FileOperation, "Save As dialog requested");
         var dialog = new SaveFileDialog
         {
             Filter = Services.ProjectFileService.GetFileFilter(),
@@ -935,18 +1017,22 @@ public partial class MainWindow : Window
         {
             var project = _viewModel.ToProjectModel();
             await _viewModel.ProjectFileService.SaveProjectAsync(project, filePath);
+            ActionLogService.Instance.Log(LogCategory.FileOperation, "Project saved", $"File: {filePath}");
             MessageBox.Show("Project saved successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
+            ActionLogService.Instance.LogError(LogCategory.FileOperation, "Failed to save project", ex);
             MessageBox.Show($"Error saving project: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
     
     private async void ExportJson_Click(object sender, RoutedEventArgs e)
     {
+        ActionLogService.Instance.Log(LogCategory.FileOperation, "Export JSON requested");
         if (_viewModel.SelectedComponent == null)
         {
+            ActionLogService.Instance.Log(LogCategory.FileOperation, "Export JSON aborted", "No component selected");
             MessageBox.Show("Please select a component to export.", "No Component", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -962,10 +1048,12 @@ public partial class MainWindow : Window
             try
             {
                 await _viewModel.FileService.ExportToJsonAsync(_viewModel.SelectedComponent, dialog.FileName);
+                ActionLogService.Instance.Log(LogCategory.FileOperation, "JSON exported", $"File: {dialog.FileName}");
                 MessageBox.Show("Component exported successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
+                ActionLogService.Instance.LogError(LogCategory.FileOperation, "Failed to export JSON", ex);
                 MessageBox.Show($"Error exporting file: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -973,8 +1061,10 @@ public partial class MainWindow : Window
     
     private async void ExportBomCsv_Click(object sender, RoutedEventArgs e)
     {
+        ActionLogService.Instance.Log(LogCategory.FileOperation, "Export BOM CSV requested");
         if (!_viewModel.Components.Any())
         {
+            ActionLogService.Instance.Log(LogCategory.FileOperation, "Export BOM aborted", "No components");
             MessageBox.Show("No components to export.", "No Components", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -990,10 +1080,13 @@ public partial class MainWindow : Window
             try
             {
                 await _viewModel.BomExport.ExportToCsvAsync(_viewModel.Components, dialog.FileName);
+                ActionLogService.Instance.Log(LogCategory.FileOperation, "BOM exported",
+                    $"File: {dialog.FileName}, Components: {_viewModel.Components.Count}");
                 MessageBox.Show("BOM exported successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
+                ActionLogService.Instance.LogError(LogCategory.FileOperation, "Failed to export BOM", ex);
                 MessageBox.Show($"Error exporting BOM: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -1001,6 +1094,7 @@ public partial class MainWindow : Window
     
     private void Exit_Click(object sender, RoutedEventArgs e)
     {
+        ActionLogService.Instance.Log(LogCategory.Application, "Exit requested via menu");
         Close();
     }
     
@@ -1064,6 +1158,8 @@ public partial class MainWindow : Window
     private void ToggleEditConduitPath_Click(object sender, RoutedEventArgs e)
     {
         _isEditingConduitPath = !_isEditingConduitPath;
+        ActionLogService.Instance.Log(LogCategory.Edit, "Edit conduit path toggled",
+            $"Active: {_isEditingConduitPath}");
         
         if (_isEditingConduitPath)
         {
