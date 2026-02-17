@@ -13,11 +13,21 @@ public class MainViewModel : INotifyPropertyChanged
     private bool _showGrid = true;
     private bool _snapToGrid = true;
     private double _gridSize = 1.0;
+    private Layer? _activeLayer;
+    private string _unitSystem = "Imperial";
+    private PdfUnderlay? _pdfUnderlay;
     
     public ObservableCollection<ElectricalComponent> Components { get; } = new();
     public ObservableCollection<ElectricalComponent> LibraryComponents { get; } = new();
+    public ObservableCollection<Layer> Layers { get; } = new();
     
     public ComponentFileService FileService { get; } = new();
+    public ProjectFileService ProjectFileService { get; } = new();
+    public UndoRedoService UndoRedo { get; } = new();
+    public UnitConversionService UnitConverter { get; } = new();
+    public BomExportService BomExport { get; } = new();
+    public SnapService SnapService { get; } = new();
+    public PdfCalibrationService CalibrationService { get; } = new();
     
     public ElectricalComponent? SelectedComponent
     {
@@ -59,9 +69,41 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
     
+    public Layer? ActiveLayer
+    {
+        get => _activeLayer;
+        set
+        {
+            _activeLayer = value;
+            OnPropertyChanged();
+        }
+    }
+    
+    public string UnitSystemName
+    {
+        get => _unitSystem;
+        set
+        {
+            _unitSystem = value;
+            UnitConverter.CurrentSystem = value == "Metric" ? UnitSystem.Metric : UnitSystem.Imperial;
+            OnPropertyChanged();
+        }
+    }
+    
+    public PdfUnderlay? PdfUnderlay
+    {
+        get => _pdfUnderlay;
+        set
+        {
+            _pdfUnderlay = value;
+            OnPropertyChanged();
+        }
+    }
+    
     public MainViewModel()
     {
         InitializeLibrary();
+        InitializeLayers();
     }
     
     private void InitializeLibrary()
@@ -70,6 +112,15 @@ public class MainViewModel : INotifyPropertyChanged
         LibraryComponents.Add(new BoxComponent());
         LibraryComponents.Add(new PanelComponent());
         LibraryComponents.Add(new SupportComponent());
+        LibraryComponents.Add(new CableTrayComponent());
+        LibraryComponents.Add(new HangerComponent());
+    }
+    
+    private void InitializeLayers()
+    {
+        var defaultLayer = Layer.CreateDefault();
+        Layers.Add(defaultLayer);
+        ActiveLayer = defaultLayer;
     }
     
     public void AddComponent(ComponentType type)
@@ -80,10 +131,18 @@ public class MainViewModel : INotifyPropertyChanged
             ComponentType.Box => new BoxComponent(),
             ComponentType.Panel => new PanelComponent(),
             ComponentType.Support => new SupportComponent(),
+            ComponentType.CableTray => new CableTrayComponent(),
+            ComponentType.Hanger => new HangerComponent(),
             _ => throw new ArgumentException("Invalid component type")
         };
         
-        Components.Add(component);
+        if (ActiveLayer != null)
+        {
+            component.LayerId = ActiveLayer.Id;
+        }
+        
+        var action = new AddComponentAction(Components, component);
+        UndoRedo.Execute(action);
         SelectedComponent = component;
     }
     
@@ -91,7 +150,8 @@ public class MainViewModel : INotifyPropertyChanged
     {
         if (SelectedComponent != null)
         {
-            Components.Remove(SelectedComponent);
+            var action = new RemoveComponentAction(Components, SelectedComponent);
+            UndoRedo.Execute(action);
             SelectedComponent = null;
         }
     }
@@ -100,6 +160,7 @@ public class MainViewModel : INotifyPropertyChanged
     {
         if (SelectedComponent == null) return;
         
+        var oldPosition = SelectedComponent.Position;
         var newPosition = SelectedComponent.Position + delta;
         
         if (SnapToGrid)
@@ -109,7 +170,8 @@ public class MainViewModel : INotifyPropertyChanged
             newPosition.Z = Math.Round(newPosition.Z / GridSize) * GridSize;
         }
         
-        SelectedComponent.Position = newPosition;
+        var action = new MoveComponentAction(SelectedComponent, oldPosition, newPosition);
+        UndoRedo.Execute(action);
         OnPropertyChanged(nameof(SelectedComponent));
     }
     
@@ -131,6 +193,93 @@ public class MainViewModel : INotifyPropertyChanged
             SelectedComponent.Scale.Z * scale.Z
         );
         OnPropertyChanged(nameof(SelectedComponent));
+    }
+    
+    public void Undo()
+    {
+        UndoRedo.Undo();
+        OnPropertyChanged(nameof(SelectedComponent));
+    }
+    
+    public void Redo()
+    {
+        UndoRedo.Redo();
+        OnPropertyChanged(nameof(SelectedComponent));
+    }
+    
+    /// <summary>
+    /// Adds a new layer to the project
+    /// </summary>
+    public Layer AddLayer(string name)
+    {
+        var layer = new Layer { Name = name };
+        Layers.Add(layer);
+        return layer;
+    }
+    
+    /// <summary>
+    /// Removes a layer (moves components to default layer)
+    /// </summary>
+    public void RemoveLayer(Layer layer)
+    {
+        if (layer.Id == "default") return;
+        
+        foreach (var comp in Components.Where(c => c.LayerId == layer.Id))
+        {
+            comp.LayerId = "default";
+        }
+        Layers.Remove(layer);
+        
+        if (ActiveLayer == layer)
+        {
+            ActiveLayer = Layers.FirstOrDefault(l => l.Id == "default");
+        }
+    }
+    
+    /// <summary>
+    /// Creates a ProjectModel from the current state for saving
+    /// </summary>
+    public ProjectModel ToProjectModel()
+    {
+        return new ProjectModel
+        {
+            Components = Components.ToList(),
+            Layers = Layers.ToList(),
+            PdfUnderlay = PdfUnderlay,
+            UnitSystem = UnitSystemName,
+            GridSize = GridSize,
+            ShowGrid = ShowGrid,
+            SnapToGrid = SnapToGrid
+        };
+    }
+    
+    /// <summary>
+    /// Loads state from a ProjectModel
+    /// </summary>
+    public void LoadFromProject(ProjectModel project)
+    {
+        Components.Clear();
+        foreach (var comp in project.Components)
+            Components.Add(comp);
+        
+        Layers.Clear();
+        foreach (var layer in project.Layers)
+            Layers.Add(layer);
+        
+        if (Layers.Count == 0)
+        {
+            InitializeLayers();
+        }
+        
+        ActiveLayer = Layers.FirstOrDefault(l => l.Id == "default") ?? Layers.FirstOrDefault();
+        PdfUnderlay = project.PdfUnderlay;
+        UnitSystemName = project.UnitSystem;
+        GridSize = project.GridSize;
+        ShowGrid = project.ShowGrid;
+        SnapToGrid = project.SnapToGrid;
+        
+        UndoRedo.Clear();
+        SelectedComponent = null;
     }
     
     public event PropertyChangedEventHandler? PropertyChanged;
