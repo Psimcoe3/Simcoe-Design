@@ -597,6 +597,8 @@ public partial class MainWindow : Window
     
     private void UnitSystem_Changed(object sender, SelectionChangedEventArgs e)
     {
+        if (_viewModel == null) return;
+
         if (UnitSystemCombo?.SelectedItem is ComboBoxItem item)
         {
             _viewModel.UnitSystemName = item.Content?.ToString() ?? "Imperial";
