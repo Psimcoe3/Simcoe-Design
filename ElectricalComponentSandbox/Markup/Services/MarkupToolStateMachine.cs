@@ -17,7 +17,9 @@ public enum MarkupToolType
     Box,
     Panel,
     ConduitRun,
-    Calibrate
+    Calibrate,
+    Dimension,
+    Scale
 }
 
 /// <summary>
@@ -100,6 +102,9 @@ public class MarkupToolStateMachine
 
             case MarkupToolType.Calibrate:
                 return HandleCalibrateClick(docPoint);
+
+            case MarkupToolType.Dimension:
+                return HandleDimensionClick(docPoint);
 
             default:
                 return null;
@@ -243,5 +248,23 @@ public class MarkupToolStateMachine
         PendingVertices.Add(p);
         State = PendingVertices.Count < 2 ? ToolState.Calibrating : ToolState.Idle;
         return null; // calibration handled externally once two points are collected
+    }
+
+    private MarkupRecord? HandleDimensionClick(Point p)
+    {
+        PendingVertices.Add(p);
+        if (PendingVertices.Count == 2)
+        {
+            var record = new MarkupRecord
+            {
+                Type = MarkupType.Dimension,
+                Vertices = new List<Point>(PendingVertices)
+            };
+            record.UpdateBoundingRect();
+            Reset();
+            return record;
+        }
+        State = ToolState.Drawing;
+        return null;
     }
 }

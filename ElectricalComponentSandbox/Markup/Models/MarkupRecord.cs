@@ -14,7 +14,8 @@ public enum MarkupType
     Text,
     Box,
     Panel,
-    ConduitRun
+    ConduitRun,
+    Dimension
 }
 
 /// <summary>

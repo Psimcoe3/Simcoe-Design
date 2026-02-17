@@ -12,6 +12,11 @@ public class PdfUnderlay
     public double Scale { get; set; } = 1.0;
     public double OffsetX { get; set; } = 0.0;
     public double OffsetY { get; set; } = 0.0;
+
+    /// <summary>
+    /// Page rotation in degrees (0, 90, 180, 270)
+    /// </summary>
+    public double RotationDegrees { get; set; } = 0.0;
     
     /// <summary>
     /// Indicates whether scale has been calibrated using two-point measurement
