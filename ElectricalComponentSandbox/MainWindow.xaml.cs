@@ -26,6 +26,10 @@ public partial class MainWindow : Window
     private readonly List<ModelVisual3D> _bendPointHandles = new();
     private ModelVisual3D? _draggedHandle = null;
     private Point _lastMousePosition;
+    private BitmapSource? _cachedPdfBitmap;
+    private string? _cachedPdfPath;
+    private int _cachedPdfPage = -1;
+    
     
     // 2D canvas state
     private bool _isDragging2D = false;
@@ -452,6 +456,13 @@ public partial class MainWindow : Window
         }
     }
 
+    private void InvalidatePdfCache()
+    {
+        _cachedPdfBitmap = null;
+        _cachedPdfPath = null;
+        _cachedPdfPage = -1;
+    }
+
     private void DrawPdfUnderlay()
     {
         if (_viewModel.PdfUnderlay == null || string.IsNullOrEmpty(_viewModel.PdfUnderlay.FilePath))
@@ -462,46 +473,54 @@ public partial class MainWindow : Window
         
         try
         {
+            var filePath = _viewModel.PdfUnderlay.FilePath;
+            var pageNumber = Math.Max(0, _viewModel.PdfUnderlay.PageNumber - 1);
+
+            // Use cached bitmap if the file and page haven't changed
             BitmapSource? bitmap = null;
-            var extension = System.IO.Path.GetExtension(_viewModel.PdfUnderlay.FilePath).ToLowerInvariant();
-            
-            // Handle PDF files
-            if (extension == ".pdf")
+            if (_cachedPdfBitmap != null && _cachedPdfPath == filePath && _cachedPdfPage == pageNumber)
             {
-                // Render the specified page of the PDF to a bitmap
-                var pageNumber = Math.Max(0, _viewModel.PdfUnderlay.PageNumber - 1); // PDFtoImage uses 0-based index
-                
-                // Read PDF file into byte array
-                var pdfBytes = System.IO.File.ReadAllBytes(_viewModel.PdfUnderlay.FilePath);
-                
-                // Convert PDF page to SKBitmap using PDFtoImage
-                using var skBitmap = Conversion.ToImage(pdfBytes, page: pageNumber);
-                
-                // Convert SkiaSharp SKBitmap to WPF BitmapSource
-                using var image = skBitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
-                using var memStream = new System.IO.MemoryStream();
-                
-                image.SaveTo(memStream);
-                memStream.Position = 0;
-                
-                var bitmapImage = new BitmapImage();
-                bitmapImage.BeginInit();
-                bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-                bitmapImage.StreamSource = memStream;
-                bitmapImage.EndInit();
-                bitmapImage.Freeze();
-                bitmap = bitmapImage;
+                bitmap = _cachedPdfBitmap;
             }
-            // Handle image files (PNG, JPG, BMP)
-            else if (extension == ".png" || extension == ".jpg" || extension == ".jpeg" || extension == ".bmp")
+            else
             {
-                var bitmapImage = new BitmapImage();
-                bitmapImage.BeginInit();
-                bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-                bitmapImage.UriSource = new Uri(_viewModel.PdfUnderlay.FilePath, UriKind.Absolute);
-                bitmapImage.EndInit();
-                bitmapImage.Freeze();
-                bitmap = bitmapImage;
+                var extension = System.IO.Path.GetExtension(filePath).ToLowerInvariant();
+                
+                // Handle PDF files
+                if (extension == ".pdf")
+                {
+                    var pdfBytes = System.IO.File.ReadAllBytes(filePath);
+                    using var skBitmap = Conversion.ToImage(pdfBytes, page: pageNumber);
+                    using var image = skBitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+                    using var memStream = new System.IO.MemoryStream();
+                    
+                    image.SaveTo(memStream);
+                    memStream.Position = 0;
+                    
+                    var bitmapImage = new BitmapImage();
+                    bitmapImage.BeginInit();
+                    bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmapImage.StreamSource = memStream;
+                    bitmapImage.EndInit();
+                    bitmapImage.Freeze();
+                    bitmap = bitmapImage;
+                }
+                // Handle image files (PNG, JPG, BMP)
+                else if (extension == ".png" || extension == ".jpg" || extension == ".jpeg" || extension == ".bmp")
+                {
+                    var bitmapImage = new BitmapImage();
+                    bitmapImage.BeginInit();
+                    bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmapImage.UriSource = new Uri(filePath, UriKind.Absolute);
+                    bitmapImage.EndInit();
+                    bitmapImage.Freeze();
+                    bitmap = bitmapImage;
+                }
+
+                // Cache the result
+                _cachedPdfBitmap = bitmap;
+                _cachedPdfPath = filePath;
+                _cachedPdfPage = pageNumber;
             }
             
             if (bitmap != null)
@@ -692,7 +711,19 @@ public partial class MainWindow : Window
         {
             var delta = pos - _lastMousePosition;
             var worldDelta = new Vector3D(delta.X / 20.0, 0, -delta.Y / 20.0);
-            _viewModel.MoveComponent(worldDelta);
+
+            // Apply position directly without firing PropertyChanged to avoid
+            // cascading full viewport + canvas rebuilds on every mouse-move pixel.
+            var comp = _viewModel.SelectedComponent;
+            var newPosition = comp.Position + worldDelta;
+            if (_viewModel.SnapToGrid)
+            {
+                newPosition.X = Math.Round(newPosition.X / _viewModel.GridSize) * _viewModel.GridSize;
+                newPosition.Y = Math.Round(newPosition.Y / _viewModel.GridSize) * _viewModel.GridSize;
+                newPosition.Z = Math.Round(newPosition.Z / _viewModel.GridSize) * _viewModel.GridSize;
+            }
+            comp.Position = newPosition;
+
             _lastMousePosition = pos;
             Update2DCanvas();
         }
@@ -700,6 +731,11 @@ public partial class MainWindow : Window
     
     private void PlanCanvas_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (_isDragging2D)
+        {
+            // Sync the 3D viewport once at the end of the drag instead of per-pixel.
+            UpdateViewport();
+        }
         _isDragging2D = false;
         _draggedElement2D = null;
         PlanCanvas.ReleaseMouseCapture();

@@ -56,7 +56,7 @@ public sealed class ActionLogService : IDisposable
 
         _writer = new StreamWriter(_logFilePath, append: false, encoding: Encoding.UTF8)
         {
-            AutoFlush = true
+            AutoFlush = false
         };
 
         WriteHeader();
@@ -155,6 +155,18 @@ public sealed class ActionLogService : IDisposable
             _writer.WriteLine(new string('-', 80));
             _writer.WriteLine($"  Session Ended : {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
             _writer.WriteLine(new string('=', 80));
+            _writer.Flush();
+        }
+    }
+
+    /// <summary>
+    /// Flushes any buffered log entries to disk
+    /// </summary>
+    public void Flush()
+    {
+        if (_disposed) return;
+        lock (_lock)
+        {
             _writer.Flush();
         }
     }
