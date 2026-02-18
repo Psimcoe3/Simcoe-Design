@@ -454,21 +454,22 @@ public partial class MainWindow : Window
                 {
                     Source = bitmap,
                     Opacity = _viewModel.PdfUnderlay.Opacity,
-                    Stretch = Stretch.None
+                    Stretch = Stretch.None,
+                    RenderTransformOrigin = new Point(0.5, 0.5) // Rotate around center
                 };
                 
-                // Apply scale transformation
+                // Apply transformations (scale first, then rotation)
                 var transformGroup = new TransformGroup();
                 
-                // Apply rotation if specified
+                // Apply scale first
+                var scale = _viewModel.PdfUnderlay.Scale;
+                transformGroup.Children.Add(new ScaleTransform(scale, scale));
+                
+                // Apply rotation after scale if specified
                 if (_viewModel.PdfUnderlay.RotationDegrees != 0)
                 {
                     transformGroup.Children.Add(new RotateTransform(_viewModel.PdfUnderlay.RotationDegrees));
                 }
-                
-                // Apply scale
-                var scale = _viewModel.PdfUnderlay.Scale;
-                transformGroup.Children.Add(new ScaleTransform(scale, scale));
                 
                 image.RenderTransform = transformGroup;
                 
