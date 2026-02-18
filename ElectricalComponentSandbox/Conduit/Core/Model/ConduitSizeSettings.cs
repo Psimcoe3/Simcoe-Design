@@ -60,6 +60,13 @@ public class ConduitSizeSettings
 
     public IEnumerator<ConduitSize> GetEnumerator() => _sizes.GetEnumerator();
 
+    /// <summary>Convenience projection of configured trade size names.</summary>
+    public IReadOnlyList<string> StandardTradeSizes => _sizes.Select(s => s.TradeSize).ToList();
+
+    /// <summary>Returns true when the given trade size exists in this settings table.</summary>
+    public bool IsValidTradeSize(string tradeSize) =>
+        !string.IsNullOrWhiteSpace(tradeSize) && _sizes.Any(s => s.TradeSize == tradeSize);
+
     /// <summary>
     /// Validates that a segment length meets minimum requirements.
     /// </summary>

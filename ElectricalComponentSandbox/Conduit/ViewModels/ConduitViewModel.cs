@@ -33,8 +33,6 @@ public class ConduitViewModel : INotifyPropertyChanged
     private string _selectedRunId = string.Empty;
     private ConduitDetailLevel _detailLevel = ConduitDetailLevel.Coarse;
 
-    // ?? Core services ??
-
     public ConduitModelStore Store { get; } = new();
     public SmartBendService BendService { get; } = new();
     public AutoRouteService AutoRouter { get; }
@@ -44,12 +42,8 @@ public class ConduitViewModel : INotifyPropertyChanged
     public Conduit2DRenderer Renderer2D { get; }
     public Conduit3DViewManager View3D { get; }
 
-    // ?? Observable collections for UI binding ??
-
     public ObservableCollection<ConduitRun> Runs { get; } = new();
     public ObservableCollection<RunScheduleEntry> Schedule { get; } = new();
-
-    // ?? Properties ??
 
     public ConduitToolState ToolState
     {
@@ -88,21 +82,19 @@ public class ConduitViewModel : INotifyPropertyChanged
         ScheduleService = new RunScheduleService(Store, BendService);
         SpoolManager = new SpoolManager(Store);
 
-        DrawingTool = new FreehandConduitTool(xform, snapService, Store)
-        {
-            ConduitTypeId = defaultType.Id
-        };
-
+        DrawingTool = new FreehandConduitTool(xform, snapService, Store);
         Renderer2D = new Conduit2DRenderer(xform, Store.Settings.HiddenLineSettings);
         View3D = new Conduit3DViewManager(Store);
-    }
 
-    // ?? Tool commands ??
+        ApplyStoreRoutingDefaultsToDrawingTool();
+    }
 
     public void SetTool(ConduitToolState tool)
     {
         if (ToolState != ConduitToolState.Select)
             DrawingTool.Cancel();
+
+        ApplyStoreRoutingDefaultsToDrawingTool();
 
         ToolState = tool;
         DrawingTool.Mode = tool == ConduitToolState.DrawFreehand
@@ -130,6 +122,8 @@ public class ConduitViewModel : INotifyPropertyChanged
 
     public ConduitRun? FinishDrawing()
     {
+        ApplyStoreRoutingDefaultsToDrawingTool();
+
         var run = DrawingTool.FinishDrawing();
         if (run != null)
         {
@@ -140,8 +134,6 @@ public class ConduitViewModel : INotifyPropertyChanged
         return run;
     }
 
-    // ?? Auto-route ??
-
     public ConduitRun? AutoRouteAlongPath(IReadOnlyList<XYZ> pathway, RoutingOptions? options = null)
     {
         var opts = options ?? new RoutingOptions
@@ -151,14 +143,17 @@ public class ConduitViewModel : INotifyPropertyChanged
             Elevation = Store.Settings.DefaultElevation
         };
 
+        var defaults = Store.ResolveRoutingDefaults(opts.ConduitTypeId, opts.TradeSize, opts.Material);
+        opts.ConduitTypeId = defaults.ConduitTypeId;
+        opts.TradeSize = defaults.TradeSize;
+        opts.Material = defaults.Material;
+
         var run = AutoRouter.AutoRoute(pathway, opts);
         Runs.Add(run);
         RefreshSchedule();
         View3D.InvalidateAll();
         return run;
     }
-
-    // ?? Vertex editing ??
 
     public bool MoveVertex(string segmentId, bool isStart, XYZ newPosition)
     {
@@ -175,8 +170,6 @@ public class ConduitViewModel : INotifyPropertyChanged
         return true;
     }
 
-    // ?? Schedule & persistence ??
-
     public void RefreshSchedule()
     {
         Schedule.Clear();
@@ -192,7 +185,8 @@ public class ConduitViewModel : INotifyPropertyChanged
     {
         var loaded = ConduitPersistence.DeserializeFromJson(json);
 
-        // Transfer data to our store
+        Runs.Clear();
+
         foreach (var type in loaded.GetAllTypes())
             Store.AddType(type);
         foreach (var seg in loaded.GetAllSegments())
@@ -205,11 +199,19 @@ public class ConduitViewModel : INotifyPropertyChanged
             Runs.Add(run);
         }
 
+        ApplyStoreRoutingDefaultsToDrawingTool();
         RefreshSchedule();
         View3D.InvalidateAll();
     }
 
-    // ?? INotifyPropertyChanged ??
+    private void ApplyStoreRoutingDefaultsToDrawingTool()
+    {
+        var defaults = Store.ResolveRoutingDefaults();
+        DrawingTool.ConduitTypeId = defaults.ConduitTypeId;
+        DrawingTool.TradeSize = defaults.TradeSize;
+        DrawingTool.Material = defaults.Material;
+        DrawingTool.Elevation = Store.Settings.DefaultElevation;
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
     protected void OnPropertyChanged([CallerMemberName] string? name = null) =>

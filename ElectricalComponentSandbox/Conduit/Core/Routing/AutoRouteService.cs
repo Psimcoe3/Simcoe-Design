@@ -35,7 +35,10 @@ public class RoutingOptions
     /// <summary>Voxel size for A* grid (in feet).</summary>
     public double VoxelSize { get; set; } = 0.5;
 
-    /// <summary>Insert rises/drops for vertical segments.</summary>
+    /// <summary>
+    /// When true, preserve and route vertical rises/drops from user path.
+    /// When false, flatten all path points to Elevation like a plan-only route.
+    /// </summary>
     public bool AutoRiseDrop { get; set; } = true;
 }
 
@@ -60,34 +63,52 @@ public class AutoRouteService
     /// </summary>
     public ConduitRun AutoRoute(IReadOnlyList<XYZ> pathway, RoutingOptions options)
     {
-        List<XYZ> routePath;
+        if (pathway.Count < 2)
+            throw new ArgumentException("AutoRoute requires at least two points.", nameof(pathway));
 
-        if (options.UsePathfinding && options.RoutingBounds != null && options.Obstacles.Count > 0)
-        {
-            // Use A* to route around obstacles between each pair of waypoints
-            routePath = RouteAroundObstacles(pathway, options);
-        }
-        else
-        {
-            routePath = new List<XYZ>(pathway);
-        }
+        var defaults = _store.ResolveRoutingDefaults(
+            options.ConduitTypeId,
+            options.TradeSize,
+            options.Material);
+
+        var normalizedPath = NormalizePath(pathway, options);
+        var routePath = options.UsePathfinding && options.RoutingBounds != null && options.Obstacles.Count > 0
+            ? RouteAroundObstacles(normalizedPath, options)
+            : normalizedPath;
 
         // Create segments from path
         var segments = PathSimplifier.CreateSegmentsFromPath(
             routePath,
-            options.ConduitTypeId,
-            options.TradeSize,
-            options.Material,
+            defaults.ConduitTypeId,
+            defaults.TradeSize,
+            defaults.Material,
             options.LevelId);
 
         // Create run with auto-fitting insertion
         var run = _store.CreateRunFromSegments(segments);
-        run.ConduitTypeId = options.ConduitTypeId;
-        run.TradeSize = options.TradeSize;
-        run.Material = options.Material;
+        run.ConduitTypeId = defaults.ConduitTypeId;
+        run.TradeSize = defaults.TradeSize;
+        run.Material = defaults.Material;
         run.LevelId = options.LevelId;
 
         return run;
+    }
+
+    private static List<XYZ> NormalizePath(IReadOnlyList<XYZ> pathway, RoutingOptions options)
+    {
+        var normalized = new List<XYZ>(pathway.Count);
+        foreach (var point in pathway)
+        {
+            var z = options.AutoRiseDrop ? point.Z : options.Elevation;
+            normalized.Add(new XYZ(point.X, point.Y, z));
+        }
+
+        if (normalized.Count > 0 && options.AutoRiseDrop && Math.Abs(normalized[0].Z) < 1e-6)
+        {
+            normalized[0] = new XYZ(normalized[0].X, normalized[0].Y, options.Elevation);
+        }
+
+        return normalized;
     }
 
     /// <summary>
