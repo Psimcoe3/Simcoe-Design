@@ -74,6 +74,7 @@
             <Button Content="Cable Tray" Click="AddCableTray_Click"/>
             <Button Content="Hanger" Click="AddHanger_Click"/>
             <Separator/>
+            <Button x:Name="DrawConduitButton" Content="Draw Conduit" Click="DrawConduit_Click" ToolTip="Click to place conduit vertices. Shift constrains to 0°/45°/90°. Double-click to finish."/>
             <Button x:Name="EditConduitPathButton" Content="Edit Conduit Path" Click="ToggleEditConduitPath_Click"/>
             <Separator/>
             <TextBlock Text="Grid Size:" VerticalAlignment="Center"/>

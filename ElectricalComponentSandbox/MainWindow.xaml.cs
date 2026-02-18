@@ -36,6 +36,13 @@ public partial class MainWindow : Window
     private FrameworkElement? _draggedElement2D = null;
     private readonly Dictionary<FrameworkElement, ElectricalComponent> _canvasToComponentMap = new();
     
+    // Conduit drawing mode (Bluebeam-style polyline tool)
+    private bool _isDrawingConduit = false;
+    private ConduitComponent? _drawingConduit = null;
+    private readonly List<Point> _drawingCanvasPoints = new(); // canvas-space vertices placed so far
+    private Line? _rubberBandLine = null; // live preview from last vertex to cursor
+    private Ellipse? _snapIndicator = null; // visual indicator when snapping
+    
     // Constants for bend point visualization
     private const double BendPointHandleRadius = 0.3;
     private static readonly Color EditModeButtonColor = Color.FromRgb(255, 200, 100);
@@ -687,7 +694,37 @@ public partial class MainWindow : Window
     {
         var pos = e.GetPosition(PlanCanvas);
         
-        // Check if clicking on an existing component
+        // --- Conduit drawing mode: place a vertex ---
+        if (_isDrawingConduit)
+        {
+            // Double-click finishes the conduit
+            if (e.ClickCount == 2)
+            {
+                FinishDrawingConduit();
+                e.Handled = true;
+                return;
+            }
+            
+            var snapped = ApplyDrawingSnap(pos);
+            
+            // If Shift is held, constrain to orthogonal angles
+            if (_drawingCanvasPoints.Count > 0 && Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift))
+            {
+                snapped = ConstrainToAngle(_drawingCanvasPoints[^1], snapped);
+            }
+            
+            _drawingCanvasPoints.Add(snapped);
+            ActionLogService.Instance.Log(LogCategory.Edit, "Conduit vertex placed",
+                $"Vertex #{_drawingCanvasPoints.Count}, Canvas: ({snapped.X:F0}, {snapped.Y:F0})");
+            
+            // Redraw canvas to show committed segments
+            Update2DCanvas();
+            DrawConduitPreview();
+            e.Handled = true;
+            return;
+        }
+        
+        // --- Default mode: select / drag ---
         var hit = PlanCanvas.InputHitTest(pos) as FrameworkElement;
         if (hit != null && _canvasToComponentMap.ContainsKey(hit))
         {
@@ -699,7 +736,6 @@ public partial class MainWindow : Window
             return;
         }
         
-        // No component hit
         PlanCanvas.CaptureMouse();
     }
     
@@ -707,13 +743,25 @@ public partial class MainWindow : Window
     {
         var pos = e.GetPosition(PlanCanvas);
         
+        // --- Conduit drawing mode: update rubber-band line ---
+        if (_isDrawingConduit && _drawingCanvasPoints.Count > 0)
+        {
+            var snapped = ApplyDrawingSnap(pos);
+            if (Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift))
+            {
+                snapped = ConstrainToAngle(_drawingCanvasPoints[^1], snapped);
+            }
+            UpdateRubberBand(_drawingCanvasPoints[^1], snapped);
+            UpdateSnapIndicator(snapped, pos);
+            return;
+        }
+        
+        // --- Drag mode ---
         if (_isDragging2D && _draggedElement2D != null && _viewModel.SelectedComponent != null)
         {
             var delta = pos - _lastMousePosition;
             var worldDelta = new Vector3D(delta.X / 20.0, 0, -delta.Y / 20.0);
 
-            // Apply position directly without firing PropertyChanged to avoid
-            // cascading full viewport + canvas rebuilds on every mouse-move pixel.
             var comp = _viewModel.SelectedComponent;
             var newPosition = comp.Position + worldDelta;
             if (_viewModel.SnapToGrid)
@@ -733,7 +781,6 @@ public partial class MainWindow : Window
     {
         if (_isDragging2D)
         {
-            // Sync the 3D viewport once at the end of the drag instead of per-pixel.
             UpdateViewport();
         }
         _isDragging2D = false;
@@ -747,9 +794,285 @@ public partial class MainWindow : Window
         PlanCanvasScale.ScaleX *= zoom;
         PlanCanvasScale.ScaleY *= zoom;
         
-        // Clamp zoom
         PlanCanvasScale.ScaleX = Math.Max(0.1, Math.Min(10, PlanCanvasScale.ScaleX));
         PlanCanvasScale.ScaleY = Math.Max(0.1, Math.Min(10, PlanCanvasScale.ScaleY));
+    }
+    
+    // ===== Conduit Drawing Tool (Bluebeam-style polyline) =====
+    
+    private void DrawConduit_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isDrawingConduit)
+        {
+            FinishDrawingConduit();
+            return;
+        }
+        
+        // Cancel any other editing mode
+        if (_isEditingConduitPath)
+            ToggleEditConduitPath_Click(sender, e);
+        
+        _isDrawingConduit = true;
+        _drawingCanvasPoints.Clear();
+        _drawingConduit = null;
+        
+        DrawConduitButton.Background = new SolidColorBrush(EditModeButtonColor);
+        DrawConduitButton.Content = "Finish Conduit";
+        PlanCanvas.Cursor = Cursors.Cross;
+        
+        ActionLogService.Instance.Log(LogCategory.Edit, "Draw conduit tool activated");
+    }
+    
+    private void FinishDrawingConduit()
+    {
+        if (_drawingCanvasPoints.Count >= 2)
+        {
+            // Create the conduit component from the placed vertices
+            var conduit = new ConduitComponent();
+            
+            if (_viewModel.ActiveLayer != null)
+                conduit.LayerId = _viewModel.ActiveLayer.Id;
+            
+            // First point becomes the component position (world coords)
+            var firstPt = _drawingCanvasPoints[0];
+            conduit.Position = CanvasToWorld(firstPt);
+            
+            // Remaining points become bend points (relative to position)
+            for (int i = 1; i < _drawingCanvasPoints.Count; i++)
+            {
+                var worldPt = CanvasToWorld(_drawingCanvasPoints[i]);
+                var relative = new Point3D(
+                    worldPt.X - conduit.Position.X,
+                    worldPt.Y - conduit.Position.Y,
+                    worldPt.Z - conduit.Position.Z);
+                conduit.BendPoints.Add(relative);
+            }
+            
+            // Compute length from path
+            var pathPts = conduit.GetPathPoints();
+            double totalLen = 0;
+            for (int i = 0; i < pathPts.Count - 1; i++)
+                totalLen += (pathPts[i + 1] - pathPts[i]).Length;
+            conduit.Length = totalLen;
+            
+            _viewModel.Components.Add(conduit);
+            _viewModel.SelectedComponent = conduit;
+            
+            ActionLogService.Instance.Log(LogCategory.Component, "Conduit drawn",
+                $"Vertices: {_drawingCanvasPoints.Count}, Length: {totalLen:F2}, Id: {conduit.Id}");
+        }
+        else if (_drawingCanvasPoints.Count > 0)
+        {
+            ActionLogService.Instance.Log(LogCategory.Edit, "Draw conduit cancelled", "Not enough vertices (need ≥ 2)");
+        }
+        
+        // Reset drawing state
+        _isDrawingConduit = false;
+        _drawingCanvasPoints.Clear();
+        _drawingConduit = null;
+        RemoveRubberBand();
+        RemoveSnapIndicator();
+        
+        DrawConduitButton.Background = System.Windows.SystemColors.ControlBrush;
+        DrawConduitButton.Content = "Draw Conduit";
+        PlanCanvas.Cursor = Cursors.Arrow;
+        
+        UpdateViewport();
+        Update2DCanvas();
+    }
+    
+    /// <summary>
+    /// Draws the in-progress conduit polyline (committed segments) on the canvas.
+    /// Called after Update2DCanvas so it renders on top.
+    /// </summary>
+    private void DrawConduitPreview()
+    {
+        if (_drawingCanvasPoints.Count < 2) return;
+        
+        var polyline = new Polyline
+        {
+            Stroke = Brushes.DodgerBlue,
+            StrokeThickness = 3,
+            StrokeDashArray = new DoubleCollection { 6, 3 },
+            StrokeLineJoin = PenLineJoin.Round,
+            IsHitTestVisible = false
+        };
+        foreach (var pt in _drawingCanvasPoints)
+            polyline.Points.Add(pt);
+        
+        PlanCanvas.Children.Add(polyline);
+        
+        // Draw vertex dots
+        foreach (var pt in _drawingCanvasPoints)
+        {
+            var dot = new Ellipse
+            {
+                Width = 8, Height = 8,
+                Fill = Brushes.DodgerBlue,
+                IsHitTestVisible = false
+            };
+            Canvas.SetLeft(dot, pt.X - 4);
+            Canvas.SetTop(dot, pt.Y - 4);
+            PlanCanvas.Children.Add(dot);
+        }
+    }
+    
+    /// <summary>
+    /// Updates the rubber-band line from the last placed vertex to the current cursor position.
+    /// </summary>
+    private void UpdateRubberBand(Point from, Point to)
+    {
+        if (_rubberBandLine == null)
+        {
+            _rubberBandLine = new Line
+            {
+                Stroke = Brushes.DodgerBlue,
+                StrokeThickness = 2,
+                StrokeDashArray = new DoubleCollection { 4, 2 },
+                IsHitTestVisible = false
+            };
+            PlanCanvas.Children.Add(_rubberBandLine);
+        }
+        
+        _rubberBandLine.X1 = from.X;
+        _rubberBandLine.Y1 = from.Y;
+        _rubberBandLine.X2 = to.X;
+        _rubberBandLine.Y2 = to.Y;
+    }
+    
+    private void RemoveRubberBand()
+    {
+        if (_rubberBandLine != null)
+        {
+            PlanCanvas.Children.Remove(_rubberBandLine);
+            _rubberBandLine = null;
+        }
+    }
+    
+    /// <summary>
+    /// Shows a small circle at the snap target when the cursor snaps to a grid point or existing vertex.
+    /// </summary>
+    private void UpdateSnapIndicator(Point snappedPos, Point rawPos)
+    {
+        bool didSnap = Math.Abs(snappedPos.X - rawPos.X) > 0.5 || Math.Abs(snappedPos.Y - rawPos.Y) > 0.5;
+        
+        if (!didSnap)
+        {
+            RemoveSnapIndicator();
+            return;
+        }
+        
+        if (_snapIndicator == null)
+        {
+            _snapIndicator = new Ellipse
+            {
+                Width = 12, Height = 12,
+                Stroke = Brushes.Lime,
+                StrokeThickness = 2,
+                Fill = new SolidColorBrush(Color.FromArgb(60, 0, 255, 0)),
+                IsHitTestVisible = false
+            };
+            PlanCanvas.Children.Add(_snapIndicator);
+        }
+        
+        Canvas.SetLeft(_snapIndicator, snappedPos.X - 6);
+        Canvas.SetTop(_snapIndicator, snappedPos.Y - 6);
+    }
+    
+    private void RemoveSnapIndicator()
+    {
+        if (_snapIndicator != null)
+        {
+            PlanCanvas.Children.Remove(_snapIndicator);
+            _snapIndicator = null;
+        }
+    }
+    
+    /// <summary>
+    /// Applies grid snapping and component endpoint snapping to a raw canvas position.
+    /// </summary>
+    private Point ApplyDrawingSnap(Point canvasPos)
+    {
+        // Collect endpoints from existing components for snapping
+        var endpoints = new List<Point>();
+        var segments = new List<(Point A, Point B)>();
+        
+        foreach (var comp in _viewModel.Components)
+        {
+            var layer = _viewModel.Layers.FirstOrDefault(l => l.Id == comp.LayerId);
+            if (layer != null && !layer.IsVisible) continue;
+            
+            double cx = 1000 + comp.Position.X * 20;
+            double cy = 1000 - comp.Position.Z * 20;
+            
+            if (comp is ConduitComponent conduit)
+            {
+                var pathPts = conduit.GetPathPoints();
+                for (int i = 0; i < pathPts.Count; i++)
+                {
+                    var cp = new Point(cx + pathPts[i].X * 20, cy - pathPts[i].Z * 20);
+                    endpoints.Add(cp);
+                    if (i > 0)
+                    {
+                        var prev = new Point(cx + pathPts[i - 1].X * 20, cy - pathPts[i - 1].Z * 20);
+                        segments.Add((prev, cp));
+                    }
+                }
+            }
+            else
+            {
+                endpoints.Add(new Point(cx, cy));
+            }
+        }
+        
+        // Also include already-placed drawing vertices as snap targets
+        endpoints.AddRange(_drawingCanvasPoints);
+        
+        // Try endpoint/midpoint/intersection snap first
+        var snapResult = _viewModel.SnapService.FindSnapPoint(canvasPos, endpoints, segments);
+        if (snapResult.Snapped)
+            return snapResult.SnappedPoint;
+        
+        // Fall back to grid snap
+        if (_viewModel.SnapToGrid)
+        {
+            double gridPx = _viewModel.GridSize * 20;
+            double snappedX = Math.Round(canvasPos.X / gridPx) * gridPx;
+            double snappedY = Math.Round(canvasPos.Y / gridPx) * gridPx;
+            return new Point(snappedX, snappedY);
+        }
+        
+        return canvasPos;
+    }
+    
+    /// <summary>
+    /// Constrains the target point to the nearest 45-degree increment from the anchor (Shift modifier).
+    /// Snaps to 0°, 45°, 90°, 135°, 180°, 225°, 270°, 315°.
+    /// </summary>
+    private static Point ConstrainToAngle(Point anchor, Point target)
+    {
+        double dx = target.X - anchor.X;
+        double dy = target.Y - anchor.Y;
+        double dist = Math.Sqrt(dx * dx + dy * dy);
+        if (dist < 1) return target;
+        
+        double angle = Math.Atan2(dy, dx);
+        // Round to nearest 45° (π/4)
+        double snapped = Math.Round(angle / (Math.PI / 4)) * (Math.PI / 4);
+        
+        return new Point(
+            anchor.X + dist * Math.Cos(snapped),
+            anchor.Y + dist * Math.Sin(snapped));
+    }
+    
+    /// <summary>
+    /// Converts a canvas pixel position to world coordinates (matching Draw2DComponent's inverse).
+    /// </summary>
+    private static Point3D CanvasToWorld(Point canvasPos)
+    {
+        double worldX = (canvasPos.X - 1000) / 20.0;
+        double worldZ = (1000 - canvasPos.Y) / 20.0;
+        return new Point3D(worldX, 0, worldZ);
     }
     
     // ===== Component Add Handlers =====
@@ -1358,10 +1681,18 @@ public partial class MainWindow : Window
                 DeleteComponent_Click(sender, e);
                 e.Handled = true;
             }
-            else if (e.Key == Key.Escape && _isEditingConduitPath)
+            else if (e.Key == Key.Escape)
             {
-                ToggleEditConduitPath_Click(sender, e);
-                e.Handled = true;
+                if (_isDrawingConduit)
+                {
+                    FinishDrawingConduit();
+                    e.Handled = true;
+                }
+                else if (_isEditingConduitPath)
+                {
+                    ToggleEditConduitPath_Click(sender, e);
+                    e.Handled = true;
+                }
             }
         }
     }
