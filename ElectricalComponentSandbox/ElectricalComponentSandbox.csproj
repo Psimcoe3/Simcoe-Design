@@ -15,6 +15,8 @@
       <NoWarn>NU1701</NoWarn>
     </PackageReference>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="PDFtoImage" Version="5.2.0" />
+    <PackageReference Include="System.Reflection.Metadata" Version="10.0.3" />
   </ItemGroup>
 
   <ItemGroup>
