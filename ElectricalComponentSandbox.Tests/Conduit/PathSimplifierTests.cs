@@ -1,5 +1,6 @@
 using System.Windows;
 using ElectricalComponentSandbox.Conduit.Core.Geometry;
+using ElectricalComponentSandbox.Conduit.Core.Model;
 
 namespace ElectricalComponentSandbox.Tests.Conduit;
 
@@ -110,7 +111,7 @@ public class PathSimplifierTests
     [Fact]
     public void CreateSegmentsFromPath_CreatesCorrectSegmentCount()
     {
-        var path = new List<Core.Model.XYZ>
+        var path = new List<XYZ>
         {
             new(0, 0, 0), new(10, 0, 0), new(10, 10, 0)
         };

@@ -38,7 +38,9 @@ public partial class MainWindow : Window
     
     // Conduit drawing mode (Bluebeam-style polyline tool)
     private bool _isDrawingConduit = false;
+    #pragma warning disable CS0414
     private ConduitComponent? _drawingConduit = null;
+    #pragma warning restore CS0414
     private readonly List<Point> _drawingCanvasPoints = new(); // canvas-space vertices placed so far
     private Line? _rubberBandLine = null; // live preview from last vertex to cursor
     private Ellipse? _snapIndicator = null; // visual indicator when snapping
