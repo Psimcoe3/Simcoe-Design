@@ -77,6 +77,28 @@
             <Button x:Name="DrawConduitButton" Content="Draw Conduit" Click="DrawConduit_Click" ToolTip="Click to place conduit vertices. Shift constrains to 0°/45°/90°. Double-click to finish."/>
             <Button x:Name="EditConduitPathButton" Content="Edit Conduit Path" Click="ToggleEditConduitPath_Click"/>
             <Separator/>
+            <Button x:Name="FreehandConduitButton" Content="Freehand Conduit" Click="FreehandConduit_Click" ToolTip="Freehand sketch conduit path."/>
+            <Separator/>
+            <Button Content="Auto-Route" Click="AutoRoute_Click"/>
+            <Button Content="Export Runs CSV" Click="ExportRunSchedule_Click"/>
+            <Button Content="Export Conduit JSON" Click="ExportConduitJson_Click"/>
+            <Separator/>
+            <TextBlock Text="Detail:" VerticalAlignment="Center" Margin="5,0,2,0"/>
+            <ComboBox x:Name="DetailLevelCombo" Width="75" SelectionChanged="DetailLevel_Changed" SelectedIndex="0">
+                <ComboBoxItem Content="Coarse"/>
+                <ComboBoxItem Content="Medium"/>
+                <ComboBoxItem Content="Fine"/>
+            </ComboBox>
+            <TextBlock Text="Size:" VerticalAlignment="Center" Margin="5,0,2,0"/>
+            <ComboBox x:Name="TradeSizeCombo" Width="60" SelectionChanged="TradeSize_Changed" SelectedIndex="0">
+                <ComboBoxItem Content="1/2"/>
+                <ComboBoxItem Content="3/4"/>
+                <ComboBoxItem Content="1"/>
+                <ComboBoxItem Content="1-1/4"/>
+                <ComboBoxItem Content="1-1/2"/>
+                <ComboBoxItem Content="2"/>
+            </ComboBox>
+            <Separator/>
             <TextBlock Text="Grid Size:" VerticalAlignment="Center"/>
             <TextBox Text="{Binding GridSize}" Width="50"/>
             <Separator/>

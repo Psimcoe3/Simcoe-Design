@@ -212,6 +212,8 @@ public partial class MainWindow : Window
             
             AddComponentToViewport(component);
         }
+
+        UpdateConduitRuns3D();
     }
     
     private void AddComponentToViewport(ElectricalComponent component)
@@ -406,6 +408,14 @@ public partial class MainWindow : Window
             
             Draw2DComponent(component);
         }
+
+        DrawConduitRuns2D();
+
+        if (_isDrawingConduit)
+            DrawConduitPreview();
+
+        if (_isFreehandDrawing)
+            DrawFreehandPreview();
     }
 
     /// <summary>
@@ -695,6 +705,18 @@ public partial class MainWindow : Window
     private void PlanCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         var pos = e.GetPosition(PlanCanvas);
+
+        if (_isFreehandDrawing && e.ClickCount == 2 && HandleFreehandDoubleClick())
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (HandleFreehandMouseDown(pos))
+        {
+            e.Handled = true;
+            return;
+        }
         
         // --- Conduit drawing mode: place a vertex ---
         if (_isDrawingConduit)
@@ -744,6 +766,12 @@ public partial class MainWindow : Window
     private void PlanCanvas_MouseMove(object sender, MouseEventArgs e)
     {
         var pos = e.GetPosition(PlanCanvas);
+
+        if (HandleFreehandMouseMove(pos))
+        {
+            e.Handled = true;
+            return;
+        }
         
         // --- Conduit drawing mode: update rubber-band line ---
         if (_isDrawingConduit && _drawingCanvasPoints.Count > 0)
@@ -804,6 +832,9 @@ public partial class MainWindow : Window
     
     private void DrawConduit_Click(object sender, RoutedEventArgs e)
     {
+        if (_isFreehandDrawing)
+            FinishFreehandConduit();
+
         if (_isDrawingConduit)
         {
             FinishDrawingConduit();
@@ -1685,7 +1716,12 @@ public partial class MainWindow : Window
             }
             else if (e.Key == Key.Escape)
             {
-                if (_isDrawingConduit)
+                if (_isFreehandDrawing)
+                {
+                    FinishFreehandConduit();
+                    e.Handled = true;
+                }
+                else if (_isDrawingConduit)
                 {
                     FinishDrawingConduit();
                     e.Handled = true;
