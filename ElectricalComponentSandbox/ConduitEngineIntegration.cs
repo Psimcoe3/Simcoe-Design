@@ -383,7 +383,9 @@ public partial class MainWindow
             _ => ConduitDetailLevel.Coarse
         };
 
-        Update2DCanvas();
+        // Only update canvas if PlanCanvas is initialized
+        if (PlanCanvas != null)
+            Update2DCanvas();
     }
 
     private void TradeSize_Changed(object sender, SelectionChangedEventArgs e)
