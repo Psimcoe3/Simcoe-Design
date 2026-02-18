@@ -1,7 +1,17 @@
 namespace ElectricalComponentSandbox.Conduit.Core.Model;
 
 /// <summary>
-/// Central store for all conduit model objects – the "database" layer.
+/// Type-driven routing defaults used when creating conduit runs.
+/// </summary>
+public class RoutingDefaults
+{
+    public string ConduitTypeId { get; set; } = string.Empty;
+    public string TradeSize { get; set; } = "1/2";
+    public ConduitMaterialType Material { get; set; } = ConduitMaterialType.EMT;
+}
+
+/// <summary>
+/// Central store for all conduit model objects - the "database" layer.
 /// </summary>
 public class ConduitModelStore
 {
@@ -15,13 +25,13 @@ public class ConduitModelStore
 
     private int _nextRunNumber = 1;
 
-    // ?? Types ??
+    // Types
 
     public void AddType(ConduitType type) => _types[type.Id] = type;
     public ConduitType? GetType(string id) => _types.GetValueOrDefault(id);
     public IEnumerable<ConduitType> GetAllTypes() => _types.Values;
 
-    // ?? Segments ??
+    // Segments
 
     public void AddSegment(ConduitSegment segment)
     {
@@ -47,7 +57,7 @@ public class ConduitModelStore
         }
     }
 
-    // ?? Fittings ??
+    // Fittings
 
     public void AddFitting(ConduitFitting fitting)
     {
@@ -72,13 +82,45 @@ public class ConduitModelStore
         }
     }
 
-    // ?? Runs ??
+    // Runs
 
     public void AddRun(ConduitRun run) => _runs[run.Id] = run;
     public ConduitRun? GetRun(string id) => _runs.GetValueOrDefault(id);
     public IEnumerable<ConduitRun> GetAllRuns() => _runs.Values;
 
     public void RemoveRun(string id) => _runs.Remove(id);
+
+    /// <summary>
+    /// Resolves a valid conduit type, trade size, and material combination
+    /// using current model settings and available conduit types.
+    /// </summary>
+    public RoutingDefaults ResolveRoutingDefaults(
+        string? conduitTypeId = null,
+        string? tradeSize = null,
+        ConduitMaterialType? material = null)
+    {
+        var selectedType = !string.IsNullOrWhiteSpace(conduitTypeId)
+            ? GetType(conduitTypeId!)
+            : null;
+
+        selectedType ??= GetType(Settings.DefaultConduitTypeId) ?? GetAllTypes().FirstOrDefault() ?? new ConduitType();
+
+        var resolvedTradeSize = string.IsNullOrWhiteSpace(tradeSize)
+            ? Settings.DefaultTradeSize
+            : tradeSize!;
+
+        if (!selectedType.SizeSettings.IsValidTradeSize(resolvedTradeSize))
+        {
+            resolvedTradeSize = selectedType.SizeSettings.StandardTradeSizes.FirstOrDefault() ?? Settings.DefaultTradeSize;
+        }
+
+        return new RoutingDefaults
+        {
+            ConduitTypeId = selectedType.Id,
+            TradeSize = resolvedTradeSize,
+            Material = material ?? selectedType.Standard
+        };
+    }
 
     /// <summary>
     /// Generates the next sequential run ID.
@@ -93,13 +135,28 @@ public class ConduitModelStore
     /// </summary>
     public ConduitRun CreateRunFromSegments(List<ConduitSegment> segments, string? runId = null)
     {
+        if (segments.Count == 0)
+            throw new ArgumentException("At least one segment is required to create a conduit run.", nameof(segments));
+
+        var defaults = ResolveRoutingDefaults(
+            segments[0].ConduitTypeId,
+            segments[0].TradeSize,
+            segments[0].Material);
+
+        foreach (var seg in segments)
+        {
+            seg.ConduitTypeId = defaults.ConduitTypeId;
+            seg.TradeSize = defaults.TradeSize;
+            seg.Material = defaults.Material;
+        }
+
         var run = new ConduitRun
         {
             RunId = runId ?? GenerateRunId(),
-            ConduitTypeId = segments.FirstOrDefault()?.ConduitTypeId ?? string.Empty,
-            TradeSize = segments.FirstOrDefault()?.TradeSize ?? "1/2",
-            Material = segments.FirstOrDefault()?.Material ?? ConduitMaterialType.EMT,
-            LevelId = segments.FirstOrDefault()?.LevelId ?? "Level 1"
+            ConduitTypeId = defaults.ConduitTypeId,
+            TradeSize = defaults.TradeSize,
+            Material = defaults.Material,
+            LevelId = segments[0].LevelId
         };
 
         foreach (var seg in segments)
@@ -109,7 +166,9 @@ public class ConduitModelStore
         }
 
         // Insert fittings between consecutive segments
-        if (Settings.AutoInsertFittings)
+        var conduitType = GetType(run.ConduitTypeId);
+        bool insertFittings = Settings.AutoInsertFittings && (conduitType?.IsWithFitting ?? true);
+        if (insertFittings)
         {
             for (int i = 0; i < segments.Count - 1; i++)
             {
