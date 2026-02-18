@@ -3,9 +3,11 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Media3D;
+using System.Windows.Shapes;
 using Microsoft.Win32;
 using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.ViewModels;
+using ElectricalComponentSandbox.Services;
 using HelixToolkit.Wpf;
 
 namespace ElectricalComponentSandbox;
@@ -17,6 +19,11 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
     private string? _currentFilePath;
+    
+    // Constants for smooth conduit rendering
+    private const int MaxSegmentResolution = 50;
+    private const int MinSegmentResolution = 5;
+    private const double ResolutionScaleFactor = 10.0;
     
     public MainWindow()
     {
