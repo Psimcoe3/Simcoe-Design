@@ -3,12 +3,14 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Media3D;
+using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using Microsoft.Win32;
 using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.ViewModels;
 using ElectricalComponentSandbox.Services;
 using HelixToolkit.Wpf;
+using PDFtoImage;
 
 namespace ElectricalComponentSandbox;
 
@@ -374,6 +376,9 @@ public partial class MainWindow : Window
         PlanCanvas.Children.Clear();
         _canvasToComponentMap.Clear();
         
+        // Draw PDF/Image underlay first (so it appears behind everything)
+        DrawPdfUnderlay();
+        
         // Draw grid if enabled
         if (_viewModel.ShowGrid)
         {
@@ -389,6 +394,106 @@ public partial class MainWindow : Window
             Draw2DComponent(component);
         }
     }
+    
+    private void DrawPdfUnderlay()
+    {
+        if (_viewModel.PdfUnderlay == null || string.IsNullOrEmpty(_viewModel.PdfUnderlay.FilePath))
+            return;
+        
+        if (!System.IO.File.Exists(_viewModel.PdfUnderlay.FilePath))
+            return;
+        
+        try
+        {
+            BitmapSource? bitmap = null;
+            var extension = System.IO.Path.GetExtension(_viewModel.PdfUnderlay.FilePath).ToLowerInvariant();
+            
+            // Handle PDF files
+            if (extension == ".pdf")
+            {
+                // Render the specified page of the PDF to a bitmap
+                var pageNumber = Math.Max(0, _viewModel.PdfUnderlay.PageNumber - 1); // PDFtoImage uses 0-based index
+                
+                // Read PDF file into byte array
+                var pdfBytes = System.IO.File.ReadAllBytes(_viewModel.PdfUnderlay.FilePath);
+                
+                // Convert PDF page to SKBitmap using PDFtoImage
+                using var skBitmap = Conversion.ToImage(pdfBytes, page: pageNumber);
+                
+                // Convert SkiaSharp SKBitmap to WPF BitmapSource
+                using var image = skBitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+                using var memStream = new System.IO.MemoryStream();
+                
+                image.SaveTo(memStream);
+                memStream.Position = 0;
+                
+                var bitmapImage = new BitmapImage();
+                bitmapImage.BeginInit();
+                bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                bitmapImage.StreamSource = memStream;
+                bitmapImage.EndInit();
+                bitmapImage.Freeze();
+                bitmap = bitmapImage;
+            }
+            // Handle image files (PNG, JPG, BMP)
+            else if (extension == ".png" || extension == ".jpg" || extension == ".jpeg" || extension == ".bmp")
+            {
+                var bitmapImage = new BitmapImage();
+                bitmapImage.BeginInit();
+                bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                bitmapImage.UriSource = new Uri(_viewModel.PdfUnderlay.FilePath, UriKind.Absolute);
+                bitmapImage.EndInit();
+                bitmapImage.Freeze();
+                bitmap = bitmapImage;
+            }
+            
+            if (bitmap != null)
+            {
+                // Create WPF Image element
+                var image = new Image
+                {
+                    Source = bitmap,
+                    Opacity = _viewModel.PdfUnderlay.Opacity,
+                    Stretch = Stretch.None,
+                    RenderTransformOrigin = new Point(0.5, 0.5) // Rotate around center
+                };
+                
+                // Apply transformations (scale first, then rotation)
+                var transformGroup = new TransformGroup();
+                
+                // Apply scale first
+                var scale = _viewModel.PdfUnderlay.Scale;
+                transformGroup.Children.Add(new ScaleTransform(scale, scale));
+                
+                // Apply rotation after scale if specified
+                if (_viewModel.PdfUnderlay.RotationDegrees != 0)
+                {
+                    transformGroup.Children.Add(new RotateTransform(_viewModel.PdfUnderlay.RotationDegrees));
+                }
+                
+                image.RenderTransform = transformGroup;
+                
+                // Position the image using offsets
+                Canvas.SetLeft(image, _viewModel.PdfUnderlay.OffsetX);
+                Canvas.SetTop(image, _viewModel.PdfUnderlay.OffsetY);
+                
+                // Add to canvas at the beginning (so it appears behind everything)
+                PlanCanvas.Children.Insert(0, image);
+            }
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            // Page number is out of range
+            ActionLogService.Instance.Log(LogCategory.Error, "Invalid page number for PDF underlay", 
+                $"Page {_viewModel.PdfUnderlay.PageNumber} does not exist in the document. {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            // Log error but don't crash the application
+            ActionLogService.Instance.Log(LogCategory.Error, "Failed to render PDF/Image underlay", ex.Message);
+        }
+    }
+
     
     private void Draw2DGrid()
     {
@@ -689,6 +794,9 @@ public partial class MainWindow : Window
             };
             ActionLogService.Instance.Log(LogCategory.FileOperation, "PDF imported", $"File: {dialog.FileName}");
             
+            // Render the PDF/Image on the canvas
+            Update2DCanvas();
+            
             MessageBox.Show($"Underlay imported: {System.IO.Path.GetFileName(dialog.FileName)}\n" +
                 "Use 'Calibrate Scale' to set the drawing scale.", 
                 "Import Complete", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -701,6 +809,7 @@ public partial class MainWindow : Window
         {
             ActionLogService.Instance.Log(LogCategory.View, "PDF opacity changed", $"Value: {e.NewValue:F2}");
             _viewModel.PdfUnderlay.Opacity = e.NewValue;
+            Update2DCanvas();
         }
     }
     
