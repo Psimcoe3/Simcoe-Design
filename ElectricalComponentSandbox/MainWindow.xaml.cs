@@ -411,32 +411,29 @@ public partial class MainWindow : Window
             // Handle PDF files
             if (extension == ".pdf")
             {
-                // Render the first page (or specified page) of the PDF to a bitmap
+                // Render the specified page of the PDF to a bitmap
                 var pageNumber = Math.Max(0, _viewModel.PdfUnderlay.PageNumber - 1); // PDFtoImage uses 0-based index
                 
                 // Read PDF file into byte array
                 var pdfBytes = System.IO.File.ReadAllBytes(_viewModel.PdfUnderlay.FilePath);
                 
                 // Convert PDF page to SKBitmap using PDFtoImage
-                var skBitmap = Conversion.ToImage(pdfBytes, page: pageNumber);
+                using var skBitmap = Conversion.ToImage(pdfBytes, page: pageNumber);
                 
                 // Convert SkiaSharp SKBitmap to WPF BitmapSource
-                using (var image = skBitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100))
-                using (var memStream = new System.IO.MemoryStream())
-                {
-                    image.SaveTo(memStream);
-                    memStream.Position = 0;
-                    
-                    var bitmapImage = new BitmapImage();
-                    bitmapImage.BeginInit();
-                    bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-                    bitmapImage.StreamSource = memStream;
-                    bitmapImage.EndInit();
-                    bitmapImage.Freeze();
-                    bitmap = bitmapImage;
-                }
+                using var image = skBitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+                using var memStream = new System.IO.MemoryStream();
                 
-                skBitmap.Dispose();
+                image.SaveTo(memStream);
+                memStream.Position = 0;
+                
+                var bitmapImage = new BitmapImage();
+                bitmapImage.BeginInit();
+                bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                bitmapImage.StreamSource = memStream;
+                bitmapImage.EndInit();
+                bitmapImage.Freeze();
+                bitmap = bitmapImage;
             }
             // Handle image files (PNG, JPG, BMP)
             else if (extension == ".png" || extension == ".jpg" || extension == ".jpeg" || extension == ".bmp")
@@ -482,6 +479,12 @@ public partial class MainWindow : Window
                 // Add to canvas at the beginning (so it appears behind everything)
                 PlanCanvas.Children.Insert(0, image);
             }
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            // Page number is out of range
+            ActionLogService.Instance.Log(LogCategory.Error, "Invalid page number for PDF underlay", 
+                $"Page {_viewModel.PdfUnderlay.PageNumber} does not exist in the document. {ex.Message}");
         }
         catch (Exception ex)
         {
