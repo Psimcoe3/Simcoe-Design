@@ -394,7 +394,64 @@ public partial class MainWindow : Window
             Draw2DComponent(component);
         }
     }
-    
+
+    /// <summary>
+    /// Computes and sets PdfUnderlay.Scale so the image fills the canvas (2000×2000) with a 5 % margin.
+    /// Also resets the canvas zoom (PlanCanvasScale) to 1 so the full drawing is visible.
+    /// </summary>
+    private void AutoFitPdfScale(PdfUnderlay underlay, string filePath)
+    {
+        const double canvasSize = 2000.0;
+        const double margin     = 0.95; // leave 5 % breathing room
+
+        try
+        {
+            int imgWidth, imgHeight;
+            var ext = System.IO.Path.GetExtension(filePath).ToLowerInvariant();
+
+            if (ext == ".pdf")
+            {
+                var bytes = System.IO.File.ReadAllBytes(filePath);
+                var size  = PDFtoImage.Conversion.GetPageSize(bytes, page: Math.Max(0, underlay.PageNumber - 1));
+                // GetPageSize returns PDF points (72 dpi). PDFtoImage.Conversion.ToImage() renders at 300 dpi,
+                // so actual pixel dimensions = PDF points × (300 / 72).
+                const double renderDpi = 300.0;
+                imgWidth  = (int)(size.Width  * renderDpi / 72.0);
+                imgHeight = (int)(size.Height * renderDpi / 72.0);
+            }
+            else
+            {
+                // For images, decode just the pixel dimensions without loading the full bitmap
+                using var fs = System.IO.File.OpenRead(filePath);
+                var decoder = System.Windows.Media.Imaging.BitmapDecoder.Create(
+                    fs,
+                    System.Windows.Media.Imaging.BitmapCreateOptions.DelayCreation,
+                    System.Windows.Media.Imaging.BitmapCacheOption.None);
+                var frame = decoder.Frames[0];
+                imgWidth  = frame.PixelWidth;
+                imgHeight = frame.PixelHeight;
+            }
+
+            if (imgWidth <= 0 || imgHeight <= 0) return;
+
+            // Scale that fits the larger dimension within the canvas
+            double fitScale = canvasSize * margin / Math.Max(imgWidth, imgHeight);
+            underlay.Scale = Math.Round(fitScale, 6);
+
+            // Reset canvas zoom so the whole thing is visible immediately
+            PlanCanvasScale.ScaleX = 1.0;
+            PlanCanvasScale.ScaleY = 1.0;
+
+            ActionLogService.Instance.Log(LogCategory.View, "PDF auto-fitted",
+                $"Image: {imgWidth}x{imgHeight} pts, FitScale: {underlay.Scale:F6}");
+        }
+        catch (Exception ex)
+        {
+            ActionLogService.Instance.Log(LogCategory.Error, "AutoFitPdfScale failed", ex.Message);
+            // Leave scale at default (1.0) — not a fatal error
+        }
+    }
+
     private void DrawPdfUnderlay()
     {
         if (_viewModel.PdfUnderlay == null || string.IsNullOrEmpty(_viewModel.PdfUnderlay.FilePath))
@@ -455,7 +512,9 @@ public partial class MainWindow : Window
                     Source = bitmap,
                     Opacity = _viewModel.PdfUnderlay.Opacity,
                     Stretch = Stretch.None,
-                    RenderTransformOrigin = new Point(0.5, 0.5) // Rotate around center
+                    // Origin (0,0) = scale/rotate from the top-left corner so the image
+                    // stays anchored at Canvas.SetLeft/Top and doesn't drift off-screen.
+                    RenderTransformOrigin = new Point(0, 0)
                 };
                 
                 // Apply transformations (scale first, then rotation)
@@ -786,19 +845,26 @@ public partial class MainWindow : Window
         
         if (dialog.ShowDialog() == true)
         {
-            _viewModel.PdfUnderlay = new PdfUnderlay
+            var underlay = new PdfUnderlay
             {
                 FilePath = dialog.FileName,
-                Opacity = PdfOpacitySlider.Value,
+                Opacity  = PdfOpacitySlider.Value,
                 IsLocked = PdfLockCheck.IsChecked ?? true
             };
-            ActionLogService.Instance.Log(LogCategory.FileOperation, "PDF imported", $"File: {dialog.FileName}");
+
+            // Auto-fit: compute scale so the PDF fills the canvas (2000×2000) with a small margin
+            AutoFitPdfScale(underlay, dialog.FileName);
+
+            _viewModel.PdfUnderlay = underlay;
+            ActionLogService.Instance.Log(LogCategory.FileOperation, "PDF imported",
+                $"File: {dialog.FileName}, FitScale: {underlay.Scale:F4}");
             
             // Render the PDF/Image on the canvas
             Update2DCanvas();
             
             MessageBox.Show($"Underlay imported: {System.IO.Path.GetFileName(dialog.FileName)}\n" +
-                "Use 'Calibrate Scale' to set the drawing scale.", 
+                $"Auto-fitted to canvas (scale {underlay.Scale:F4}).\n" +
+                "Use 'Calibrate Scale' to set the real-world drawing scale.", 
                 "Import Complete", MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
