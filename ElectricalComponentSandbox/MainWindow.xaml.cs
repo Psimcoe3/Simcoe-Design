@@ -35,6 +35,8 @@ public partial class MainWindow : Window
     private bool _isDragging2D = false;
     private FrameworkElement? _draggedElement2D = null;
     private readonly Dictionary<FrameworkElement, ElectricalComponent> _canvasToComponentMap = new();
+    private readonly Dictionary<FrameworkElement, int> _bendHandleIndexMap2D = new();
+    private bool _isDragging2DBendHandle = false;
     
     // Conduit drawing mode (Bluebeam-style polyline tool)
     private bool _isDrawingConduit = false;
@@ -390,6 +392,7 @@ public partial class MainWindow : Window
     {
         PlanCanvas.Children.Clear();
         _canvasToComponentMap.Clear();
+        _bendHandleIndexMap2D.Clear();
         
         // Draw PDF/Image underlay first (so it appears behind everything)
         DrawPdfUnderlay();
@@ -653,6 +656,11 @@ public partial class MainWindow : Window
                         }
                         PlanCanvas.Children.Add(polyline);
                         _canvasToComponentMap[polyline] = component;
+
+                        if (_isEditingConduitPath && isSelected)
+                        {
+                            Draw2DBendPointHandles(conduit, canvasX, canvasY);
+                        }
                         return;
                     }
                 }
@@ -701,6 +709,29 @@ public partial class MainWindow : Window
     }
     
     // ===== 2D Canvas mouse handlers =====
+
+    private void Draw2DBendPointHandles(ConduitComponent conduit, double canvasX, double canvasY)
+    {
+        for (int i = 0; i < conduit.BendPoints.Count; i++)
+        {
+            var pt = conduit.BendPoints[i];
+            var handle = new Ellipse
+            {
+                Width = 12,
+                Height = 12,
+                Fill = Brushes.Orange,
+                Stroke = Brushes.DarkOrange,
+                StrokeThickness = 2,
+                Cursor = Cursors.SizeAll
+            };
+
+            Canvas.SetLeft(handle, canvasX + pt.X * 20 - 6);
+            Canvas.SetTop(handle, canvasY - pt.Z * 20 - 6);
+
+            PlanCanvas.Children.Add(handle);
+            _bendHandleIndexMap2D[handle] = i;
+        }
+    }
     
     private void PlanCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -732,7 +763,7 @@ public partial class MainWindow : Window
             var snapped = ApplyDrawingSnap(pos);
             
             // If Shift is held, constrain to orthogonal angles
-            if (_drawingCanvasPoints.Count > 0 && Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift))
+            if (_drawingCanvasPoints.Count > 0 && (Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift)))
             {
                 snapped = ConstrainToAngle(_drawingCanvasPoints[^1], snapped);
             }
@@ -746,6 +777,29 @@ public partial class MainWindow : Window
             DrawConduitPreview();
             e.Handled = true;
             return;
+        }
+
+        if (_isEditingConduitPath && _viewModel.SelectedComponent is ConduitComponent selectedConduit)
+        {
+            var bendHandle = PlanCanvas.InputHitTest(pos) as FrameworkElement;
+            if (bendHandle != null && _bendHandleIndexMap2D.ContainsKey(bendHandle))
+            {
+                _isDragging2D = true;
+                _isDragging2DBendHandle = true;
+                _draggedElement2D = bendHandle;
+                _lastMousePosition = pos;
+                PlanCanvas.CaptureMouse();
+                e.Handled = true;
+                return;
+            }
+
+            if (TryInsertBendPoint2D(selectedConduit, pos))
+            {
+                UpdateViewport();
+                Update2DCanvas();
+                e.Handled = true;
+                return;
+            }
         }
         
         // --- Default mode: select / drag ---
@@ -789,6 +843,30 @@ public partial class MainWindow : Window
         // --- Drag mode ---
         if (_isDragging2D && _draggedElement2D != null && _viewModel.SelectedComponent != null)
         {
+            if (_isDragging2DBendHandle && _viewModel.SelectedComponent is ConduitComponent conduit &&
+                _bendHandleIndexMap2D.TryGetValue(_draggedElement2D, out var handleIndex) &&
+                handleIndex >= 0 && handleIndex < conduit.BendPoints.Count)
+            {
+                var worldPoint = CanvasToWorld(pos);
+                var relative = new Point3D(
+                    worldPoint.X - conduit.Position.X,
+                    worldPoint.Y - conduit.Position.Y,
+                    worldPoint.Z - conduit.Position.Z);
+
+                if (_viewModel.SnapToGrid)
+                {
+                    relative.X = Math.Round(relative.X / _viewModel.GridSize) * _viewModel.GridSize;
+                    relative.Y = Math.Round(relative.Y / _viewModel.GridSize) * _viewModel.GridSize;
+                    relative.Z = Math.Round(relative.Z / _viewModel.GridSize) * _viewModel.GridSize;
+                }
+
+                conduit.BendPoints[handleIndex] = relative;
+                _lastMousePosition = pos;
+                Update2DCanvas();
+                UpdateViewport();
+                return;
+            }
+
             var delta = pos - _lastMousePosition;
             var worldDelta = new Vector3D(delta.X / 20.0, 0, -delta.Y / 20.0);
 
@@ -814,8 +892,101 @@ public partial class MainWindow : Window
             UpdateViewport();
         }
         _isDragging2D = false;
+        _isDragging2DBendHandle = false;
         _draggedElement2D = null;
         PlanCanvas.ReleaseMouseCapture();
+    }
+
+    private bool TryInsertBendPoint2D(ConduitComponent conduit, Point canvasPoint)
+    {
+        var path = GetEditableConduitPath(conduit);
+        if (path.Count < 2)
+            return false;
+
+        var worldPoint = CanvasToWorld(canvasPoint);
+        var localPoint = new Point3D(
+            worldPoint.X - conduit.Position.X,
+            worldPoint.Y - conduit.Position.Y,
+            worldPoint.Z - conduit.Position.Z);
+
+        if (_viewModel.SnapToGrid)
+        {
+            localPoint.X = Math.Round(localPoint.X / _viewModel.GridSize) * _viewModel.GridSize;
+            localPoint.Y = Math.Round(localPoint.Y / _viewModel.GridSize) * _viewModel.GridSize;
+            localPoint.Z = Math.Round(localPoint.Z / _viewModel.GridSize) * _viewModel.GridSize;
+        }
+
+        var nearestSegment = -1;
+        var nearestDistance = double.MaxValue;
+
+        for (int i = 0; i < path.Count - 1; i++)
+        {
+            var dist = DistancePointToSegment2D(localPoint, path[i], path[i + 1]);
+            if (dist < nearestDistance)
+            {
+                nearestDistance = dist;
+                nearestSegment = i;
+            }
+        }
+
+        if (nearestSegment < 0 || nearestDistance > 0.6)
+            return false;
+
+        path.Insert(nearestSegment + 1, localPoint);
+        SetEditableConduitPath(conduit, path);
+        return true;
+    }
+
+    private static double DistancePointToSegment2D(Point3D point, Point3D a, Point3D b)
+    {
+        var ax = a.X;
+        var az = a.Z;
+        var bx = b.X;
+        var bz = b.Z;
+
+        var dx = bx - ax;
+        var dz = bz - az;
+        var lenSq = dx * dx + dz * dz;
+
+        if (lenSq < 1e-9)
+            return Math.Sqrt((point.X - ax) * (point.X - ax) + (point.Z - az) * (point.Z - az));
+
+        var t = ((point.X - ax) * dx + (point.Z - az) * dz) / lenSq;
+        t = Math.Max(0, Math.Min(1, t));
+
+        var projX = ax + t * dx;
+        var projZ = az + t * dz;
+        var diffX = point.X - projX;
+        var diffZ = point.Z - projZ;
+        return Math.Sqrt(diffX * diffX + diffZ * diffZ);
+    }
+
+    private static List<Point3D> GetEditableConduitPath(ConduitComponent conduit)
+    {
+        var path = new List<Point3D> { new Point3D(0, 0, 0) };
+        if (conduit.BendPoints.Count == 0)
+        {
+            path.Add(new Point3D(0, 0, conduit.Length));
+            return path;
+        }
+
+        path.AddRange(conduit.BendPoints);
+        return path;
+    }
+
+    private static void SetEditableConduitPath(ConduitComponent conduit, List<Point3D> path)
+    {
+        conduit.BendPoints.Clear();
+        if (path.Count < 2)
+            return;
+
+        if (path.Count == 2)
+        {
+            conduit.Length = (path[1] - path[0]).Length;
+            return;
+        }
+
+        conduit.BendPoints.AddRange(path.Skip(1));
     }
     
     private void PlanCanvas_MouseWheel(object sender, MouseWheelEventArgs e)
@@ -1329,8 +1500,8 @@ public partial class MainWindow : Window
                 var hitPoint = rayHit.Position;
                 var offset = hitPoint - _viewModel.SelectedComponent.Position;
                 var localPoint = new Point3D(offset.X, offset.Y, offset.Z);
-                
-                conduit.BendPoints.Add(localPoint);
+
+                InsertBendPoint3D(conduit, localPoint);
                 ActionLogService.Instance.Log(LogCategory.Edit, "Bend point added",
                     $"Conduit: {conduit.Name}, Point: ({localPoint.X:F2}, {localPoint.Y:F2}, {localPoint.Z:F2}), Total: {conduit.BendPoints.Count}");
                 UpdateViewport();
@@ -1368,20 +1539,26 @@ public partial class MainWindow : Window
             if (handleIndex < conduit.BendPoints.Count)
             {
                 var hits = Viewport3DHelper.FindHits(Viewport.Viewport, position);
+                Point3D? newPoint = null;
                 if (hits != null && hits.Any())
                 {
                     var hitPoint = hits.First().Position;
                     var offset = hitPoint - _viewModel.SelectedComponent.Position;
-                    var newPoint = new Point3D(offset.X, offset.Y, offset.Z);
-                    
+                    newPoint = new Point3D(offset.X, offset.Y, offset.Z);
+                }
+
+                newPoint ??= ProjectCursorToLocalPlane(position, conduit.BendPoints[handleIndex].Y);
+                if (newPoint != null)
+                {
+                    var snappedPoint = newPoint.Value;
                     if (_viewModel.SnapToGrid)
                     {
-                        newPoint.X = Math.Round(newPoint.X / _viewModel.GridSize) * _viewModel.GridSize;
-                        newPoint.Y = Math.Round(newPoint.Y / _viewModel.GridSize) * _viewModel.GridSize;
-                        newPoint.Z = Math.Round(newPoint.Z / _viewModel.GridSize) * _viewModel.GridSize;
+                        snappedPoint.X = Math.Round(snappedPoint.X / _viewModel.GridSize) * _viewModel.GridSize;
+                        snappedPoint.Y = Math.Round(snappedPoint.Y / _viewModel.GridSize) * _viewModel.GridSize;
+                        snappedPoint.Z = Math.Round(snappedPoint.Z / _viewModel.GridSize) * _viewModel.GridSize;
                     }
-                    
-                    conduit.BendPoints[handleIndex] = newPoint;
+
+                    conduit.BendPoints[handleIndex] = snappedPoint;
                     UpdateViewport();
                     ShowBendPointHandles();
                 }
@@ -1831,5 +2008,65 @@ public partial class MainWindow : Window
         
         visual.Content = model;
         return visual;
+    }
+
+    private void InsertBendPoint3D(ConduitComponent conduit, Point3D localPoint)
+    {
+        var path = GetEditableConduitPath(conduit);
+        var nearestSegment = -1;
+        var nearestDistance = double.MaxValue;
+
+        for (int i = 0; i < path.Count - 1; i++)
+        {
+            var dist = DistancePointToSegment3D(localPoint, path[i], path[i + 1]);
+            if (dist < nearestDistance)
+            {
+                nearestDistance = dist;
+                nearestSegment = i;
+            }
+        }
+
+        if (nearestSegment < 0)
+        {
+            conduit.BendPoints.Add(localPoint);
+            return;
+        }
+
+        path.Insert(nearestSegment + 1, localPoint);
+        SetEditableConduitPath(conduit, path);
+    }
+
+    private static double DistancePointToSegment3D(Point3D point, Point3D a, Point3D b)
+    {
+        var ab = b - a;
+        var ap = point - a;
+        var lenSq = ab.LengthSquared;
+        if (lenSq < 1e-9)
+            return (point - a).Length;
+
+        var t = Vector3D.DotProduct(ap, ab) / lenSq;
+        t = Math.Max(0, Math.Min(1, t));
+        var projected = a + (ab * t);
+        return (point - projected).Length;
+    }
+
+    private Point3D? ProjectCursorToLocalPlane(Point screenPosition, double localY)
+    {
+        var ray = Viewport3DHelper.Point2DtoRay3D(Viewport.Viewport, screenPosition);
+        if (ray == null)
+            return null;
+
+        var worldY = _viewModel.SelectedComponent?.Position.Y + localY ?? localY;
+        var directionY = ray.Direction.Y;
+        if (Math.Abs(directionY) < 1e-9)
+            return null;
+
+        var t = (worldY - ray.Origin.Y) / directionY;
+        if (t < 0)
+            return null;
+
+        var worldPoint = ray.Origin + ray.Direction * t;
+        var offset = worldPoint - _viewModel.SelectedComponent!.Position;
+        return new Point3D(offset.X, offset.Y, offset.Z);
     }
 }
