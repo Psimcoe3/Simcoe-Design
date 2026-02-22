@@ -79,6 +79,8 @@ public partial class MainWindow : Window
     private bool _pending2DRefresh = false;
     private bool _pending3DRefresh = false;
     private bool _pendingPropertiesRefresh = false;
+    private ElectricalComponent? _pendingPlacementComponent = null;
+    private string? _pendingPlacementSource = null;
     
     // Conduit drawing mode (Bluebeam-style polyline tool)
     private bool _isDrawingConduit = false;
@@ -1938,6 +1940,107 @@ public partial class MainWindow : Window
         _viewModel.SelectedComponent = component;
     }
 
+    private void UpdatePlanCanvasCursor()
+    {
+        if (_isFreehandDrawing)
+        {
+            PlanCanvas.Cursor = Cursors.Pen;
+            return;
+        }
+
+        PlanCanvas.Cursor = (_isSketchLineMode || _isSketchRectangleMode || _isDrawingConduit || _pendingPlacementComponent != null)
+            ? Cursors.Cross
+            : Cursors.Arrow;
+    }
+
+    private void ExitConflictingAuthoringModes()
+    {
+        if (_isSketchLineMode || _isSketchRectangleMode)
+            ExitSketchModes();
+
+        if (_isFreehandDrawing)
+            FinishFreehandConduit();
+
+        if (_isDrawingConduit)
+            FinishDrawingConduit();
+
+        if (_isEditingConduitPath)
+            ToggleEditConduitPath_Click(this, new RoutedEventArgs());
+    }
+
+    private void BeginComponentPlacement(ElectricalComponent component, string source)
+    {
+        ExitConflictingAuthoringModes();
+        CancelPendingPlacement(logCancellation: false);
+        _pendingPlacementComponent = component;
+        _pendingPlacementSource = source;
+        RemoveSnapIndicator();
+        UpdatePlanCanvasCursor();
+        PostAddComponentMobileUX();
+
+        ActionLogService.Instance.Log(LogCategory.Component, "Component placement armed",
+            $"Name: {component.Name}, Type: {component.Type}, Source: {source}");
+    }
+
+    private void CancelPendingPlacement(bool logCancellation = true)
+    {
+        if (_pendingPlacementComponent == null)
+            return;
+
+        if (logCancellation)
+        {
+            ActionLogService.Instance.Log(LogCategory.Component, "Component placement cancelled",
+                $"Name: {_pendingPlacementComponent.Name}, Type: {_pendingPlacementComponent.Type}");
+        }
+
+        _pendingPlacementComponent = null;
+        _pendingPlacementSource = null;
+        RemoveSnapIndicator();
+        UpdatePlanCanvasCursor();
+    }
+
+    private bool TryPlacePendingComponentAtWorld(Point3D worldPosition)
+    {
+        if (_pendingPlacementComponent == null)
+            return false;
+
+        if (_viewModel.SnapToGrid)
+        {
+            worldPosition.X = Math.Round(worldPosition.X / _viewModel.GridSize) * _viewModel.GridSize;
+            worldPosition.Z = Math.Round(worldPosition.Z / _viewModel.GridSize) * _viewModel.GridSize;
+        }
+
+        worldPosition.Y = 0;
+        var component = _pendingPlacementComponent;
+        component.Position = worldPosition;
+        AddComponentWithUndo(component);
+
+        ActionLogService.Instance.Log(LogCategory.Component, "Component placed",
+            $"Name: {component.Name}, Type: {component.Type}, Source: {_pendingPlacementSource ?? "unknown"}, " +
+            $"World: ({worldPosition.X:F2}, {worldPosition.Y:F2}, {worldPosition.Z:F2})");
+
+        _pendingPlacementComponent = null;
+        _pendingPlacementSource = null;
+        RemoveSnapIndicator();
+        UpdatePlanCanvasCursor();
+        QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
+
+        if (_isMobileView)
+            SetMobilePane(MobilePane.Properties);
+
+        return true;
+    }
+
+    private bool TryPlacePendingComponentOnCanvas(Point canvasPosition)
+    {
+        if (_pendingPlacementComponent == null)
+            return false;
+
+        var snapped = ApplyDrawingSnap(canvasPosition);
+        var world = CanvasToWorld(snapped);
+        return TryPlacePendingComponentAtWorld(world);
+    }
+
     private void ClearSketchSelection()
     {
         _selectedSketchPrimitive = null;
@@ -1949,6 +2052,12 @@ public partial class MainWindow : Window
     private void PlanCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         var pos = e.GetPosition(PlanCanvas);
+
+        if (TryPlacePendingComponentOnCanvas(pos))
+        {
+            e.Handled = true;
+            return;
+        }
 
         if (_isFreehandDrawing && e.ClickCount == 2 && HandleFreehandDoubleClick())
         {
@@ -2120,6 +2229,14 @@ public partial class MainWindow : Window
 
         if (HandleFreehandMouseMove(pos))
         {
+            e.Handled = true;
+            return;
+        }
+
+        if (_pendingPlacementComponent != null)
+        {
+            var snapped = ApplyDrawingSnap(pos);
+            UpdateSnapIndicator(snapped, pos);
             e.Handled = true;
             return;
         }
@@ -2313,6 +2430,7 @@ public partial class MainWindow : Window
     
     private void DrawConduit_Click(object sender, RoutedEventArgs e)
     {
+        CancelPendingPlacement();
         ExitSketchModes();
 
         if (_isFreehandDrawing)
@@ -2334,7 +2452,7 @@ public partial class MainWindow : Window
         
         DrawConduitButton.Background = new SolidColorBrush(EditModeButtonColor);
         DrawConduitButton.Content = "Finish Conduit";
-        PlanCanvas.Cursor = Cursors.Cross;
+        UpdatePlanCanvasCursor();
         
         ActionLogService.Instance.Log(LogCategory.Edit, "Draw conduit tool activated");
     }
@@ -2394,7 +2512,7 @@ public partial class MainWindow : Window
         
         DrawConduitButton.Background = System.Windows.SystemColors.ControlBrush;
         DrawConduitButton.Content = "Draw Conduit";
-        PlanCanvas.Cursor = Cursors.Arrow;
+        UpdatePlanCanvasCursor();
         
         UpdateViewport();
         Update2DCanvas();
@@ -2781,6 +2899,7 @@ public partial class MainWindow : Window
         }
         else
         {
+            CancelPendingPlacement();
             ExitSketchModes();
             if (_isDrawingConduit) FinishDrawingConduit();
             if (_isFreehandDrawing) FinishFreehandConduit();
@@ -2801,6 +2920,7 @@ public partial class MainWindow : Window
         }
         else
         {
+            CancelPendingPlacement();
             ExitSketchModes();
             if (_isDrawingConduit) FinishDrawingConduit();
             if (_isFreehandDrawing) FinishFreehandConduit();
@@ -2985,7 +3105,6 @@ public partial class MainWindow : Window
         _sketchDraftLinePoints.Clear();
         RemoveSketchLineRubberBand();
         RemoveSnapIndicator();
-        PlanCanvas.Cursor = Cursors.Arrow;
         UpdateSketchToolButtons();
     }
 
@@ -2995,43 +3114,37 @@ public partial class MainWindow : Window
         SketchRectangleButton.Background = _isSketchRectangleMode ? new SolidColorBrush(EditModeButtonColor) : SystemColors.ControlBrush;
         SketchLineButton.Content = _isSketchLineMode ? "Finish Sketch Line" : "Sketch Line";
         SketchRectangleButton.Content = _isSketchRectangleMode ? "Finish Sketch Rect" : "Sketch Rectangle";
-        PlanCanvas.Cursor = (_isSketchLineMode || _isSketchRectangleMode) ? Cursors.Cross : Cursors.Arrow;
+        UpdatePlanCanvasCursor();
     }
 
     private void AddConduit_Click(object sender, RoutedEventArgs e)
     {
-        _viewModel.AddComponent(ComponentType.Conduit);
-        PostAddComponentMobileUX();
+        BeginComponentPlacement(ElectricalComponentCatalog.CreateDefaultComponent(ComponentType.Conduit), "toolbar");
     }
     
     private void AddBox_Click(object sender, RoutedEventArgs e)
     {
-        _viewModel.AddComponent(ComponentType.Box);
-        PostAddComponentMobileUX();
+        BeginComponentPlacement(ElectricalComponentCatalog.CreateDefaultComponent(ComponentType.Box), "toolbar");
     }
     
     private void AddPanel_Click(object sender, RoutedEventArgs e)
     {
-        _viewModel.AddComponent(ComponentType.Panel);
-        PostAddComponentMobileUX();
+        BeginComponentPlacement(ElectricalComponentCatalog.CreateDefaultComponent(ComponentType.Panel), "toolbar");
     }
     
     private void AddSupport_Click(object sender, RoutedEventArgs e)
     {
-        _viewModel.AddComponent(ComponentType.Support);
-        PostAddComponentMobileUX();
+        BeginComponentPlacement(ElectricalComponentCatalog.CreateDefaultComponent(ComponentType.Support), "toolbar");
     }
     
     private void AddCableTray_Click(object sender, RoutedEventArgs e)
     {
-        _viewModel.AddComponent(ComponentType.CableTray);
-        PostAddComponentMobileUX();
+        BeginComponentPlacement(ElectricalComponentCatalog.CreateDefaultComponent(ComponentType.CableTray), "toolbar");
     }
     
     private void AddHanger_Click(object sender, RoutedEventArgs e)
     {
-        _viewModel.AddComponent(ComponentType.Hanger);
-        PostAddComponentMobileUX();
+        BeginComponentPlacement(ElectricalComponentCatalog.CreateDefaultComponent(ComponentType.Hanger), "toolbar");
     }
     
     private void DeleteComponent_Click(object sender, RoutedEventArgs e)
@@ -3043,8 +3156,16 @@ public partial class MainWindow : Window
     {
         if (LibraryListBox.SelectedItem is ElectricalComponent component)
         {
-            _viewModel.AddComponentFromTemplate(component);
-            PostAddComponentMobileUX();
+            BeginComponentPlacement(ElectricalComponentCatalog.CloneTemplate(component), "library-double-click");
+            e.Handled = true;
+        }
+    }
+
+    private void LibraryListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (LibraryListBox.SelectedItem is ElectricalComponent component)
+        {
+            BeginComponentPlacement(ElectricalComponentCatalog.CloneTemplate(component), "library-selection");
         }
     }
 
@@ -3431,6 +3552,16 @@ public partial class MainWindow : Window
     {
         var position = e.GetPosition(Viewport);
         var hits = Viewport3DHelper.FindHits(Viewport.Viewport, position);
+
+        if (_pendingPlacementComponent != null)
+        {
+            var hitPoint = hits?.FirstOrDefault()?.Position ?? new Point3D(0, 0, 0);
+            if (TryPlacePendingComponentAtWorld(hitPoint))
+            {
+                e.Handled = true;
+                return;
+            }
+        }
         
         if (_isEditingConduitPath && _viewModel.SelectedComponent is ConduitComponent conduit)
         {
@@ -3675,6 +3806,7 @@ public partial class MainWindow : Window
         if (MessageBox.Show("Create a new project? Any unsaved changes will be lost.", "New Project", 
             MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
         {
+            CancelPendingPlacement(logCancellation: false);
             _viewModel.Components.Clear();
             _viewModel.Layers.Clear();
             _viewModel.PdfUnderlay = null;
@@ -3709,6 +3841,7 @@ public partial class MainWindow : Window
                 var project = await _viewModel.ProjectFileService.LoadProjectAsync(dialog.FileName);
                 if (project != null)
                 {
+                    CancelPendingPlacement(logCancellation: false);
                     _viewModel.LoadFromProject(project);
                     _currentFilePath = dialog.FileName;
                     Title = $"Electrical Component Sandbox - {System.IO.Path.GetFileName(dialog.FileName)}";
@@ -3914,12 +4047,18 @@ public partial class MainWindow : Window
                     ToggleEditConduitPath_Click(sender, e);
                     e.Handled = true;
                 }
+                else if (_pendingPlacementComponent != null)
+                {
+                    CancelPendingPlacement();
+                    e.Handled = true;
+                }
             }
         }
     }
     
     private void ToggleEditConduitPath_Click(object sender, RoutedEventArgs e)
     {
+        CancelPendingPlacement();
         ExitSketchModes();
         _isEditingConduitPath = !_isEditingConduitPath;
         ActionLogService.Instance.Log(LogCategory.Edit, "Edit conduit path toggled",

@@ -244,6 +244,7 @@
                     <ListBox x:Name="LibraryListBox" DockPanel.Dock="Top" Height="200"
                            ItemsSource="{Binding LibraryComponents}"
                            DisplayMemberPath="Name"
+                           SelectionChanged="LibraryListBox_SelectionChanged"
                            MouseDoubleClick="LibraryItem_DoubleClick"/>
                     
                     <!-- Layers Panel -->

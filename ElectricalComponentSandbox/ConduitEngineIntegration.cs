@@ -37,6 +37,7 @@ public partial class MainWindow
 
     private void FreehandConduit_Click(object sender, RoutedEventArgs e)
     {
+        CancelPendingPlacement();
         ExitSketchModes();
 
         if (_isFreehandDrawing)
@@ -55,7 +56,7 @@ public partial class MainWindow
         ConduitEngine.SetTool(ConduitToolState.DrawFreehand);
         FreehandConduitButton.Background = new SolidColorBrush(EditModeButtonColor);
         FreehandConduitButton.Content = "Finish Freehand";
-        PlanCanvas.Cursor = Cursors.Pen;
+        UpdatePlanCanvasCursor();
         ActionLogService.Instance.Log(LogCategory.Edit, "Freehand conduit tool activated");
     }
 
@@ -98,7 +99,7 @@ public partial class MainWindow
         _isFreehandDrawing = false;
         FreehandConduitButton.Background = System.Windows.SystemColors.ControlBrush;
         FreehandConduitButton.Content = "Freehand Conduit";
-        PlanCanvas.Cursor = Cursors.Arrow;
+        UpdatePlanCanvasCursor();
         ClearFreehandPreview();
 
         if (run != null)
