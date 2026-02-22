@@ -66,7 +66,7 @@ public class MainViewModel : INotifyPropertyChanged
         get => _gridSize;
         set
         {
-            _gridSize = value;
+            _gridSize = value > 0 ? value : 0.1;
             OnPropertyChanged();
         }
     }
@@ -110,12 +110,11 @@ public class MainViewModel : INotifyPropertyChanged
     
     private void InitializeLibrary()
     {
-        LibraryComponents.Add(new ConduitComponent());
-        LibraryComponents.Add(new BoxComponent());
-        LibraryComponents.Add(new PanelComponent());
-        LibraryComponents.Add(new SupportComponent());
-        LibraryComponents.Add(new CableTrayComponent());
-        LibraryComponents.Add(new HangerComponent());
+        LibraryComponents.Clear();
+        foreach (var template in ElectricalComponentCatalog.CreateLibraryTemplates())
+        {
+            LibraryComponents.Add(template);
+        }
     }
     
     private void InitializeLayers()
@@ -128,22 +127,21 @@ public class MainViewModel : INotifyPropertyChanged
     public void AddComponent(ComponentType type)
     {
         ActionLogService.Instance.Log(LogCategory.Component, "Adding component", $"Type: {type}");
-        ElectricalComponent component = type switch
-        {
-            ComponentType.Conduit => new ConduitComponent(),
-            ComponentType.Box => new BoxComponent(),
-            ComponentType.Panel => new PanelComponent(),
-            ComponentType.Support => new SupportComponent(),
-            ComponentType.CableTray => new CableTrayComponent(),
-            ComponentType.Hanger => new HangerComponent(),
-            _ => throw new ArgumentException("Invalid component type")
-        };
-        
+        var component = ElectricalComponentCatalog.CreateDefaultComponent(type);
+        AddComponentInstance(component);
+    }
+
+    public void AddComponentFromTemplate(ElectricalComponent template)
+    {
+        var component = ElectricalComponentCatalog.CloneTemplate(template);
+        AddComponentInstance(component);
+    }
+
+    private void AddComponentInstance(ElectricalComponent component)
+    {
         if (ActiveLayer != null)
-        {
             component.LayerId = ActiveLayer.Id;
-        }
-        
+
         var action = new AddComponentAction(Components, component);
         UndoRedo.Execute(action);
         SelectedComponent = component;

@@ -15,11 +15,12 @@ public class BomExportService
     public string GenerateBomCsv(IEnumerable<ElectricalComponent> components)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Item,Name,Type,Material,Width,Height,Depth,Elevation,Quantity");
+        sb.AppendLine("Item,Name,Type,Manufacturer,PartNumber,Material,Width,Height,Depth,Elevation,Quantity");
         
         int item = 1;
         var grouped = components
             .GroupBy(c => new { c.Type, c.Name, c.Parameters.Material, 
+                c.Parameters.Manufacturer, c.Parameters.PartNumber,
                 c.Parameters.Width, c.Parameters.Height, c.Parameters.Depth,
                 c.Parameters.Elevation });
         
@@ -29,6 +30,8 @@ public class BomExportService
             sb.AppendLine($"{item}," +
                 $"\"{EscapeCsv(first.Name)}\"," +
                 $"{first.Type}," +
+                $"\"{EscapeCsv(first.Parameters.Manufacturer)}\"," +
+                $"\"{EscapeCsv(first.Parameters.PartNumber)}\"," +
                 $"\"{EscapeCsv(first.Parameters.Material)}\"," +
                 $"{first.Parameters.Width:F2}," +
                 $"{first.Parameters.Height:F2}," +

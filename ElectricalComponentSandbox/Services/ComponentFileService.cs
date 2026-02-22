@@ -44,7 +44,9 @@ public class ComponentFileService
                 TypeNameHandling = includeTypeInfo ? TypeNameHandling.Auto : TypeNameHandling.None,
                 Formatting = Formatting.Indented
             };
-            var json = JsonConvert.SerializeObject(component, settings);
+            var json = includeTypeInfo
+                ? JsonConvert.SerializeObject(component, typeof(ElectricalComponent), settings)
+                : JsonConvert.SerializeObject(component, settings);
             await File.WriteAllTextAsync(filePath, json);
         }
         catch (Exception ex)

@@ -12,7 +12,7 @@ public class BomExportServiceTests
         var service = new BomExportService();
         var csv = service.GenerateBomCsv(Array.Empty<ElectricalComponent>());
 
-        Assert.Contains("Item,Name,Type,Material,Width,Height,Depth,Elevation,Quantity", csv);
+        Assert.Contains("Item,Name,Type,Manufacturer,PartNumber,Material,Width,Height,Depth,Elevation,Quantity", csv);
         var lines = csv.Split('\n', StringSplitOptions.RemoveEmptyEntries);
         Assert.Single(lines);
     }

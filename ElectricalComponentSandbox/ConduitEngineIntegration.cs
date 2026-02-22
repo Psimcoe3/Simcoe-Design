@@ -37,6 +37,8 @@ public partial class MainWindow
 
     private void FreehandConduit_Click(object sender, RoutedEventArgs e)
     {
+        ExitSketchModes();
+
         if (_isFreehandDrawing)
         {
             FinishFreehandConduit();
@@ -126,6 +128,9 @@ public partial class MainWindow
         if (_conduitVm == null)
             return;
 
+        Brush defaultBrush = Brushes.DodgerBlue;
+        var overrideBrushes = new Dictionary<string, Brush>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var run in ConduitEngine.Store.GetAllRuns())
         {
             foreach (var seg in run.GetSegments(ConduitEngine.Store))
@@ -134,16 +139,24 @@ public partial class MainWindow
                 if (data.Overrides?.IsHidden == true)
                     continue;
 
-                Brush brush = new SolidColorBrush(Color.FromRgb(0, 120, 215));
-                if (!string.IsNullOrWhiteSpace(data.Overrides?.ColorOverride))
+                var colorOverride = data.Overrides?.ColorOverride;
+                Brush brush = defaultBrush;
+                if (!string.IsNullOrWhiteSpace(colorOverride))
                 {
-                    try
+                    if (!overrideBrushes.TryGetValue(colorOverride, out brush!))
                     {
-                        brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(data.Overrides.ColorOverride));
-                    }
-                    catch
-                    {
-                        // Keep default color if override parsing fails.
+                        try
+                        {
+                            var parsedBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(colorOverride));
+                            parsedBrush.Freeze();
+                            brush = parsedBrush;
+                        }
+                        catch
+                        {
+                            brush = defaultBrush;
+                        }
+
+                        overrideBrushes[colorOverride] = brush;
                     }
                 }
 

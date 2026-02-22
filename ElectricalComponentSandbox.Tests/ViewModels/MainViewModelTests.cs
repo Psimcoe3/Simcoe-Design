@@ -11,8 +11,13 @@ public class MainViewModelTests
     public void Constructor_InitializesLibraryComponents()
     {
         var vm = new MainViewModel();
+        var expectedTemplates = ElectricalComponentCatalog.CreateLibraryTemplates();
 
-        Assert.Equal(6, vm.LibraryComponents.Count);
+        Assert.Equal(expectedTemplates.Count, vm.LibraryComponents.Count);
+        foreach (var template in expectedTemplates)
+        {
+            Assert.Contains(vm.LibraryComponents, c => c.Type == template.Type && c.Name == template.Name);
+        }
         Assert.Contains(vm.LibraryComponents, c => c.Type == ComponentType.Conduit);
         Assert.Contains(vm.LibraryComponents, c => c.Type == ComponentType.Box);
         Assert.Contains(vm.LibraryComponents, c => c.Type == ComponentType.Panel);
@@ -227,6 +232,16 @@ public class MainViewModelTests
         vm.GridSize = 5.0;
 
         Assert.Equal(nameof(vm.GridSize), propertyName);
+    }
+
+    [Fact]
+    public void GridSize_SetToZero_ClampsToMinimum()
+    {
+        var vm = new MainViewModel();
+
+        vm.GridSize = 0;
+
+        Assert.Equal(0.1, vm.GridSize);
     }
 
     [Fact]

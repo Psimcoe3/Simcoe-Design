@@ -11,6 +11,7 @@ public abstract class ElectricalComponent
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = string.Empty;
     public ComponentType Type { get; set; }
+    public string VisualProfile { get; set; } = string.Empty;
     
     // Transformation properties
     public Point3D Position { get; set; }
@@ -42,7 +43,13 @@ public class ComponentParameters
     public double Width { get; set; } = 1.0;
     public double Height { get; set; } = 1.0;
     public double Depth { get; set; } = 1.0;
+    public double? CatalogWidth { get; set; }
+    public double? CatalogHeight { get; set; }
+    public double? CatalogDepth { get; set; }
     public string Material { get; set; } = "Steel";
     public double Elevation { get; set; } = 0.0;
     public string Color { get; set; } = "#808080";
+    public string Manufacturer { get; set; } = string.Empty;
+    public string PartNumber { get; set; } = string.Empty;
+    public string ReferenceUrl { get; set; } = string.Empty;
 }

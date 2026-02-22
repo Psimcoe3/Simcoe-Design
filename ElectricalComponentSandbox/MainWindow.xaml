@@ -16,6 +16,11 @@
     <!-- Value Converters -->
     <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
     <converters:NotNullToVisibilityConverter x:Key="NotNullToVisibilityConverter"/>
+    <SolidColorBrush x:Key="MobilePrimaryBrush" Color="#007AFF"/>
+    <SolidColorBrush x:Key="MobileSurfaceBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="MobileSurfaceAltBrush" Color="#F2F2F7"/>
+    <SolidColorBrush x:Key="MobileBorderBrush" Color="#C6C6C8"/>
+    <SolidColorBrush x:Key="MobileMutedTextBrush" Color="#8E8E93"/>
         
         <Style TargetType="Button">
             <Setter Property="Margin" Value="5"/>
@@ -28,11 +33,31 @@
             <Setter Property="Margin" Value="5"/>
             <Setter Property="Padding" Value="5"/>
         </Style>
+        <Style x:Key="MobileTopActionButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="MinWidth" Value="44"/>
+            <Setter Property="Margin" Value="2,0"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Foreground" Value="{StaticResource MobilePrimaryBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <Style x:Key="MobileNavButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Height" Value="60"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="Padding" Value="8,8"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource MobileMutedTextBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
     </Window.Resources>
     
     <DockPanel>
         <!-- Top Menu -->
-        <Menu DockPanel.Dock="Top">
+        <Menu x:Name="TopMenu" DockPanel.Dock="Top">
             <MenuItem Header="File">
                 <MenuItem Header="New Project" Click="NewProject_Click" InputGestureText="Ctrl+N"/>
                 <MenuItem Header="Open Project..." Click="OpenProject_Click" InputGestureText="Ctrl+O"/>
@@ -63,9 +88,11 @@
         </Menu>
         
         <!-- Toolbar -->
-        <ToolBar DockPanel.Dock="Top">
+        <ToolBar x:Name="DesktopToolBar" DockPanel.Dock="Top">
             <Button Content="Undo" Click="Undo_Click" ToolTip="Undo (Ctrl+Z)"/>
             <Button Content="Redo" Click="Redo_Click" ToolTip="Redo (Ctrl+Y)"/>
+            <Separator/>
+            <Button x:Name="MobileViewButton" Content="Mobile View" Click="MobileViewButton_Click" ToolTip="Switch to Mobile (iPhone) View"/>
             <Separator/>
             <Button Content="Conduit" Click="AddConduit_Click"/>
             <Button Content="Box" Click="AddBox_Click"/>
@@ -76,6 +103,9 @@
             <Separator/>
             <Button x:Name="DrawConduitButton" Content="Draw Conduit" Click="DrawConduit_Click" ToolTip="Click to place conduit vertices. Shift constrains to 0°/45°/90°. Double-click to finish."/>
             <Button x:Name="EditConduitPathButton" Content="Edit Conduit Path" Click="ToggleEditConduitPath_Click"/>
+            <Button x:Name="SketchLineButton" Content="Sketch Line" Click="SketchLine_Click" ToolTip="Draw a straight or multi-segment sketch line."/>
+            <Button x:Name="SketchRectangleButton" Content="Sketch Rectangle" Click="SketchRectangle_Click" ToolTip="Draw a sketch rectangle for box/panel conversion."/>
+            <Button x:Name="ConvertSketchButton" Content="Convert Sketch" Click="ConvertSketch_Click" ToolTip="Convert selected sketch into components."/>
             <Separator/>
             <Button x:Name="FreehandConduitButton" Content="Freehand Conduit" Click="FreehandConduit_Click" ToolTip="Freehand sketch conduit path."/>
             <Separator/>
@@ -108,17 +138,105 @@
                 <ComboBoxItem Content="Metric"/>
             </ComboBox>
         </ToolBar>
+
+        <!-- Mobile top app bar -->
+        <Border x:Name="MobileTopBar"
+                DockPanel.Dock="Top"
+                Background="{StaticResource MobileSurfaceBrush}"
+                BorderBrush="{StaticResource MobileBorderBrush}"
+                BorderThickness="0,0,0,1"
+                Visibility="Collapsed">
+            <Grid x:Name="MobileTopBarGrid" Height="52" Margin="8,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Grid.Column="0">
+                    <Button x:Name="MobileUndoButton" Content="Undo" Click="Undo_Click" Style="{StaticResource MobileTopActionButtonStyle}"/>
+                    <Button x:Name="MobileRedoButton" Content="Redo" Click="Redo_Click" Style="{StaticResource MobileTopActionButtonStyle}"/>
+                </StackPanel>
+                <TextBlock x:Name="MobileSectionTitleText"
+                           Grid.Column="1"
+                           Text="Canvas"
+                           FontSize="17"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal" Grid.Column="2" VerticalAlignment="Center">
+                    <Button x:Name="MobileAddTopButton"
+                            Content="Add"
+                            Click="MobileAddTopButton_Click"
+                            Style="{StaticResource MobileTopActionButtonStyle}">
+                        <Button.ContextMenu>
+                            <ContextMenu x:Name="MobileAddMenu">
+                                <MenuItem Header="Conduit" Click="AddConduit_Click"/>
+                                <MenuItem Header="Box" Click="AddBox_Click"/>
+                                <MenuItem Header="Panel" Click="AddPanel_Click"/>
+                                <MenuItem Header="Support" Click="AddSupport_Click"/>
+                                <MenuItem Header="Cable Tray" Click="AddCableTray_Click"/>
+                                <MenuItem Header="Hanger" Click="AddHanger_Click"/>
+                                <Separator/>
+                                <MenuItem Header="Sketch Line" Click="SketchLine_Click"/>
+                                <MenuItem Header="Sketch Rectangle" Click="SketchRectangle_Click"/>
+                                <MenuItem Header="Convert Sketch" Click="ConvertSketch_Click"/>
+                                <Separator/>
+                                <MenuItem Header="Draw Conduit" Click="DrawConduit_Click"/>
+                                <MenuItem Header="Freehand Conduit" Click="FreehandConduit_Click"/>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                    <Button x:Name="MobileMoreButton"
+                            Content="More"
+                            Click="MobileMoreButton_Click"
+                            Style="{StaticResource MobileTopActionButtonStyle}">
+                        <Button.ContextMenu>
+                            <ContextMenu x:Name="MobileMoreMenu">
+                                <MenuItem Header="Open Project..." Click="OpenProject_Click"/>
+                                <MenuItem Header="Save Project" Click="SaveProject_Click"/>
+                                <MenuItem Header="Import PDF Underlay..." Click="ImportPdf_Click"/>
+                                <Separator/>
+                                <MenuItem Header="2D Plan View" Click="Show2DView_Click"/>
+                                <MenuItem Header="3D Viewport" Click="Show3DView_Click"/>
+                                <Separator/>
+                                <MenuItem Header="Convert Sketch" Click="ConvertSketch_Click"/>
+                                <Separator/>
+                                <MenuItem Header="Delete Selected" Click="DeleteComponent_Click"/>
+                                <Separator/>
+                                <MenuItem x:Name="MobileThemeIosMenuItem" Header="Theme: iOS" IsCheckable="True" Click="MobileThemeIosMenuItem_Click"/>
+                                <MenuItem x:Name="MobileThemeAndroidMenuItem" Header="Theme: Android" IsCheckable="True" Click="MobileThemeAndroidMenuItem_Click"/>
+                                <MenuItem Header="Desktop View" Click="MobileViewButton_Click"/>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Mobile bottom navigation -->
+        <Border x:Name="MobileBottomNav"
+                DockPanel.Dock="Bottom"
+                Background="{StaticResource MobileSurfaceBrush}"
+                BorderBrush="{StaticResource MobileBorderBrush}"
+                BorderThickness="0,1,0,0"
+                Visibility="Collapsed">
+            <UniformGrid Columns="3" Rows="1">
+                <Button x:Name="MobileCanvasButton" Content="Canvas&#10;Plan" Click="MobileCanvasButton_Click" Style="{StaticResource MobileNavButtonStyle}"/>
+                <Button x:Name="MobileLibraryButton" Content="Library&#10;Parts" Click="MobileLibraryButton_Click" Style="{StaticResource MobileNavButtonStyle}"/>
+                <Button x:Name="MobilePropertiesButton" Content="Properties&#10;Edit" Click="MobilePropertiesButton_Click" Style="{StaticResource MobileNavButtonStyle}"/>
+            </UniformGrid>
+        </Border>
         
         <!-- Main Content -->
-        <Grid>
+        <Grid x:Name="MainContentGrid">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="200"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="300"/>
+                <ColumnDefinition x:Name="LibraryColumn" Width="200"/>
+                <ColumnDefinition x:Name="ViewportColumn" Width="*"/>
+                <ColumnDefinition x:Name="PropertiesColumn" Width="300"/>
             </Grid.ColumnDefinitions>
             
             <!-- Library Browser + Layers -->
-            <Border Grid.Column="0" BorderBrush="Gray" BorderThickness="0,0,1,0">
+            <Border x:Name="LibraryPanelContainer" Grid.Column="0" BorderBrush="Gray" BorderThickness="0,0,1,0">
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Top" Text="Component Library" 
                              FontWeight="Bold" FontSize="14" 
@@ -144,7 +262,7 @@
             </Border>
             
             <!-- 2D/3D Viewport Tab -->
-            <Border Grid.Column="1" BorderBrush="Gray" BorderThickness="0,0,1,0">
+            <Border x:Name="ViewportPanelContainer" Grid.Column="1" BorderBrush="Gray" BorderThickness="0,0,1,0">
                 <DockPanel>
                     <TabControl x:Name="ViewTabs" DockPanel.Dock="Top">
                         <!-- 3D Viewport Tab -->
@@ -175,7 +293,7 @@
                             <Grid>
                                 <!-- PDF underlay controls -->
                                 <DockPanel>
-                                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" 
+                                    <StackPanel x:Name="PdfControlsPanel" DockPanel.Dock="Top" Orientation="Horizontal" 
                                               Background="#F0F0F0" Margin="0">
                                         <TextBlock Text="PDF:" VerticalAlignment="Center" Margin="5"/>
                                         <Button Content="Import PDF" Click="ImportPdf_Click" Padding="5,2" Margin="2"/>
@@ -192,10 +310,16 @@
                                     <!-- 2D Canvas with pan/zoom -->
                                     <ScrollViewer x:Name="PlanScrollViewer" 
                                                 HorizontalScrollBarVisibility="Auto"
-                                                VerticalScrollBarVisibility="Auto">
+                                                VerticalScrollBarVisibility="Auto"
+                                                PanningMode="Both"
+                                                PanningDeceleration="0.001"
+                                                PanningRatio="1">
                                         <Canvas x:Name="PlanCanvas" 
                                               Width="2000" Height="2000"
                                               Background="White"
+                                              IsManipulationEnabled="True"
+                                              ManipulationStarting="PlanCanvas_ManipulationStarting"
+                                              ManipulationDelta="PlanCanvas_ManipulationDelta"
                                               MouseLeftButtonDown="PlanCanvas_MouseLeftButtonDown"
                                               MouseMove="PlanCanvas_MouseMove"
                                               MouseLeftButtonUp="PlanCanvas_MouseLeftButtonUp"
@@ -213,7 +337,7 @@
             </Border>
             
             <!-- Properties Panel -->
-            <Border Grid.Column="2" BorderBrush="Gray" BorderThickness="0">
+            <Border x:Name="PropertiesPanelContainer" Grid.Column="2" BorderBrush="Gray" BorderThickness="0">
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Top" Text="Properties" 
                              FontWeight="Bold" FontSize="14" 
@@ -284,6 +408,16 @@
                                 
                                 <TextBlock Text="Color:"/>
                                 <TextBox x:Name="ColorTextBox"/>
+
+                                <TextBlock Text="Manufacturer:"/>
+                                <TextBox x:Name="ManufacturerTextBox"/>
+
+                                <TextBlock Text="Part Number:"/>
+                                <TextBox x:Name="PartNumberTextBox"/>
+
+                                <TextBlock Text="Reference URL:"/>
+                                <TextBox x:Name="ReferenceUrlTextBox"/>
+                                <Button Content="Open Reference" Click="OpenReference_Click" Margin="0,4,0,0"/>
                                 
                                 <!-- Conduit-specific Properties -->
                                 <StackPanel x:Name="ConduitProperties" Visibility="Collapsed">
@@ -303,6 +437,7 @@
                     </ScrollViewer>
                 </DockPanel>
             </Border>
+
         </Grid>
     </DockPanel>
 </Window>

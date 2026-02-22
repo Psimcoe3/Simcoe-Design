@@ -1,10 +1,13 @@
 ﻿using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Media3D;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using System.Windows.Shapes;
+using System.Diagnostics;
 using Microsoft.Win32;
 using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.ViewModels;
@@ -29,12 +32,53 @@ public partial class MainWindow : Window
     private BitmapSource? _cachedPdfBitmap;
     private string? _cachedPdfPath;
     private int _cachedPdfPage = -1;
+    private bool _isMobileView = false;
+    private WindowState _desktopWindowState = WindowState.Maximized;
+    private double _desktopWidth = 1400;
+    private double _desktopHeight = 800;
+    private GridLength _desktopLibraryColumnWidth = new GridLength(200);
+    private GridLength _desktopViewportColumnWidth = new GridLength(1, GridUnitType.Star);
+    private GridLength _desktopPropertiesColumnWidth = new GridLength(300);
+    private MobilePane _activeMobilePane = MobilePane.Canvas;
+    private MobileTheme _mobileTheme = MobileTheme.IOS;
+    private const double MobileWindowWidth = 430;
+    private const double MobileWindowHeight = 932;
+    private const double MobileMinCanvasScale = 0.2;
+    private const double MobileMaxCanvasScale = 12.0;
     
     
     // 2D canvas state
     private bool _isDragging2D = false;
     private FrameworkElement? _draggedElement2D = null;
     private readonly Dictionary<FrameworkElement, ElectricalComponent> _canvasToComponentMap = new();
+    private readonly Dictionary<FrameworkElement, int> _conduitBendHandleToIndexMap = new();
+    private readonly Dictionary<FrameworkElement, SketchPrimitive> _canvasToSketchMap = new();
+    private readonly List<Point> _snapEndpointsCache = new();
+    private readonly List<(Point A, Point B)> _snapSegmentsCache = new();
+    private Point _dragStartCanvasPosition;
+    private bool _mobileSelectionCandidate = false;
+    private bool _isDraggingConduitBend2D = false;
+    private int _draggingConduitBendIndex2D = -1;
+    private ConduitComponent? _draggingConduit2D = null;
+    private readonly List<SketchPrimitive> _sketchPrimitives = new();
+    private SketchPrimitive? _selectedSketchPrimitive = null;
+    private bool _isSketchLineMode = false;
+    private bool _isSketchRectangleMode = false;
+    private readonly List<Point> _sketchDraftLinePoints = new();
+    private Line? _sketchRubberBandLine = null;
+    private Rectangle? _sketchRectanglePreview = null;
+    private bool _isSketchRectangleDragging = false;
+    private Point _sketchRectangleStartPoint;
+    private ConduitVisualHost? _conduitVisualHost;
+    private DrawingBrush? _cachedGridBrush;
+    private double _cachedGridSizePx = -1;
+    private readonly DispatcherTimer _interactionQualityRestoreTimer = new();
+    private DateTime _lastInteractionInputUtc = DateTime.MinValue;
+    private bool _isFastInteractionMode = false;
+    private bool _queuedSceneRefresh = false;
+    private bool _pending2DRefresh = false;
+    private bool _pending3DRefresh = false;
+    private bool _pendingPropertiesRefresh = false;
     
     // Conduit drawing mode (Bluebeam-style polyline tool)
     private bool _isDrawingConduit = false;
@@ -49,15 +93,39 @@ public partial class MainWindow : Window
     private const double BendPointHandleRadius = 0.3;
     private static readonly Color EditModeButtonColor = Color.FromRgb(255, 200, 100);
     private static readonly Color BendPointHandleColor = Colors.Orange;
+    private const double Conduit2DHandleRadius = 6.0;
+    private const double Conduit2DInsertThreshold = 12.0;
+    private const double Conduit2DHitThreshold = 10.0;
+    private const double CatalogDimensionTolerance = 0.0005;
     
     // Constants for smooth conduit rendering
     private const int MaxSegmentResolution = 50;
     private const int MinSegmentResolution = 5;
     private const double ResolutionScaleFactor = 10.0;
+
+    private enum MobilePane
+    {
+        Canvas,
+        Library,
+        Properties
+    }
+
+    private enum MobileTheme
+    {
+        IOS,
+        AndroidMaterial
+    }
+
+    private abstract record SketchPrimitive(string Id);
+    private sealed record SketchLinePrimitive(string Id, List<Point> Points) : SketchPrimitive(Id);
+    private sealed record SketchRectanglePrimitive(string Id, Point Start, Point End) : SketchPrimitive(Id);
     
     public MainWindow()
     {
         InitializeComponent();
+        SetMobileTheme(MobileTheme.IOS);
+        _interactionQualityRestoreTimer.Interval = TimeSpan.FromMilliseconds(120);
+        _interactionQualityRestoreTimer.Tick += InteractionQualityRestoreTimer_Tick;
         _viewModel = new MainViewModel();
         DataContext = _viewModel;
         
@@ -112,20 +180,84 @@ public partial class MainWindow : Window
         ActionLogService.Instance.Log(LogCategory.Input, "Key press", $"Key: {modStr}{e.Key}");
         base.OnPreviewKeyDown(e);
     }
+
+    private void BeginFastInteractionMode()
+    {
+        _lastInteractionInputUtc = DateTime.UtcNow;
+        if (!_isFastInteractionMode)
+        {
+            System.Windows.Media.RenderOptions.SetBitmapScalingMode(PlanCanvas, BitmapScalingMode.LowQuality);
+            _isFastInteractionMode = true;
+        }
+
+        if (!_interactionQualityRestoreTimer.IsEnabled)
+            _interactionQualityRestoreTimer.Start();
+    }
+
+    private void InteractionQualityRestoreTimer_Tick(object? sender, EventArgs e)
+    {
+        if ((DateTime.UtcNow - _lastInteractionInputUtc).TotalMilliseconds < 180)
+            return;
+
+        _interactionQualityRestoreTimer.Stop();
+        if (_isFastInteractionMode)
+        {
+            System.Windows.Media.RenderOptions.SetBitmapScalingMode(PlanCanvas, BitmapScalingMode.HighQuality);
+            _isFastInteractionMode = false;
+        }
+    }
+
+    private void QueueSceneRefresh(bool update2D = false, bool update3D = false, bool updateProperties = false)
+    {
+        _pending2DRefresh |= update2D;
+        _pending3DRefresh |= update3D;
+        _pendingPropertiesRefresh |= updateProperties;
+
+        if (_queuedSceneRefresh) return;
+        _queuedSceneRefresh = true;
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
+        {
+            _queuedSceneRefresh = false;
+            var do2D = _pending2DRefresh;
+            var do3D = _pending3DRefresh;
+            var doProperties = _pendingPropertiesRefresh;
+            _pending2DRefresh = false;
+            _pending3DRefresh = false;
+            _pendingPropertiesRefresh = false;
+
+            if (do3D) UpdateViewport();
+            if (do2D) Update2DCanvas();
+            if (doProperties) UpdatePropertiesPanel();
+        }));
+    }
     
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(MainViewModel.SelectedComponent))
         {
-            UpdatePropertiesPanel();
-            UpdateViewport();
-            Update2DCanvas();
+            QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
         }
         else if (e.PropertyName == nameof(MainViewModel.Components))
         {
-            UpdateViewport();
-            Update2DCanvas();
+            QueueSceneRefresh(update2D: true, update3D: true);
         }
+    }
+
+    private Dictionary<string, bool> BuildLayerVisibilityLookup()
+    {
+        var lookup = new Dictionary<string, bool>(_viewModel.Layers.Count, StringComparer.Ordinal);
+        foreach (var layer in _viewModel.Layers)
+        {
+            lookup[layer.Id] = layer.IsVisible;
+        }
+
+        return lookup;
+    }
+
+    private static bool IsLayerVisible(IReadOnlyDictionary<string, bool> layerVisibilityById, string layerId)
+    {
+        return !layerVisibilityById.TryGetValue(layerId, out var visible) || visible;
     }
     
     private void UpdatePropertiesPanel()
@@ -148,12 +280,15 @@ public partial class MainWindow : Window
         RotationYTextBox.Text = component.Rotation.Y.ToString("F2");
         RotationZTextBox.Text = component.Rotation.Z.ToString("F2");
         
-        WidthTextBox.Text = component.Parameters.Width.ToString("F2");
-        HeightTextBox.Text = component.Parameters.Height.ToString("F2");
-        DepthTextBox.Text = component.Parameters.Depth.ToString("F2");
+        WidthTextBox.Text = FormatDimension(component.Parameters.Width);
+        HeightTextBox.Text = FormatDimension(component.Parameters.Height);
+        DepthTextBox.Text = FormatDimension(component.Parameters.Depth);
         MaterialTextBox.Text = component.Parameters.Material;
         ElevationTextBox.Text = component.Parameters.Elevation.ToString("F2");
         ColorTextBox.Text = component.Parameters.Color;
+        ManufacturerTextBox.Text = component.Parameters.Manufacturer;
+        PartNumberTextBox.Text = component.Parameters.PartNumber;
+        ReferenceUrlTextBox.Text = component.Parameters.ReferenceUrl;
         
         // Set layer combo
         var layer = _viewModel.Layers.FirstOrDefault(l => l.Id == component.LayerId);
@@ -188,27 +323,32 @@ public partial class MainWindow : Window
         MaterialTextBox.Text = string.Empty;
         ElevationTextBox.Text = string.Empty;
         ColorTextBox.Text = string.Empty;
+        ManufacturerTextBox.Text = string.Empty;
+        PartNumberTextBox.Text = string.Empty;
+        ReferenceUrlTextBox.Text = string.Empty;
     }
+
+    private static string FormatDimension(double value) => value.ToString("0.#####");
     
     private void UpdateViewport()
     {
         // Clear existing models and mapping
-        var itemsToRemove = Viewport.Children.OfType<ModelVisual3D>()
-            .Where(m => m.Content is GeometryModel3D).ToList();
-        
-        foreach (var item in itemsToRemove)
+        for (int i = Viewport.Children.Count - 1; i >= 0; i--)
         {
-            Viewport.Children.Remove(item);
+            if (Viewport.Children[i] is ModelVisual3D visual && visual.Content is GeometryModel3D)
+            {
+                Viewport.Children.RemoveAt(i);
+            }
         }
         
         _visualToComponentMap.Clear();
+        var layerVisibilityById = BuildLayerVisibilityLookup();
         
         // Add components to viewport
         foreach (var component in _viewModel.Components)
         {
-            // Check layer visibility
-            var layer = _viewModel.Layers.FirstOrDefault(l => l.Id == component.LayerId);
-            if (layer != null && !layer.IsVisible) continue;
+            if (!IsLayerVisible(layerVisibilityById, component.LayerId))
+                continue;
             
             AddComponentToViewport(component);
         }
@@ -221,7 +361,7 @@ public partial class MainWindow : Window
         var visual = new ModelVisual3D();
         var geometry = CreateComponentGeometry(component);
         
-        var color = (Color)ColorConverter.ConvertFromString(component.Parameters.Color);
+        var color = ResolveComponentColor(component, Colors.SlateGray);
         var material = new DiffuseMaterial(new SolidColorBrush(color));
         
         Material appliedMaterial;
@@ -257,83 +397,458 @@ public partial class MainWindow : Window
     private MeshGeometry3D CreateComponentGeometry(ElectricalComponent component)
     {
         var builder = new MeshBuilder();
+        var profile = ElectricalComponentCatalog.GetProfile(component);
         
         switch (component.Type)
         {
             case ComponentType.Conduit:
                 if (component is ConduitComponent conduit)
                 {
-                    CreateConduitGeometry(builder, conduit);
+                    CreateConduitGeometry(builder, conduit, profile);
                 }
                 break;
                 
             case ComponentType.Hanger:
                 if (component is HangerComponent hanger)
                 {
-                    // Hanger rendered as a vertical rod
-                    builder.AddCylinder(
-                        new Point3D(0, 0, 0),
-                        new Point3D(0, hanger.RodLength, 0),
-                        hanger.RodDiameter, 12);
+                    CreateHangerGeometry(builder, hanger, profile);
                 }
                 break;
                 
             case ComponentType.CableTray:
                 if (component is CableTrayComponent tray)
                 {
-                    // Cable tray rendered as an open-top box (U-channel)
-                    var pathPts = tray.GetPathPoints();
-                    if (pathPts.Count >= 2)
-                    {
-                        for (int i = 0; i < pathPts.Count - 1; i++)
-                        {
-                            var p1 = pathPts[i];
-                            var p2 = pathPts[i + 1];
-                            var dir = p2 - p1;
-                            var segLen = dir.Length;
-                            builder.AddBox(
-                                new Point3D((p1.X + p2.X) / 2, (p1.Y + p2.Y) / 2, (p1.Z + p2.Z) / 2),
-                                tray.TrayWidth, tray.TrayDepth, segLen);
-                        }
-                    }
-                    else
-                    {
-                        builder.AddBox(new Point3D(0, 0, 0), tray.TrayWidth, tray.TrayDepth, tray.Length);
-                    }
+                    CreateCableTrayGeometry(builder, tray, profile);
                 }
                 break;
                 
             case ComponentType.Box:
+                if (component is BoxComponent box)
+                    CreateBoxGeometry(builder, box, profile);
+                else
+                    builder.AddBox(new Point3D(0, 0, 0), component.Parameters.Width, component.Parameters.Height, component.Parameters.Depth);
+                break;
+
             case ComponentType.Panel:
+                if (component is PanelComponent panel)
+                    CreatePanelGeometry(builder, panel, profile);
+                else
+                    builder.AddBox(new Point3D(0, 0, 0), component.Parameters.Width, component.Parameters.Height, component.Parameters.Depth);
+                break;
+
             case ComponentType.Support:
-                builder.AddBox(new Point3D(0, 0, 0), 
-                    component.Parameters.Width, 
-                    component.Parameters.Height, 
-                    component.Parameters.Depth);
+                if (component is SupportComponent support)
+                    CreateSupportGeometry(builder, support, profile);
+                else
+                    builder.AddBox(new Point3D(0, 0, 0), component.Parameters.Width, component.Parameters.Height, component.Parameters.Depth);
                 break;
         }
         
         return builder.ToMesh();
     }
     
-    private void CreateConduitGeometry(MeshBuilder builder, ConduitComponent conduit)
+    private void CreateConduitGeometry(MeshBuilder builder, ConduitComponent conduit, string profile)
     {
         var pathPoints = conduit.GetPathPoints();
-        
-        if (pathPoints.Count == 2)
-        {
-            builder.AddCylinder(pathPoints[0], pathPoints[1], conduit.Diameter, 20);
+        if (pathPoints.Count < 2)
             return;
-        }
-        
-        var smoothPoints = GenerateSmoothPath(pathPoints, conduit.BendRadius);
-        
-        if (smoothPoints.Count >= 2)
+
+        var renderPath = pathPoints.Count == 2
+            ? pathPoints
+            : GenerateSmoothPath(pathPoints, conduit.BendRadius);
+        if (renderPath.Count < 2)
+            return;
+
+        var radius = Math.Max(0.03, conduit.Diameter * 0.5);
+        var thetaDiv = 20;
+        switch (profile)
         {
-            for (int i = 0; i < smoothPoints.Count - 1; i++)
+            case ElectricalComponentCatalog.Profiles.ConduitPvc:
+                radius *= 1.08;
+                thetaDiv = 16;
+                break;
+            case ElectricalComponentCatalog.Profiles.ConduitRigidMetal:
+                radius *= 1.18;
+                thetaDiv = 24;
+                break;
+            case ElectricalComponentCatalog.Profiles.ConduitFlexibleMetal:
+                radius *= 0.95;
+                thetaDiv = 14;
+                break;
+        }
+
+        for (int i = 0; i < renderPath.Count - 1; i++)
+        {
+            var start = renderPath[i];
+            var end = renderPath[i + 1];
+            builder.AddCylinder(start, end, radius, thetaDiv);
+        }
+
+        for (int i = 1; i < renderPath.Count - 1; i++)
+        {
+            var couplingRadius = profile == ElectricalComponentCatalog.Profiles.ConduitRigidMetal
+                ? radius * 1.24
+                : radius * 1.14;
+            builder.AddSphere(renderPath[i], couplingRadius, 10, 8);
+        }
+
+        if (profile == ElectricalComponentCatalog.Profiles.ConduitFlexibleMetal)
+        {
+            AddFlexibleConduitRibbing(builder, renderPath, radius);
+        }
+        else if (profile == ElectricalComponentCatalog.Profiles.ConduitRigidMetal)
+        {
+            AddRigidConduitEndCollars(builder, renderPath, radius);
+        }
+    }
+
+    private static void AddFlexibleConduitRibbing(MeshBuilder builder, IReadOnlyList<Point3D> points, double baseRadius)
+    {
+        const double spacing = 0.45;
+        var ribRadius = baseRadius * 1.06;
+
+        for (int i = 0; i < points.Count - 1; i++)
+        {
+            var segment = points[i + 1] - points[i];
+            var length = segment.Length;
+            if (length < 1e-4)
+                continue;
+
+            var dir = segment;
+            dir.Normalize();
+            var ribCount = (int)(length / spacing);
+            for (int rib = 1; rib < ribCount; rib++)
             {
-                builder.AddCylinder(smoothPoints[i], smoothPoints[i + 1], conduit.Diameter, 20);
+                var distance = rib * spacing;
+                var center = points[i] + dir * distance;
+                var half = dir * 0.04;
+                builder.AddCylinder(center - half, center + half, ribRadius, 8);
             }
+        }
+    }
+
+    private static void AddRigidConduitEndCollars(MeshBuilder builder, IReadOnlyList<Point3D> points, double radius)
+    {
+        if (points.Count < 2)
+            return;
+
+        var collarLength = Math.Max(0.08, radius * 0.9);
+        AddEndCollar(builder, points[0], points[1], collarLength, radius * 1.26);
+        AddEndCollar(builder, points[^1], points[^2], collarLength, radius * 1.26);
+    }
+
+    private static void AddEndCollar(MeshBuilder builder, Point3D endPoint, Point3D adjacentPoint, double length, double radius)
+    {
+        var dir = endPoint - adjacentPoint;
+        if (dir.Length < 1e-5)
+            return;
+
+        dir.Normalize();
+        var inner = endPoint - dir * length;
+        builder.AddCylinder(inner, endPoint, radius, 14);
+    }
+
+    private static void CreateBoxGeometry(MeshBuilder builder, BoxComponent box, string profile)
+    {
+        var width = Math.Max(0.1, box.Parameters.Width);
+        var height = Math.Max(0.1, box.Parameters.Height);
+        var depth = Math.Max(0.1, box.Parameters.Depth);
+        var center = new Point3D(0, height / 2, 0);
+
+        builder.AddBox(center, width, height, depth);
+
+        switch (profile)
+        {
+            case ElectricalComponentCatalog.Profiles.BoxPull:
+                AddBoxKnockouts(builder, width, height, depth, 3, 0.9);
+                builder.AddBox(new Point3D(0, height + 0.08, 0), width * 0.92, 0.16, depth * 0.92);
+                break;
+            case ElectricalComponentCatalog.Profiles.BoxFloor:
+                builder.AddCylinder(
+                    new Point3D(0, height + 0.02, 0),
+                    new Point3D(0, height + 0.16, 0),
+                    Math.Min(width, depth) * 0.3,
+                    20);
+                builder.AddCylinder(
+                    new Point3D(0, height + 0.16, 0),
+                    new Point3D(0, height + 0.3, 0),
+                    Math.Min(width, depth) * 0.08,
+                    14);
+                break;
+            case ElectricalComponentCatalog.Profiles.BoxDisconnectSwitch:
+                builder.AddBox(new Point3D(0, height * 0.65, depth * 0.52), width * 0.42, height * 0.38, 0.22);
+                builder.AddCylinder(
+                    new Point3D(width * 0.2, height * 0.65, depth * 0.62),
+                    new Point3D(width * 0.42, height * 0.65, depth * 0.62),
+                    Math.Min(width, height) * 0.06,
+                    14);
+                break;
+            default:
+                AddBoxKnockouts(builder, width, height, depth, 2, 1.0);
+                break;
+        }
+    }
+
+    private static void AddBoxKnockouts(MeshBuilder builder, double width, double height, double depth, int countPerSide, double scale)
+    {
+        var radius = Math.Max(0.06, Math.Min(width, depth) * 0.08 * scale);
+        var y = height * 0.55;
+        var zStep = depth / (countPerSide + 1);
+        var xStep = width / (countPerSide + 1);
+
+        for (int i = 1; i <= countPerSide; i++)
+        {
+            var z = -depth / 2 + zStep * i;
+            builder.AddCylinder(new Point3D(-width / 2 - 0.08, y, z), new Point3D(-width / 2 + 0.08, y, z), radius, 10);
+            builder.AddCylinder(new Point3D(width / 2 - 0.08, y, z), new Point3D(width / 2 + 0.08, y, z), radius, 10);
+        }
+
+        for (int i = 1; i <= countPerSide; i++)
+        {
+            var x = -width / 2 + xStep * i;
+            builder.AddCylinder(new Point3D(x, y, -depth / 2 - 0.08), new Point3D(x, y, -depth / 2 + 0.08), radius, 10);
+            builder.AddCylinder(new Point3D(x, y, depth / 2 - 0.08), new Point3D(x, y, depth / 2 + 0.08), radius, 10);
+        }
+    }
+
+    private static void CreatePanelGeometry(MeshBuilder builder, PanelComponent panel, string profile)
+    {
+        var width = Math.Max(1, panel.Parameters.Width);
+        var height = Math.Max(1, panel.Parameters.Height);
+        var depth = Math.Max(0.6, panel.Parameters.Depth);
+
+        switch (profile)
+        {
+            case ElectricalComponentCatalog.Profiles.PanelSwitchboard:
+                CreateSegmentedPanel(builder, width, height, depth, 4, true);
+                break;
+            case ElectricalComponentCatalog.Profiles.PanelMcc:
+                CreateSegmentedPanel(builder, width, height, depth, 3, false);
+                AddHorizontalCompartmentSeams(builder, width, height, depth, 5);
+                break;
+            case ElectricalComponentCatalog.Profiles.PanelLighting:
+                builder.AddBox(new Point3D(0, height / 2, 0), width, height, depth);
+                AddVerticalPanelSeams(builder, width, height, depth, 2);
+                AddPanelHandle(builder, width, height, depth, -width * 0.18);
+                break;
+            default:
+                builder.AddBox(new Point3D(0, height / 2, 0), width, height, depth);
+                AddVerticalPanelSeams(builder, width, height, depth, 3);
+                AddPanelHandle(builder, width, height, depth, width * 0.2);
+                break;
+        }
+    }
+
+    private static void CreateSegmentedPanel(MeshBuilder builder, double width, double height, double depth, int sections, bool addCenterBus)
+    {
+        var sectionWidth = width / sections;
+        for (int i = 0; i < sections; i++)
+        {
+            var centerX = -width / 2 + sectionWidth * i + sectionWidth / 2;
+            builder.AddBox(new Point3D(centerX, height / 2, 0), sectionWidth * 0.96, height, depth);
+            AddPanelHandle(builder, width, height, depth, centerX + sectionWidth * 0.25);
+        }
+
+        if (addCenterBus)
+        {
+            builder.AddBox(new Point3D(0, height * 0.5, depth * 0.46), width * 0.04, height * 0.88, 0.2);
+        }
+    }
+
+    private static void AddVerticalPanelSeams(MeshBuilder builder, double width, double height, double depth, int seamCount)
+    {
+        for (int i = 1; i <= seamCount; i++)
+        {
+            var x = -width / 2 + width * i / (seamCount + 1);
+            builder.AddBox(new Point3D(x, height / 2, depth * 0.52), Math.Max(0.04, width * 0.01), height * 0.92, 0.08);
+        }
+    }
+
+    private static void AddHorizontalCompartmentSeams(MeshBuilder builder, double width, double height, double depth, int seamCount)
+    {
+        for (int i = 1; i <= seamCount; i++)
+        {
+            var y = height * i / (seamCount + 1);
+            builder.AddBox(new Point3D(0, y, depth * 0.52), width * 0.92, Math.Max(0.04, height * 0.008), 0.08);
+        }
+    }
+
+    private static void AddPanelHandle(MeshBuilder builder, double width, double height, double depth, double xOffset)
+    {
+        var clampX = Math.Max(-width * 0.46, Math.Min(width * 0.46, xOffset));
+        var y = height * 0.55;
+        var z = depth * 0.54;
+        builder.AddCylinder(
+            new Point3D(clampX, y - height * 0.08, z),
+            new Point3D(clampX, y + height * 0.08, z),
+            Math.Max(0.04, width * 0.012),
+            12);
+    }
+
+    private static void CreateSupportGeometry(MeshBuilder builder, SupportComponent support, string profile)
+    {
+        var width = Math.Max(0.08, support.Parameters.Width);
+        var height = Math.Max(0.08, support.Parameters.Height);
+        var length = Math.Max(0.2, support.Parameters.Depth);
+
+        switch (profile)
+        {
+            case ElectricalComponentCatalog.Profiles.SupportTrapeze:
+                var rodOffset = Math.Max(0.2, length * 0.35);
+                builder.AddBox(new Point3D(0, 0, 0), length, Math.Max(0.08, width), Math.Max(0.08, width));
+                builder.AddCylinder(
+                    new Point3D(-rodOffset, 0, 0),
+                    new Point3D(-rodOffset, Math.Max(1.2, height), 0),
+                    Math.Max(0.04, width * 0.35),
+                    12);
+                builder.AddCylinder(
+                    new Point3D(rodOffset, 0, 0),
+                    new Point3D(rodOffset, Math.Max(1.2, height), 0),
+                    Math.Max(0.04, width * 0.35),
+                    12);
+                break;
+
+            case ElectricalComponentCatalog.Profiles.SupportWallBracket:
+                var armLength = Math.Max(0.5, length);
+                var armThickness = Math.Max(0.08, width * 0.5);
+                builder.AddBox(new Point3D(0, height * 0.5, 0), armThickness, height, armLength);
+                builder.AddBox(new Point3D(armLength * 0.5, armThickness * 0.5, 0), armLength, armThickness, armThickness);
+                builder.AddCylinder(
+                    new Point3D(-armThickness * 0.45, height * 0.4, -armLength * 0.2),
+                    new Point3D(armThickness * 0.45, height * 0.4, -armLength * 0.2),
+                    armThickness * 0.28,
+                    10);
+                break;
+
+            default:
+                CreateUnistrutGeometry(builder, width, height, length);
+                break;
+        }
+    }
+
+    private static void CreateUnistrutGeometry(MeshBuilder builder, double width, double height, double length)
+    {
+        var channelWidth = Math.Max(0.12, width);
+        var channelHeight = Math.Max(0.12, height);
+        var wall = Math.Max(0.015, Math.Min(channelWidth, channelHeight) * 0.18);
+        var halfWidth = channelWidth / 2;
+        var halfHeight = channelHeight / 2;
+
+        builder.AddBox(new Point3D(-halfWidth + wall / 2, 0, 0), wall, channelHeight, length);
+        builder.AddBox(new Point3D(0, halfHeight - wall / 2, 0), channelWidth, wall, length);
+        builder.AddBox(new Point3D(0, -halfHeight + wall / 2, 0), channelWidth, wall, length);
+
+        var slotSpacing = Math.Max(0.5, length / 6);
+        var slotRadius = Math.Max(0.03, wall * 0.8);
+        for (double z = -length / 2 + slotSpacing; z < length / 2 - slotSpacing / 2; z += slotSpacing)
+        {
+            builder.AddCylinder(
+                new Point3D(-halfWidth - 0.01, 0, z),
+                new Point3D(-halfWidth + wall + 0.01, 0, z),
+                slotRadius,
+                10);
+        }
+    }
+
+    private static void CreateCableTrayGeometry(MeshBuilder builder, CableTrayComponent tray, string profile)
+    {
+        var points = tray.GetPathPoints();
+        if (points.Count < 2)
+        {
+            points = new List<Point3D>
+            {
+                new Point3D(0, 0, 0),
+                new Point3D(Math.Max(1.0, tray.Length), 0, 0)
+            };
+        }
+
+        var trayWidth = Math.Max(1.0, tray.TrayWidth);
+        var trayDepth = Math.Max(0.5, tray.TrayDepth);
+        var railRadius = Math.Max(0.08, trayDepth * 0.12);
+
+        for (int i = 0; i < points.Count - 1; i++)
+        {
+            var start = points[i];
+            var end = points[i + 1];
+            var dir = end - start;
+            var length = dir.Length;
+            if (length < 1e-4)
+                continue;
+
+            dir.Normalize();
+            var side = new Vector3D(-dir.Z, 0, dir.X);
+            if (side.Length < 1e-5)
+                side = new Vector3D(1, 0, 0);
+            else
+                side.Normalize();
+
+            var up = new Vector3D(0, 1, 0);
+            var halfW = trayWidth / 2;
+            var railYOffset = trayDepth * 0.45;
+            var leftStart = start + side * halfW + up * railYOffset;
+            var leftEnd = end + side * halfW + up * railYOffset;
+            var rightStart = start - side * halfW + up * railYOffset;
+            var rightEnd = end - side * halfW + up * railYOffset;
+
+            builder.AddCylinder(leftStart, leftEnd, railRadius, 12);
+            builder.AddCylinder(rightStart, rightEnd, railRadius, 12);
+
+            switch (profile)
+            {
+                case ElectricalComponentCatalog.Profiles.TrayWireMesh:
+                    AddTrayRungs(builder, start, dir, side, up, length, halfW, railYOffset, Math.Max(0.8, trayWidth * 0.3), railRadius * 0.65);
+                    AddTrayLongitudinalWires(builder, start, end, side, up, railYOffset * 0.5, halfW, railRadius * 0.5);
+                    break;
+                case ElectricalComponentCatalog.Profiles.TraySolidBottom:
+                    AddTrayRungs(builder, start, dir, side, up, length, halfW, 0.1, Math.Max(0.7, trayDepth * 0.35), railRadius * 0.75);
+                    builder.AddCylinder(start + up * 0.05, end + up * 0.05, railRadius * 0.85, 10);
+                    break;
+                default:
+                    AddTrayRungs(builder, start, dir, side, up, length, halfW, railYOffset, Math.Max(1.4, trayWidth * 0.5), railRadius * 0.75);
+                    break;
+            }
+        }
+    }
+
+    private static void AddTrayRungs(MeshBuilder builder, Point3D segmentStart, Vector3D direction, Vector3D side, Vector3D up,
+        double segmentLength, double halfWidth, double yOffset, double spacing, double radius)
+    {
+        for (double dist = spacing; dist < segmentLength; dist += spacing)
+        {
+            var center = segmentStart + direction * dist + up * yOffset;
+            builder.AddCylinder(center - side * halfWidth, center + side * halfWidth, Math.Max(0.04, radius), 10);
+        }
+    }
+
+    private static void AddTrayLongitudinalWires(MeshBuilder builder, Point3D start, Point3D end, Vector3D side, Vector3D up,
+        double yOffset, double halfWidth, double radius)
+    {
+        var offsetA = side * (halfWidth * 0.35) + up * yOffset;
+        var offsetB = side * (-halfWidth * 0.35) + up * yOffset;
+        builder.AddCylinder(start + offsetA, end + offsetA, Math.Max(0.03, radius), 10);
+        builder.AddCylinder(start + offsetB, end + offsetB, Math.Max(0.03, radius), 10);
+    }
+
+    private static void CreateHangerGeometry(MeshBuilder builder, HangerComponent hanger, string profile)
+    {
+        var rodDiameter = Math.Max(0.08, hanger.RodDiameter);
+        var rodLength = Math.Max(0.5, hanger.RodLength);
+        var start = new Point3D(0, 0, 0);
+        var end = new Point3D(0, rodLength, 0);
+
+        if (profile == ElectricalComponentCatalog.Profiles.HangerSeismicBrace)
+        {
+            var braceEnd = new Point3D(rodLength * 0.65, rodLength * 0.65, 0);
+            builder.AddCylinder(start, braceEnd, rodDiameter * 0.9, 12);
+            builder.AddBox(new Point3D(0, 0, 0), rodDiameter * 2.4, rodDiameter * 0.8, rodDiameter * 2.4);
+            builder.AddBox(new Point3D(braceEnd.X, braceEnd.Y, braceEnd.Z), rodDiameter * 2.0, rodDiameter * 0.8, rodDiameter * 2.0);
+        }
+        else
+        {
+            builder.AddCylinder(start, end, rodDiameter, 12);
+            var nutHeight = Math.Max(0.06, rodDiameter * 0.5);
+            builder.AddBox(new Point3D(0, rodLength * 0.82, 0), rodDiameter * 1.8, nutHeight, rodDiameter * 1.8);
+            builder.AddBox(new Point3D(0, rodLength * 0.22, 0), rodDiameter * 1.8, nutHeight, rodDiameter * 1.8);
         }
     }
     
@@ -390,21 +905,22 @@ public partial class MainWindow : Window
     {
         PlanCanvas.Children.Clear();
         _canvasToComponentMap.Clear();
+        _conduitBendHandleToIndexMap.Clear();
+        _canvasToSketchMap.Clear();
+        UpdatePlanCanvasBackground();
+        var layerVisibilityById = BuildLayerVisibilityLookup();
+        RebuildSnapGeometryCache(layerVisibilityById);
         
         // Draw PDF/Image underlay first (so it appears behind everything)
         DrawPdfUnderlay();
-        
-        // Draw grid if enabled
-        if (_viewModel.ShowGrid)
-        {
-            Draw2DGrid();
-        }
+        EnsureConduitVisualHost();
+        DrawConduitsWithVisualLayer(layerVisibilityById);
         
         // Draw components
         foreach (var component in _viewModel.Components)
         {
-            var layer = _viewModel.Layers.FirstOrDefault(l => l.Id == component.LayerId);
-            if (layer != null && !layer.IsVisible) continue;
+            if (!IsLayerVisible(layerVisibilityById, component.LayerId))
+                continue;
             
             Draw2DComponent(component);
         }
@@ -416,6 +932,54 @@ public partial class MainWindow : Window
 
         if (_isFreehandDrawing)
             DrawFreehandPreview();
+
+        if (_isEditingConduitPath && _viewModel.SelectedComponent is ConduitComponent selectedConduit)
+        {
+            EnsureConduitHasEditableEndPoint(selectedConduit);
+            DrawConduitEditHandles2D(selectedConduit);
+        }
+
+        DrawSketchPrimitives2D();
+
+        if (_isSketchLineMode)
+            DrawSketchLineDraft();
+
+        if (_isSketchRectangleMode && _isSketchRectangleDragging)
+            DrawSketchRectangleDraft();
+    }
+
+    private void RebuildSnapGeometryCache(IReadOnlyDictionary<string, bool> layerVisibilityById)
+    {
+        _snapEndpointsCache.Clear();
+        _snapSegmentsCache.Clear();
+
+        foreach (var comp in _viewModel.Components)
+        {
+            if (!IsLayerVisible(layerVisibilityById, comp.LayerId))
+                continue;
+
+            double cx = 1000 + comp.Position.X * 20;
+            double cy = 1000 - comp.Position.Z * 20;
+
+            if (comp is ConduitComponent conduit)
+            {
+                var pathPts = conduit.GetPathPoints();
+                for (int i = 0; i < pathPts.Count; i++)
+                {
+                    var cp = new Point(cx + pathPts[i].X * 20, cy - pathPts[i].Z * 20);
+                    _snapEndpointsCache.Add(cp);
+                    if (i > 0)
+                    {
+                        var prev = new Point(cx + pathPts[i - 1].X * 20, cy - pathPts[i - 1].Z * 20);
+                        _snapSegmentsCache.Add((prev, cp));
+                    }
+                }
+            }
+            else
+            {
+                _snapEndpointsCache.Add(new Point(cx, cy));
+            }
+        }
     }
 
     /// <summary>
@@ -592,102 +1156,207 @@ public partial class MainWindow : Window
     }
 
     
-    private void Draw2DGrid()
+    private void UpdatePlanCanvasBackground()
     {
-        double gridSize = _viewModel.GridSize * 20; // Scale for display
-        for (double x = 0; x < PlanCanvas.Width; x += gridSize)
+        if (!_viewModel.ShowGrid)
         {
-            var line = new Line
-            {
-                X1 = x, Y1 = 0, X2 = x, Y2 = PlanCanvas.Height,
-                Stroke = Brushes.LightGray, StrokeThickness = 0.5
-            };
-            PlanCanvas.Children.Add(line);
+            PlanCanvas.Background = Brushes.White;
+            return;
         }
-        for (double y = 0; y < PlanCanvas.Height; y += gridSize)
+
+        var gridSizePx = Math.Max(4.0, _viewModel.GridSize * 20.0);
+        if (_cachedGridBrush == null || Math.Abs(_cachedGridSizePx - gridSizePx) > 0.001)
         {
-            var line = new Line
-            {
-                X1 = 0, Y1 = y, X2 = PlanCanvas.Width, Y2 = y,
-                Stroke = Brushes.LightGray, StrokeThickness = 0.5
-            };
-            PlanCanvas.Children.Add(line);
+            _cachedGridBrush = CreateGridBrush(gridSizePx);
+            _cachedGridSizePx = gridSizePx;
         }
+
+        PlanCanvas.Background = _cachedGridBrush != null ? _cachedGridBrush : Brushes.White;
+    }
+
+    private static DrawingBrush CreateGridBrush(double gridSizePx)
+    {
+        var pen = new Pen(new SolidColorBrush(Color.FromRgb(232, 232, 232)), 0.6);
+        pen.Freeze();
+
+        var group = new DrawingGroup();
+        group.Children.Add(new GeometryDrawing(null, pen, new LineGeometry(new Point(0, 0), new Point(gridSizePx, 0))));
+        group.Children.Add(new GeometryDrawing(null, pen, new LineGeometry(new Point(0, 0), new Point(0, gridSizePx))));
+        group.Freeze();
+
+        var brush = new DrawingBrush(group)
+        {
+            TileMode = TileMode.Tile,
+            ViewportUnits = BrushMappingMode.Absolute,
+            Viewport = new Rect(0, 0, gridSizePx, gridSizePx),
+            ViewboxUnits = BrushMappingMode.Absolute,
+            Viewbox = new Rect(0, 0, gridSizePx, gridSizePx),
+            Stretch = Stretch.None,
+            AlignmentX = AlignmentX.Left,
+            AlignmentY = AlignmentY.Top
+        };
+
+        System.Windows.Media.RenderOptions.SetCachingHint(brush, CachingHint.Cache);
+        System.Windows.Media.RenderOptions.SetCacheInvalidationThresholdMinimum(brush, 0.5);
+        System.Windows.Media.RenderOptions.SetCacheInvalidationThresholdMaximum(brush, 2.0);
+        brush.Freeze();
+        return brush;
+    }
+
+    private void EnsureConduitVisualHost()
+    {
+        if (_conduitVisualHost == null)
+        {
+            _conduitVisualHost = new ConduitVisualHost();
+            Canvas.SetLeft(_conduitVisualHost, 0);
+            Canvas.SetTop(_conduitVisualHost, 0);
+        }
+
+        _conduitVisualHost.Width = PlanCanvas.Width;
+        _conduitVisualHost.Height = PlanCanvas.Height;
+
+        if (!PlanCanvas.Children.Contains(_conduitVisualHost))
+        {
+            PlanCanvas.Children.Add(_conduitVisualHost);
+        }
+    }
+
+    private void DrawConduitsWithVisualLayer(IReadOnlyDictionary<string, bool> layerVisibilityById)
+    {
+        if (_conduitVisualHost == null)
+            return;
+
+        _conduitVisualHost.Render(dc =>
+        {
+            foreach (var component in _viewModel.Components)
+            {
+                if (component is not ConduitComponent conduit)
+                    continue;
+
+                if (!IsLayerVisible(layerVisibilityById, component.LayerId))
+                    continue;
+
+                var points = GetConduitCanvasPathPoints(conduit);
+                if (points.Count < 2)
+                    continue;
+
+                var selected = component == _viewModel.SelectedComponent;
+                var profile = ElectricalComponentCatalog.GetProfile(conduit);
+                var strokeColor = selected
+                    ? Colors.Orange
+                    : ResolveComponentColor(component, Colors.SteelBlue);
+                var brush = new SolidColorBrush(strokeColor);
+                brush.Freeze();
+                var thickness = Math.Max(2, conduit.Diameter * 10) + (selected ? 2 : 0);
+                var dashPattern = Array.Empty<double>();
+                switch (profile)
+                {
+                    case ElectricalComponentCatalog.Profiles.ConduitPvc:
+                        thickness *= 1.1;
+                        dashPattern = new[] { 9.0, 4.0 };
+                        break;
+                    case ElectricalComponentCatalog.Profiles.ConduitRigidMetal:
+                        thickness *= 1.2;
+                        break;
+                    case ElectricalComponentCatalog.Profiles.ConduitFlexibleMetal:
+                        thickness *= 0.95;
+                        dashPattern = new[] { 2.5, 2.5 };
+                        break;
+                }
+
+                var pen = new Pen(brush, thickness)
+                {
+                    StartLineCap = PenLineCap.Round,
+                    EndLineCap = PenLineCap.Round,
+                    LineJoin = PenLineJoin.Round
+                };
+                if (dashPattern.Length > 0)
+                {
+                    pen.DashStyle = new DashStyle(dashPattern, 0);
+                }
+                pen.Freeze();
+
+                for (int i = 0; i < points.Count - 1; i++)
+                {
+                    dc.DrawLine(pen, points[i], points[i + 1]);
+                }
+
+                if (!selected && profile == ElectricalComponentCatalog.Profiles.ConduitRigidMetal)
+                {
+                    var jointBrush = new SolidColorBrush(Color.FromArgb(170, 220, 220, 220));
+                    jointBrush.Freeze();
+                    for (int i = 1; i < points.Count - 1; i++)
+                    {
+                        dc.DrawEllipse(jointBrush, null, points[i], thickness * 0.4, thickness * 0.4);
+                    }
+                }
+            }
+        });
     }
     
     private void Draw2DComponent(ElectricalComponent component)
     {
-        var color = (Color)ColorConverter.ConvertFromString(component.Parameters.Color);
-        var brush = new SolidColorBrush(color);
         var isSelected = component == _viewModel.SelectedComponent;
-        
-        FrameworkElement element;
-        
-        double canvasX = 1000 + component.Position.X * 20; // Center + scale
-        double canvasY = 1000 - component.Position.Z * 20; // Flip Y for plan view
-        
+
+        double canvasX = 1000 + component.Position.X * 20;
+        double canvasY = 1000 - component.Position.Z * 20;
+
         switch (component.Type)
         {
             case ComponentType.Conduit:
-                if (component is ConduitComponent conduit)
-                {
-                    var pathPts = conduit.GetPathPoints();
-                    if (pathPts.Count >= 2)
-                    {
-                        var polyline = new Polyline
-                        {
-                            Stroke = brush,
-                            StrokeThickness = Math.Max(2, conduit.Diameter * 10),
-                            StrokeLineJoin = PenLineJoin.Round
-                        };
-                        foreach (var pt in pathPts)
-                        {
-                            polyline.Points.Add(new Point(
-                                canvasX + pt.X * 20,
-                                canvasY - pt.Z * 20));
-                        }
-                        if (isSelected)
-                        {
-                            polyline.Stroke = Brushes.Orange;
-                            polyline.StrokeThickness += 2;
-                        }
-                        PlanCanvas.Children.Add(polyline);
-                        _canvasToComponentMap[polyline] = component;
-                        return;
-                    }
-                }
-                element = CreateRectElement(component.Parameters.Width * 20, component.Parameters.Depth * 20, brush, isSelected);
-                break;
-                
-            case ComponentType.CableTray:
-                element = CreateRectElement(component.Parameters.Width * 20, component.Parameters.Depth * 20, brush, isSelected);
-                break;
-                
-            case ComponentType.Hanger:
-                var ellipse = new Ellipse
-                {
-                    Width = 10, Height = 10,
-                    Fill = brush,
-                    Stroke = isSelected ? Brushes.Orange : Brushes.Black,
-                    StrokeThickness = isSelected ? 3 : 1
-                };
-                Canvas.SetLeft(ellipse, canvasX - 5);
-                Canvas.SetTop(ellipse, canvasY - 5);
-                PlanCanvas.Children.Add(ellipse);
-                _canvasToComponentMap[ellipse] = component;
+                // Conduits are rendered by a dedicated DrawingVisual layer for better 2D performance.
                 return;
-                
-            default:
-                element = CreateRectElement(component.Parameters.Width * 20, component.Parameters.Height * 20, brush, isSelected);
-                break;
         }
-        
-        Canvas.SetLeft(element, canvasX - ((element as Rectangle)?.Width ?? 20) / 2);
-        Canvas.SetTop(element, canvasY - ((element as Rectangle)?.Height ?? 20) / 2);
+
+        var color = ResolveComponentColor(component, Colors.SteelBlue);
+        var fill = new SolidColorBrush(color);
+        var outline = isSelected ? Brushes.Orange : Brushes.Black;
+        var profile = ElectricalComponentCatalog.GetProfile(component);
+
+        FrameworkElement element = component switch
+        {
+            BoxComponent box => CreateBoxPlanSymbol(box, fill, outline, isSelected, profile),
+            PanelComponent panel => CreatePanelPlanSymbol(panel, fill, outline, isSelected, profile),
+            CableTrayComponent tray => CreateTrayPlanSymbol(tray, fill, outline, isSelected, profile),
+            SupportComponent support => CreateSupportPlanSymbol(support, fill, outline, isSelected, profile),
+            HangerComponent hanger => CreateHangerPlanSymbol(hanger, fill, outline, isSelected, profile),
+            _ => CreateRectElement(component.Parameters.Width * 20, component.Parameters.Height * 20, fill, isSelected)
+        };
+
+        ApplyPlanRotation(element, component.Rotation.Y);
+        Canvas.SetLeft(element, canvasX - Math.Max(5, element.Width) / 2);
+        Canvas.SetTop(element, canvasY - Math.Max(5, element.Height) / 2);
         PlanCanvas.Children.Add(element);
         _canvasToComponentMap[element] = component;
     }
     
+    private static Color ResolveComponentColor(ElectricalComponent component, Color fallback)
+    {
+        if (string.IsNullOrWhiteSpace(component.Parameters.Color))
+            return fallback;
+
+        try
+        {
+            return (Color)ColorConverter.ConvertFromString(component.Parameters.Color);
+        }
+        catch
+        {
+            return fallback;
+        }
+    }
+
+    private static void ApplyPlanRotation(FrameworkElement element, double yRotationDegrees)
+    {
+        if (Math.Abs(yRotationDegrees) < 0.001)
+        {
+            element.RenderTransform = Transform.Identity;
+            return;
+        }
+
+        element.RenderTransformOrigin = new Point(0.5, 0.5);
+        element.RenderTransform = new RotateTransform(yRotationDegrees);
+    }
+
     private Rectangle CreateRectElement(double width, double height, Brush fill, bool isSelected)
     {
         return new Rectangle
@@ -698,6 +1367,581 @@ public partial class MainWindow : Window
             Stroke = isSelected ? Brushes.Orange : Brushes.Black,
             StrokeThickness = isSelected ? 3 : 1
         };
+    }
+
+    private FrameworkElement CreateBoxPlanSymbol(BoxComponent box, Brush fill, Brush outline, bool isSelected, string profile)
+    {
+        var width = Math.Max(18, box.Parameters.Width * 20);
+        var height = Math.Max(18, box.Parameters.Depth * 20);
+        var canvas = CreateSymbolCanvas(width, height);
+        var strokeThickness = isSelected ? 3 : 1.5;
+
+        var shell = new Rectangle
+        {
+            Width = width,
+            Height = height,
+            Fill = fill,
+            Stroke = outline,
+            StrokeThickness = strokeThickness
+        };
+        AddSymbolChild(canvas, shell);
+
+        switch (profile)
+        {
+            case ElectricalComponentCatalog.Profiles.BoxPull:
+                var insetPull = new Rectangle
+                {
+                    Width = width * 0.72,
+                    Height = height * 0.64,
+                    Fill = Brushes.Transparent,
+                    Stroke = outline,
+                    StrokeThickness = 1
+                };
+                Canvas.SetLeft(insetPull, width * 0.14);
+                Canvas.SetTop(insetPull, height * 0.18);
+                AddSymbolChild(canvas, insetPull);
+                AddCenteredCross(canvas, width, height, outline, 0.26);
+                break;
+
+            case ElectricalComponentCatalog.Profiles.BoxFloor:
+                var centerRadius = Math.Min(width, height) * 0.22;
+                var cover = new Ellipse
+                {
+                    Width = centerRadius * 2,
+                    Height = centerRadius * 2,
+                    Fill = Brushes.Transparent,
+                    Stroke = outline,
+                    StrokeThickness = 1.2
+                };
+                Canvas.SetLeft(cover, width / 2 - centerRadius);
+                Canvas.SetTop(cover, height / 2 - centerRadius);
+                AddSymbolChild(canvas, cover);
+                AddCenteredCross(canvas, width, height, outline, 0.14);
+                break;
+
+            case ElectricalComponentCatalog.Profiles.BoxDisconnectSwitch:
+                var handle = new Line
+                {
+                    X1 = width * 0.62,
+                    Y1 = height * 0.3,
+                    X2 = width * 0.8,
+                    Y2 = height * 0.55,
+                    Stroke = outline,
+                    StrokeThickness = 2,
+                    StrokeStartLineCap = PenLineCap.Round,
+                    StrokeEndLineCap = PenLineCap.Round
+                };
+                AddSymbolChild(canvas, handle);
+                var door = new Rectangle
+                {
+                    Width = width * 0.5,
+                    Height = height * 0.7,
+                    Fill = Brushes.Transparent,
+                    Stroke = outline,
+                    StrokeThickness = 1
+                };
+                Canvas.SetLeft(door, width * 0.16);
+                Canvas.SetTop(door, height * 0.14);
+                AddSymbolChild(canvas, door);
+                break;
+
+            default:
+                AddCenteredCross(canvas, width, height, outline, 0.34);
+                break;
+        }
+
+        return canvas;
+    }
+
+    private FrameworkElement CreatePanelPlanSymbol(PanelComponent panel, Brush fill, Brush outline, bool isSelected, string profile)
+    {
+        var width = Math.Max(22, panel.Parameters.Width * 20);
+        var height = Math.Max(14, panel.Parameters.Depth * 20);
+        var canvas = CreateSymbolCanvas(width, height);
+        var strokeThickness = isSelected ? 3 : 1.6;
+
+        var shell = new Rectangle
+        {
+            Width = width,
+            Height = height,
+            Fill = fill,
+            Stroke = outline,
+            StrokeThickness = strokeThickness
+        };
+        AddSymbolChild(canvas, shell);
+
+        var sections = profile switch
+        {
+            ElectricalComponentCatalog.Profiles.PanelLighting => 2,
+            ElectricalComponentCatalog.Profiles.PanelSwitchboard => 5,
+            ElectricalComponentCatalog.Profiles.PanelMcc => 4,
+            _ => 3
+        };
+
+        for (int i = 1; i < sections; i++)
+        {
+            var x = width * i / sections;
+            AddSymbolChild(canvas, new Line
+            {
+                X1 = x,
+                Y1 = 2,
+                X2 = x,
+                Y2 = height - 2,
+                Stroke = outline,
+                StrokeThickness = 1
+            });
+        }
+
+        if (profile == ElectricalComponentCatalog.Profiles.PanelMcc)
+        {
+            for (int i = 1; i <= 3; i++)
+            {
+                var y = height * i / 4;
+                AddSymbolChild(canvas, new Line
+                {
+                    X1 = 2,
+                    Y1 = y,
+                    X2 = width - 2,
+                    Y2 = y,
+                    Stroke = outline,
+                    StrokeThickness = 0.8
+                });
+            }
+        }
+
+        var handle = new Ellipse
+        {
+            Width = 4,
+            Height = 4,
+            Fill = outline
+        };
+        Canvas.SetLeft(handle, width * 0.86);
+        Canvas.SetTop(handle, height * 0.45);
+        AddSymbolChild(canvas, handle);
+        return canvas;
+    }
+
+    private FrameworkElement CreateTrayPlanSymbol(CableTrayComponent tray, Brush fill, Brush outline, bool isSelected, string profile)
+    {
+        var width = Math.Max(28, tray.Parameters.Depth * 20);
+        var height = Math.Max(10, tray.Parameters.Width * 2.4);
+        var canvas = CreateSymbolCanvas(width, height);
+        var strokeThickness = isSelected ? 2.8 : 1.4;
+        var railTop = 2.0;
+        var railBottom = height - 2.0;
+
+        var background = new Rectangle
+        {
+            Width = width,
+            Height = height,
+            Fill = profile == ElectricalComponentCatalog.Profiles.TraySolidBottom
+                ? fill
+                : new SolidColorBrush(Color.FromArgb(30, 120, 120, 120)),
+            Stroke = outline,
+            StrokeThickness = strokeThickness
+        };
+        AddSymbolChild(canvas, background);
+
+        AddSymbolChild(canvas, new Line
+        {
+            X1 = 1,
+            Y1 = railTop,
+            X2 = width - 1,
+            Y2 = railTop,
+            Stroke = outline,
+            StrokeThickness = 1.2
+        });
+        AddSymbolChild(canvas, new Line
+        {
+            X1 = 1,
+            Y1 = railBottom,
+            X2 = width - 1,
+            Y2 = railBottom,
+            Stroke = outline,
+            StrokeThickness = 1.2
+        });
+
+        var spacing = profile switch
+        {
+            ElectricalComponentCatalog.Profiles.TrayWireMesh => 8.0,
+            ElectricalComponentCatalog.Profiles.TraySolidBottom => 16.0,
+            _ => 12.0
+        };
+
+        for (double x = spacing; x < width - spacing / 2; x += spacing)
+        {
+            AddSymbolChild(canvas, new Line
+            {
+                X1 = x,
+                Y1 = 2,
+                X2 = x,
+                Y2 = height - 2,
+                Stroke = outline,
+                StrokeThickness = profile == ElectricalComponentCatalog.Profiles.TrayWireMesh ? 0.9 : 1.1
+            });
+        }
+
+        if (profile == ElectricalComponentCatalog.Profiles.TrayWireMesh)
+        {
+            for (double y = 4; y < height - 4; y += 4)
+            {
+                AddSymbolChild(canvas, new Line
+                {
+                    X1 = 2,
+                    Y1 = y,
+                    X2 = width - 2,
+                    Y2 = y,
+                    Stroke = outline,
+                    StrokeThickness = 0.6
+                });
+            }
+        }
+
+        return canvas;
+    }
+
+    private FrameworkElement CreateSupportPlanSymbol(SupportComponent support, Brush fill, Brush outline, bool isSelected, string profile)
+    {
+        var width = Math.Max(22, support.Parameters.Depth * 20);
+        var height = Math.Max(12, support.Parameters.Height * 20);
+        var canvas = CreateSymbolCanvas(width, height);
+        var strokeThickness = isSelected ? 3 : 1.6;
+        var midY = height / 2;
+
+        switch (profile)
+        {
+            case ElectricalComponentCatalog.Profiles.SupportWallBracket:
+                AddSymbolChild(canvas, new Line
+                {
+                    X1 = width * 0.18,
+                    Y1 = height * 0.15,
+                    X2 = width * 0.18,
+                    Y2 = height * 0.82,
+                    Stroke = outline,
+                    StrokeThickness = strokeThickness
+                });
+                AddSymbolChild(canvas, new Line
+                {
+                    X1 = width * 0.18,
+                    Y1 = height * 0.82,
+                    X2 = width * 0.82,
+                    Y2 = height * 0.82,
+                    Stroke = outline,
+                    StrokeThickness = strokeThickness
+                });
+                AddSymbolChild(canvas, new Line
+                {
+                    X1 = width * 0.24,
+                    Y1 = height * 0.74,
+                    X2 = width * 0.68,
+                    Y2 = height * 0.36,
+                    Stroke = outline,
+                    StrokeThickness = 1.2
+                });
+                break;
+
+            case ElectricalComponentCatalog.Profiles.SupportTrapeze:
+                AddSymbolChild(canvas, new Line
+                {
+                    X1 = width * 0.12,
+                    Y1 = midY,
+                    X2 = width * 0.88,
+                    Y2 = midY,
+                    Stroke = outline,
+                    StrokeThickness = strokeThickness
+                });
+                AddSymbolChild(canvas, new Line
+                {
+                    X1 = width * 0.24,
+                    Y1 = height * 0.12,
+                    X2 = width * 0.24,
+                    Y2 = midY,
+                    Stroke = outline,
+                    StrokeThickness = 1.4
+                });
+                AddSymbolChild(canvas, new Line
+                {
+                    X1 = width * 0.76,
+                    Y1 = height * 0.12,
+                    X2 = width * 0.76,
+                    Y2 = midY,
+                    Stroke = outline,
+                    StrokeThickness = 1.4
+                });
+                break;
+
+            default:
+                var body = new Rectangle
+                {
+                    Width = width,
+                    Height = height,
+                    Fill = fill,
+                    Stroke = outline,
+                    StrokeThickness = strokeThickness
+                };
+                AddSymbolChild(canvas, body);
+                AddSymbolChild(canvas, new Line
+                {
+                    X1 = width * 0.1,
+                    Y1 = midY,
+                    X2 = width * 0.9,
+                    Y2 = midY,
+                    Stroke = outline,
+                    StrokeThickness = 1,
+                    StrokeDashArray = new DoubleCollection { 4, 3 }
+                });
+                break;
+        }
+
+        return canvas;
+    }
+
+    private FrameworkElement CreateHangerPlanSymbol(HangerComponent hanger, Brush fill, Brush outline, bool isSelected, string profile)
+    {
+        var size = Math.Max(12, hanger.RodDiameter * 24 + 8);
+        var canvas = CreateSymbolCanvas(size, size);
+        var strokeThickness = isSelected ? 3 : 1.4;
+
+        if (profile == ElectricalComponentCatalog.Profiles.HangerSeismicBrace)
+        {
+            var anchor = new Rectangle
+            {
+                Width = size * 0.28,
+                Height = size * 0.28,
+                Fill = fill,
+                Stroke = outline,
+                StrokeThickness = 1
+            };
+            Canvas.SetLeft(anchor, size * 0.08);
+            Canvas.SetTop(anchor, size * 0.64);
+            AddSymbolChild(canvas, anchor);
+
+            AddSymbolChild(canvas, new Line
+            {
+                X1 = size * 0.24,
+                Y1 = size * 0.76,
+                X2 = size * 0.84,
+                Y2 = size * 0.2,
+                Stroke = outline,
+                StrokeThickness = strokeThickness
+            });
+
+            var tip = new Ellipse
+            {
+                Width = size * 0.22,
+                Height = size * 0.22,
+                Fill = fill,
+                Stroke = outline,
+                StrokeThickness = 1
+            };
+            Canvas.SetLeft(tip, size * 0.74);
+            Canvas.SetTop(tip, size * 0.1);
+            AddSymbolChild(canvas, tip);
+        }
+        else
+        {
+            var rod = new Ellipse
+            {
+                Width = size * 0.58,
+                Height = size * 0.58,
+                Fill = fill,
+                Stroke = outline,
+                StrokeThickness = strokeThickness
+            };
+            Canvas.SetLeft(rod, size * 0.21);
+            Canvas.SetTop(rod, size * 0.21);
+            AddSymbolChild(canvas, rod);
+
+            AddCenteredCross(canvas, size, size, outline, 0.22);
+        }
+
+        return canvas;
+    }
+
+    private static Canvas CreateSymbolCanvas(double width, double height)
+    {
+        return new Canvas
+        {
+            Width = Math.Max(6, width),
+            Height = Math.Max(6, height),
+            Background = Brushes.Transparent
+        };
+    }
+
+    private static void AddSymbolChild(Canvas canvas, UIElement child)
+    {
+        child.IsHitTestVisible = false;
+        canvas.Children.Add(child);
+    }
+
+    private static void AddCenteredCross(Canvas canvas, double width, double height, Brush stroke, double insetScale)
+    {
+        var insetX = width * insetScale;
+        var insetY = height * insetScale;
+        AddSymbolChild(canvas, new Line
+        {
+            X1 = insetX,
+            Y1 = insetY,
+            X2 = width - insetX,
+            Y2 = height - insetY,
+            Stroke = stroke,
+            StrokeThickness = 1
+        });
+        AddSymbolChild(canvas, new Line
+        {
+            X1 = insetX,
+            Y1 = height - insetY,
+            X2 = width - insetX,
+            Y2 = insetY,
+            Stroke = stroke,
+            StrokeThickness = 1
+        });
+    }
+
+    private void DrawSketchPrimitives2D()
+    {
+        foreach (var primitive in _sketchPrimitives)
+        {
+            if (primitive is SketchLinePrimitive line && line.Points.Count >= 2)
+            {
+                var shape = new Polyline
+                {
+                    Stroke = ReferenceEquals(primitive, _selectedSketchPrimitive) ? Brushes.DarkOrange : Brushes.MediumPurple,
+                    StrokeThickness = ReferenceEquals(primitive, _selectedSketchPrimitive) ? 3 : 2,
+                    StrokeDashArray = new DoubleCollection { 5, 3 },
+                    StrokeLineJoin = PenLineJoin.Round
+                };
+
+                foreach (var p in line.Points)
+                    shape.Points.Add(p);
+
+                PlanCanvas.Children.Add(shape);
+                _canvasToSketchMap[shape] = primitive;
+            }
+            else if (primitive is SketchRectanglePrimitive rect)
+            {
+                var left = Math.Min(rect.Start.X, rect.End.X);
+                var top = Math.Min(rect.Start.Y, rect.End.Y);
+                var width = Math.Max(1, Math.Abs(rect.End.X - rect.Start.X));
+                var height = Math.Max(1, Math.Abs(rect.End.Y - rect.Start.Y));
+                var shape = new Rectangle
+                {
+                    Width = width,
+                    Height = height,
+                    Fill = Brushes.Transparent,
+                    Stroke = ReferenceEquals(primitive, _selectedSketchPrimitive) ? Brushes.DarkOrange : Brushes.Teal,
+                    StrokeThickness = ReferenceEquals(primitive, _selectedSketchPrimitive) ? 3 : 2,
+                    StrokeDashArray = new DoubleCollection { 4, 2 }
+                };
+                Canvas.SetLeft(shape, left);
+                Canvas.SetTop(shape, top);
+                PlanCanvas.Children.Add(shape);
+                _canvasToSketchMap[shape] = primitive;
+            }
+        }
+    }
+
+    private void DrawSketchLineDraft()
+    {
+        if (_sketchDraftLinePoints.Count == 0)
+            return;
+
+        var preview = new Polyline
+        {
+            Stroke = Brushes.MediumPurple,
+            StrokeThickness = 2,
+            StrokeLineJoin = PenLineJoin.Round,
+            IsHitTestVisible = false
+        };
+
+        foreach (var point in _sketchDraftLinePoints)
+            preview.Points.Add(point);
+
+        PlanCanvas.Children.Add(preview);
+
+        foreach (var point in _sketchDraftLinePoints)
+        {
+            var dot = new Ellipse
+            {
+                Width = 6,
+                Height = 6,
+                Fill = Brushes.MediumPurple,
+                IsHitTestVisible = false
+            };
+            Canvas.SetLeft(dot, point.X - 3);
+            Canvas.SetTop(dot, point.Y - 3);
+            PlanCanvas.Children.Add(dot);
+        }
+    }
+
+    private void DrawSketchRectangleDraft()
+    {
+        if (!_isSketchRectangleDragging)
+            return;
+
+        var left = Math.Min(_sketchRectangleStartPoint.X, _lastMousePosition.X);
+        var top = Math.Min(_sketchRectangleStartPoint.Y, _lastMousePosition.Y);
+        var width = Math.Max(1, Math.Abs(_lastMousePosition.X - _sketchRectangleStartPoint.X));
+        var height = Math.Max(1, Math.Abs(_lastMousePosition.Y - _sketchRectangleStartPoint.Y));
+
+        _sketchRectanglePreview = new Rectangle
+        {
+            Width = width,
+            Height = height,
+            Fill = new SolidColorBrush(Color.FromArgb(20, 0, 128, 128)),
+            Stroke = Brushes.Teal,
+            StrokeThickness = 2,
+            StrokeDashArray = new DoubleCollection { 4, 2 },
+            IsHitTestVisible = false
+        };
+        Canvas.SetLeft(_sketchRectanglePreview, left);
+        Canvas.SetTop(_sketchRectanglePreview, top);
+        PlanCanvas.Children.Add(_sketchRectanglePreview);
+    }
+
+    private void UpdateSketchLineRubberBand(Point from, Point to)
+    {
+        if (_sketchRubberBandLine == null)
+        {
+            _sketchRubberBandLine = new Line
+            {
+                Stroke = Brushes.MediumPurple,
+                StrokeThickness = 2,
+                StrokeDashArray = new DoubleCollection { 4, 2 },
+                IsHitTestVisible = false
+            };
+            PlanCanvas.Children.Add(_sketchRubberBandLine);
+        }
+
+        _sketchRubberBandLine.X1 = from.X;
+        _sketchRubberBandLine.Y1 = from.Y;
+        _sketchRubberBandLine.X2 = to.X;
+        _sketchRubberBandLine.Y2 = to.Y;
+    }
+
+    private void RemoveSketchLineRubberBand()
+    {
+        if (_sketchRubberBandLine != null)
+        {
+            PlanCanvas.Children.Remove(_sketchRubberBandLine);
+            _sketchRubberBandLine = null;
+        }
+    }
+
+    private void AddComponentWithUndo(ElectricalComponent component)
+    {
+        if (_viewModel.ActiveLayer != null)
+            component.LayerId = _viewModel.ActiveLayer.Id;
+
+        var action = new AddComponentAction(_viewModel.Components, component);
+        _viewModel.UndoRedo.Execute(action);
+        _viewModel.SelectedComponent = component;
+    }
+
+    private void ClearSketchSelection()
+    {
+        _selectedSketchPrimitive = null;
+        Update2DCanvas();
     }
     
     // ===== 2D Canvas mouse handlers =====
@@ -714,6 +1958,52 @@ public partial class MainWindow : Window
 
         if (HandleFreehandMouseDown(pos))
         {
+            e.Handled = true;
+            return;
+        }
+
+        // --- Sketch line tool ---
+        if (_isSketchLineMode)
+        {
+            var snapped = ApplyDrawingSnap(pos);
+            if (_sketchDraftLinePoints.Count > 0 && (Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift)))
+                snapped = ConstrainToAngle(_sketchDraftLinePoints[^1], snapped);
+
+            if (e.ClickCount == 2)
+            {
+                if (_sketchDraftLinePoints.Count >= 1)
+                {
+                    if ((_sketchDraftLinePoints[^1] - snapped).Length > 1)
+                        _sketchDraftLinePoints.Add(snapped);
+
+                    if (_sketchDraftLinePoints.Count >= 2)
+                    {
+                        _sketchPrimitives.Add(new SketchLinePrimitive(Guid.NewGuid().ToString(), _sketchDraftLinePoints.ToList()));
+                        _selectedSketchPrimitive = _sketchPrimitives[^1];
+                    }
+                }
+
+                _sketchDraftLinePoints.Clear();
+                RemoveSketchLineRubberBand();
+                Update2DCanvas();
+                e.Handled = true;
+                return;
+            }
+
+            _sketchDraftLinePoints.Add(snapped);
+            Update2DCanvas();
+            e.Handled = true;
+            return;
+        }
+
+        // --- Sketch rectangle tool ---
+        if (_isSketchRectangleMode)
+        {
+            _isSketchRectangleDragging = true;
+            _sketchRectangleStartPoint = ApplyDrawingSnap(pos);
+            _lastMousePosition = _sketchRectangleStartPoint;
+            PlanCanvas.CaptureMouse();
+            Update2DCanvas();
             e.Handled = true;
             return;
         }
@@ -747,16 +2037,77 @@ public partial class MainWindow : Window
             e.Handled = true;
             return;
         }
-        
+
+        // --- Conduit edit mode in 2D: drag existing bend points or tap segments to add one ---
+        if (_isEditingConduitPath && _viewModel.SelectedComponent is ConduitComponent selectedConduit)
+        {
+            EnsureConduitHasEditableEndPoint(selectedConduit);
+
+            if (TryStartDraggingConduitBendHandle2D(pos))
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (TryInsertConduitBendPoint2D(selectedConduit, pos))
+            {
+                e.Handled = true;
+                return;
+            }
+        }
+
         // --- Default mode: select / drag ---
         var hit = PlanCanvas.InputHitTest(pos) as FrameworkElement;
         if (hit != null && _canvasToComponentMap.ContainsKey(hit))
         {
+            if (_isEditingConduitPath &&
+                _viewModel.SelectedComponent is ConduitComponent &&
+                ReferenceEquals(_canvasToComponentMap[hit], _viewModel.SelectedComponent))
+            {
+                e.Handled = true;
+                return;
+            }
+
+            _selectedSketchPrimitive = null;
             _viewModel.SelectedComponent = _canvasToComponentMap[hit];
             _isDragging2D = true;
             _draggedElement2D = hit;
             _lastMousePosition = pos;
+            _dragStartCanvasPosition = pos;
+            _mobileSelectionCandidate = _isMobileView;
             PlanCanvas.CaptureMouse();
+            return;
+        }
+
+        if (hit != null && _canvasToSketchMap.TryGetValue(hit, out var hitSketch))
+        {
+            _selectedSketchPrimitive = hitSketch;
+            Update2DCanvas();
+            e.Handled = true;
+            return;
+        }
+
+        // Conduit paths are rendered via DrawingVisual (not UIElement), so hit-test manually.
+        if (TryHitConduitPath2D(pos, out var hitConduit) && hitConduit != null)
+        {
+            _selectedSketchPrimitive = null;
+            _viewModel.SelectedComponent = hitConduit;
+
+            if (_isEditingConduitPath)
+            {
+                EnsureConduitHasEditableEndPoint(hitConduit);
+                Update2DCanvas();
+                e.Handled = true;
+                return;
+            }
+
+            _isDragging2D = true;
+            _draggedElement2D = PlanCanvas;
+            _lastMousePosition = pos;
+            _dragStartCanvasPosition = pos;
+            _mobileSelectionCandidate = _isMobileView;
+            PlanCanvas.CaptureMouse();
+            e.Handled = true;
             return;
         }
         
@@ -772,6 +2123,24 @@ public partial class MainWindow : Window
             e.Handled = true;
             return;
         }
+
+        if (_isSketchLineMode && _sketchDraftLinePoints.Count > 0)
+        {
+            var snapped = ApplyDrawingSnap(pos);
+            if (Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift))
+                snapped = ConstrainToAngle(_sketchDraftLinePoints[^1], snapped);
+
+            UpdateSketchLineRubberBand(_sketchDraftLinePoints[^1], snapped);
+            UpdateSnapIndicator(snapped, pos);
+            return;
+        }
+
+        if (_isSketchRectangleMode && _isSketchRectangleDragging)
+        {
+            _lastMousePosition = ApplyDrawingSnap(pos);
+            Update2DCanvas();
+            return;
+        }
         
         // --- Conduit drawing mode: update rubber-band line ---
         if (_isDrawingConduit && _drawingCanvasPoints.Count > 0)
@@ -785,11 +2154,43 @@ public partial class MainWindow : Window
             UpdateSnapIndicator(snapped, pos);
             return;
         }
+
+        // --- Bend point drag mode ---
+        if (_isDraggingConduitBend2D && _draggingConduit2D != null)
+        {
+            BeginFastInteractionMode();
+            var snapped = ApplyDrawingSnap(pos);
+            var worldPoint = CanvasToWorld(snapped);
+            var relativePoint = new Point3D(
+                worldPoint.X - _draggingConduit2D.Position.X,
+                0,
+                worldPoint.Z - _draggingConduit2D.Position.Z);
+
+            if (_viewModel.SnapToGrid)
+            {
+                relativePoint.X = Math.Round(relativePoint.X / _viewModel.GridSize) * _viewModel.GridSize;
+                relativePoint.Z = Math.Round(relativePoint.Z / _viewModel.GridSize) * _viewModel.GridSize;
+            }
+
+            if (_draggingConduitBendIndex2D >= 0 && _draggingConduitBendIndex2D < _draggingConduit2D.BendPoints.Count)
+            {
+                _draggingConduit2D.BendPoints[_draggingConduitBendIndex2D] = relativePoint;
+                UpdateConduitLengthFromPath(_draggingConduit2D);
+                QueueSceneRefresh(update2D: true, update3D: true);
+            }
+
+            return;
+        }
         
         // --- Drag mode ---
         if (_isDragging2D && _draggedElement2D != null && _viewModel.SelectedComponent != null)
         {
+            BeginFastInteractionMode();
             var delta = pos - _lastMousePosition;
+            if (_mobileSelectionCandidate && (Math.Abs(pos.X - _dragStartCanvasPosition.X) > 4 || Math.Abs(pos.Y - _dragStartCanvasPosition.Y) > 4))
+            {
+                _mobileSelectionCandidate = false;
+            }
             var worldDelta = new Vector3D(delta.X / 20.0, 0, -delta.Y / 20.0);
 
             var comp = _viewModel.SelectedComponent;
@@ -803,35 +2204,117 @@ public partial class MainWindow : Window
             comp.Position = newPosition;
 
             _lastMousePosition = pos;
-            Update2DCanvas();
+            QueueSceneRefresh(update2D: true);
         }
     }
     
     private void PlanCanvas_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (_isSketchRectangleMode && _isSketchRectangleDragging)
+        {
+            _isSketchRectangleDragging = false;
+            var end = _lastMousePosition;
+            var width = Math.Abs(end.X - _sketchRectangleStartPoint.X);
+            var height = Math.Abs(end.Y - _sketchRectangleStartPoint.Y);
+            if (width > 4 && height > 4)
+            {
+                _sketchPrimitives.Add(new SketchRectanglePrimitive(
+                    Guid.NewGuid().ToString(),
+                    _sketchRectangleStartPoint,
+                    end));
+                _selectedSketchPrimitive = _sketchPrimitives[^1];
+            }
+            PlanCanvas.ReleaseMouseCapture();
+            Update2DCanvas();
+            e.Handled = true;
+            return;
+        }
+
+        if (_isDraggingConduitBend2D)
+        {
+            _isDraggingConduitBend2D = false;
+            _draggingConduit2D = null;
+            _draggingConduitBendIndex2D = -1;
+            UpdatePropertiesPanel();
+            PlanCanvas.ReleaseMouseCapture();
+            return;
+        }
+
         if (_isDragging2D)
         {
             UpdateViewport();
+            if (_isMobileView && _mobileSelectionCandidate && _viewModel.SelectedComponent != null)
+            {
+                SetMobilePane(MobilePane.Properties);
+            }
         }
         _isDragging2D = false;
         _draggedElement2D = null;
+        _mobileSelectionCandidate = false;
         PlanCanvas.ReleaseMouseCapture();
     }
     
     private void PlanCanvas_MouseWheel(object sender, MouseWheelEventArgs e)
     {
-        double zoom = e.Delta > 0 ? 1.1 : 0.9;
-        PlanCanvasScale.ScaleX *= zoom;
-        PlanCanvasScale.ScaleY *= zoom;
-        
-        PlanCanvasScale.ScaleX = Math.Max(0.1, Math.Min(10, PlanCanvasScale.ScaleX));
-        PlanCanvasScale.ScaleY = Math.Max(0.1, Math.Min(10, PlanCanvasScale.ScaleY));
+        BeginFastInteractionMode();
+
+        var oldScale = PlanCanvasScale.ScaleX;
+        var zoomFactor = e.Delta > 0 ? 1.1 : 0.9;
+        var newScale = Math.Max(0.1, Math.Min(10.0, oldScale * zoomFactor));
+        if (Math.Abs(newScale - oldScale) < 0.0001)
+            return;
+
+        var cursorInScroll = e.GetPosition(PlanScrollViewer);
+        var absoluteX = (cursorInScroll.X + PlanScrollViewer.HorizontalOffset) / oldScale;
+        var absoluteY = (cursorInScroll.Y + PlanScrollViewer.VerticalOffset) / oldScale;
+
+        PlanCanvasScale.ScaleX = newScale;
+        PlanCanvasScale.ScaleY = newScale;
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
+        {
+            PlanScrollViewer.ScrollToHorizontalOffset(absoluteX * newScale - cursorInScroll.X);
+            PlanScrollViewer.ScrollToVerticalOffset(absoluteY * newScale - cursorInScroll.Y);
+        }));
+        e.Handled = true;
+    }
+
+    private void PlanCanvas_ManipulationStarting(object sender, ManipulationStartingEventArgs e)
+    {
+        if (!_isMobileView) return;
+
+        e.ManipulationContainer = PlanScrollViewer;
+        e.Mode = ManipulationModes.Scale | ManipulationModes.Translate;
+        e.Handled = true;
+    }
+
+    private void PlanCanvas_ManipulationDelta(object sender, ManipulationDeltaEventArgs e)
+    {
+        if (!_isMobileView) return;
+        BeginFastInteractionMode();
+
+        var deltaScale = e.DeltaManipulation.Scale;
+        var scaleFactor = Math.Max(deltaScale.X, deltaScale.Y);
+        if (scaleFactor > 0)
+        {
+            var newScale = PlanCanvasScale.ScaleX * scaleFactor;
+            newScale = Math.Max(MobileMinCanvasScale, Math.Min(MobileMaxCanvasScale, newScale));
+            PlanCanvasScale.ScaleX = newScale;
+            PlanCanvasScale.ScaleY = newScale;
+        }
+
+        var translation = e.DeltaManipulation.Translation;
+        PlanScrollViewer.ScrollToHorizontalOffset(PlanScrollViewer.HorizontalOffset - translation.X);
+        PlanScrollViewer.ScrollToVerticalOffset(PlanScrollViewer.VerticalOffset - translation.Y);
+        e.Handled = true;
     }
     
     // ===== Conduit Drawing Tool (Bluebeam-style polyline) =====
     
     private void DrawConduit_Click(object sender, RoutedEventArgs e)
     {
+        ExitSketchModes();
+
         if (_isFreehandDrawing)
             FinishFreehandConduit();
 
@@ -861,7 +2344,10 @@ public partial class MainWindow : Window
         if (_drawingCanvasPoints.Count >= 2)
         {
             // Create the conduit component from the placed vertices
-            var conduit = new ConduitComponent();
+            var conduit = new ConduitComponent
+            {
+                VisualProfile = ElectricalComponentCatalog.Profiles.ConduitEmt
+            };
             
             if (_viewModel.ActiveLayer != null)
                 conduit.LayerId = _viewModel.ActiveLayer.Id;
@@ -1026,43 +2512,13 @@ public partial class MainWindow : Window
     /// </summary>
     private Point ApplyDrawingSnap(Point canvasPos)
     {
-        // Collect endpoints from existing components for snapping
-        var endpoints = new List<Point>();
-        var segments = new List<(Point A, Point B)>();
-        
-        foreach (var comp in _viewModel.Components)
-        {
-            var layer = _viewModel.Layers.FirstOrDefault(l => l.Id == comp.LayerId);
-            if (layer != null && !layer.IsVisible) continue;
-            
-            double cx = 1000 + comp.Position.X * 20;
-            double cy = 1000 - comp.Position.Z * 20;
-            
-            if (comp is ConduitComponent conduit)
-            {
-                var pathPts = conduit.GetPathPoints();
-                for (int i = 0; i < pathPts.Count; i++)
-                {
-                    var cp = new Point(cx + pathPts[i].X * 20, cy - pathPts[i].Z * 20);
-                    endpoints.Add(cp);
-                    if (i > 0)
-                    {
-                        var prev = new Point(cx + pathPts[i - 1].X * 20, cy - pathPts[i - 1].Z * 20);
-                        segments.Add((prev, cp));
-                    }
-                }
-            }
-            else
-            {
-                endpoints.Add(new Point(cx, cy));
-            }
-        }
-        
-        // Also include already-placed drawing vertices as snap targets
-        endpoints.AddRange(_drawingCanvasPoints);
-        
-        // Try endpoint/midpoint/intersection snap first
-        var snapResult = _viewModel.SnapService.FindSnapPoint(canvasPos, endpoints, segments);
+        // Use prebuilt scene snap data plus active tool vertices.
+        var endpoints = _drawingCanvasPoints.Count == 0
+            ? _snapEndpointsCache
+            : _snapEndpointsCache.Concat(_drawingCanvasPoints);
+
+        // Try endpoint/midpoint/intersection snap first.
+        var snapResult = _viewModel.SnapService.FindSnapPoint(canvasPos, endpoints, _snapSegmentsCache);
         if (snapResult.Snapped)
             return snapResult.SnappedPoint;
         
@@ -1107,37 +2563,475 @@ public partial class MainWindow : Window
         double worldZ = (1000 - canvasPos.Y) / 20.0;
         return new Point3D(worldX, 0, worldZ);
     }
+
+    private static Point WorldToCanvas(Point3D worldPos)
+    {
+        return new Point(1000 + worldPos.X * 20, 1000 - worldPos.Z * 20);
+    }
+
+    private static List<Point> GetConduitCanvasPathPoints(ConduitComponent conduit)
+    {
+        var origin = WorldToCanvas(conduit.Position);
+        return conduit.GetPathPoints()
+            .Select(p => new Point(origin.X + p.X * 20, origin.Y - p.Z * 20))
+            .ToList();
+    }
+
+    private static void EnsureConduitHasEditableEndPoint(ConduitComponent conduit)
+    {
+        if (conduit.BendPoints.Count == 0)
+        {
+            conduit.BendPoints.Add(new Point3D(0, 0, conduit.Length));
+        }
+    }
+
+    private static void UpdateConduitLengthFromPath(ConduitComponent conduit)
+    {
+        var points = conduit.GetPathPoints();
+        double total = 0;
+        for (int i = 0; i < points.Count - 1; i++)
+        {
+            total += (points[i + 1] - points[i]).Length;
+        }
+
+        conduit.Length = total;
+    }
+
+    private static double DistanceToSegment(Point point, Point a, Point b, out Point closestPoint, out double t)
+    {
+        var ab = b - a;
+        var lengthSquared = ab.X * ab.X + ab.Y * ab.Y;
+        if (lengthSquared < 1e-9)
+        {
+            closestPoint = a;
+            t = 0;
+            return (point - a).Length;
+        }
+
+        t = ((point.X - a.X) * ab.X + (point.Y - a.Y) * ab.Y) / lengthSquared;
+        t = Math.Max(0, Math.Min(1, t));
+        closestPoint = new Point(a.X + t * ab.X, a.Y + t * ab.Y);
+        return (point - closestPoint).Length;
+    }
+
+    private bool TryStartDraggingConduitBendHandle2D(Point canvasPos)
+    {
+        var hit = PlanCanvas.InputHitTest(canvasPos) as FrameworkElement;
+        if (hit == null)
+            return false;
+
+        if (_viewModel.SelectedComponent is ConduitComponent conduit &&
+            _conduitBendHandleToIndexMap.TryGetValue(hit, out var bendIndex))
+        {
+            _isDraggingConduitBend2D = true;
+            _draggingConduit2D = conduit;
+            _draggingConduitBendIndex2D = bendIndex;
+            _lastMousePosition = canvasPos;
+            PlanCanvas.CaptureMouse();
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool TryInsertConduitBendPoint2D(ConduitComponent conduit, Point canvasPos)
+    {
+        var pathPoints = GetConduitCanvasPathPoints(conduit);
+        if (pathPoints.Count < 2)
+            return false;
+
+        int bestSegment = -1;
+        double bestDistance = double.MaxValue;
+        Point bestProjection = default;
+
+        for (int i = 0; i < pathPoints.Count - 1; i++)
+        {
+            double distance = DistanceToSegment(canvasPos, pathPoints[i], pathPoints[i + 1], out var projection, out _);
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                bestSegment = i;
+                bestProjection = projection;
+            }
+        }
+
+        if (bestSegment < 0 || bestDistance > Conduit2DInsertThreshold)
+            return false;
+
+        EnsureConduitHasEditableEndPoint(conduit);
+
+        var snappedCanvas = ApplyDrawingSnap(bestProjection);
+        var worldPoint = CanvasToWorld(snappedCanvas);
+        var relativePoint = new Point3D(
+            worldPoint.X - conduit.Position.X,
+            0,
+            worldPoint.Z - conduit.Position.Z);
+
+        if (_viewModel.SnapToGrid)
+        {
+            relativePoint.X = Math.Round(relativePoint.X / _viewModel.GridSize) * _viewModel.GridSize;
+            relativePoint.Z = Math.Round(relativePoint.Z / _viewModel.GridSize) * _viewModel.GridSize;
+        }
+
+        int insertIndex = Math.Clamp(bestSegment, 0, conduit.BendPoints.Count);
+        conduit.BendPoints.Insert(insertIndex, relativePoint);
+        UpdateConduitLengthFromPath(conduit);
+
+        ActionLogService.Instance.Log(LogCategory.Edit, "2D bend point inserted",
+            $"Conduit: {conduit.Name}, Index: {insertIndex}, Point: ({relativePoint.X:F2}, {relativePoint.Z:F2})");
+
+        _isDraggingConduitBend2D = true;
+        _draggingConduit2D = conduit;
+        _draggingConduitBendIndex2D = insertIndex;
+        _lastMousePosition = canvasPos;
+        PlanCanvas.CaptureMouse();
+
+        UpdateViewport();
+        Update2DCanvas();
+        UpdatePropertiesPanel();
+        return true;
+    }
+
+    private void DrawConduitEditHandles2D(ConduitComponent conduit)
+    {
+        _conduitBendHandleToIndexMap.Clear();
+
+        var pathPoints = GetConduitCanvasPathPoints(conduit);
+        if (pathPoints.Count < 2)
+            return;
+
+        // Mid-segment markers hint where a tap can insert a bend point.
+        for (int i = 0; i < pathPoints.Count - 1; i++)
+        {
+            var midpoint = new Point(
+                (pathPoints[i].X + pathPoints[i + 1].X) / 2,
+                (pathPoints[i].Y + pathPoints[i + 1].Y) / 2);
+
+            var marker = new Ellipse
+            {
+                Width = 5,
+                Height = 5,
+                Fill = Brushes.Orange,
+                IsHitTestVisible = false
+            };
+            Canvas.SetLeft(marker, midpoint.X - 2.5);
+            Canvas.SetTop(marker, midpoint.Y - 2.5);
+            PlanCanvas.Children.Add(marker);
+        }
+
+        for (int i = 1; i < pathPoints.Count; i++)
+        {
+            var handle = new Ellipse
+            {
+                Width = Conduit2DHandleRadius * 2,
+                Height = Conduit2DHandleRadius * 2,
+                Fill = Brushes.White,
+                Stroke = Brushes.OrangeRed,
+                StrokeThickness = 2
+            };
+            Canvas.SetLeft(handle, pathPoints[i].X - Conduit2DHandleRadius);
+            Canvas.SetTop(handle, pathPoints[i].Y - Conduit2DHandleRadius);
+            PlanCanvas.Children.Add(handle);
+
+            // Path index 1 maps to bend point index 0.
+            _conduitBendHandleToIndexMap[handle] = i - 1;
+        }
+    }
+
+    private bool TryHitConduitPath2D(Point canvasPos, out ConduitComponent? hitConduit)
+    {
+        hitConduit = null;
+        double bestDistance = Conduit2DHitThreshold;
+        var layerVisibilityById = BuildLayerVisibilityLookup();
+
+        foreach (var component in _viewModel.Components)
+        {
+            if (component is not ConduitComponent conduit)
+                continue;
+
+            if (!IsLayerVisible(layerVisibilityById, conduit.LayerId))
+                continue;
+
+            var points = GetConduitCanvasPathPoints(conduit);
+            if (points.Count < 2)
+                continue;
+
+            for (int i = 0; i < points.Count - 1; i++)
+            {
+                var distance = DistanceToSegment(canvasPos, points[i], points[i + 1], out _, out _);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    hitConduit = conduit;
+                }
+            }
+        }
+
+        return hitConduit != null;
+    }
     
     // ===== Component Add Handlers =====
-    
+
+    private void SketchLine_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isSketchLineMode)
+        {
+            FinalizeSketchLineDraft();
+            _isSketchLineMode = false;
+        }
+        else
+        {
+            ExitSketchModes();
+            if (_isDrawingConduit) FinishDrawingConduit();
+            if (_isFreehandDrawing) FinishFreehandConduit();
+            if (_isEditingConduitPath) ToggleEditConduitPath_Click(sender, e);
+            _isSketchLineMode = true;
+        }
+
+        UpdateSketchToolButtons();
+        Update2DCanvas();
+    }
+
+    private void SketchRectangle_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isSketchRectangleMode)
+        {
+            _isSketchRectangleMode = false;
+            _isSketchRectangleDragging = false;
+        }
+        else
+        {
+            ExitSketchModes();
+            if (_isDrawingConduit) FinishDrawingConduit();
+            if (_isFreehandDrawing) FinishFreehandConduit();
+            if (_isEditingConduitPath) ToggleEditConduitPath_Click(sender, e);
+            _isSketchRectangleMode = true;
+        }
+
+        UpdateSketchToolButtons();
+        Update2DCanvas();
+    }
+
+    private void ConvertSketch_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedSketchPrimitive == null)
+        {
+            MessageBox.Show("Select a sketch line or rectangle first.", "Convert Sketch", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        switch (_selectedSketchPrimitive)
+        {
+            case SketchLinePrimitive line:
+                ConvertSketchLine(line);
+                break;
+            case SketchRectanglePrimitive rectangle:
+                ConvertSketchRectangle(rectangle);
+                break;
+        }
+    }
+
+    private void ConvertSketchLine(SketchLinePrimitive line)
+    {
+        if (line.Points.Count < 2)
+            return;
+
+        if (line.Points.Count > 2)
+        {
+            ConvertSketchLineToConduit(line);
+            return;
+        }
+
+        var choice = MessageBox.Show(
+            "Convert straight line to conduit?\n\nYes = Conduit\nNo = Unistrut",
+            "Convert Line",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Question);
+
+        if (choice == MessageBoxResult.Yes)
+            ConvertSketchLineToConduit(line);
+        else if (choice == MessageBoxResult.No)
+            ConvertSketchLineToUnistrut(line);
+    }
+
+    private void ConvertSketchLineToConduit(SketchLinePrimitive line)
+    {
+        var conduit = new ConduitComponent
+        {
+            Name = line.Points.Count > 2 ? "Conduit Run" : "Conduit",
+            VisualProfile = ElectricalComponentCatalog.Profiles.ConduitEmt
+        };
+
+        var startWorld = CanvasToWorld(line.Points[0]);
+        conduit.Position = startWorld;
+
+        for (int i = 1; i < line.Points.Count; i++)
+        {
+            var world = CanvasToWorld(line.Points[i]);
+            conduit.BendPoints.Add(new Point3D(
+                world.X - startWorld.X,
+                0,
+                world.Z - startWorld.Z));
+        }
+
+        UpdateConduitLengthFromPath(conduit);
+        AddComponentWithUndo(conduit);
+        RemoveConvertedSketch(line);
+    }
+
+    private void ConvertSketchLineToUnistrut(SketchLinePrimitive line)
+    {
+        if (line.Points.Count < 2)
+            return;
+
+        var worldA = CanvasToWorld(line.Points[0]);
+        var worldB = CanvasToWorld(line.Points[1]);
+        var dx = worldB.X - worldA.X;
+        var dz = worldB.Z - worldA.Z;
+        var length = Math.Sqrt(dx * dx + dz * dz);
+
+        var unistrut = new SupportComponent
+        {
+            Name = "Unistrut",
+            VisualProfile = ElectricalComponentCatalog.Profiles.SupportUnistrut,
+            SupportType = "Unistrut",
+            Position = new Point3D((worldA.X + worldB.X) / 2, 0, (worldA.Z + worldB.Z) / 2),
+            Rotation = new Vector3D(0, Math.Atan2(dx, dz) * 180 / Math.PI, 0)
+        };
+        unistrut.Parameters.Width = 0.135;  // ~1-5/8 in
+        unistrut.Parameters.Height = 0.135; // ~1-5/8 in
+        unistrut.Parameters.Depth = Math.Max(0.1, length);
+        unistrut.Parameters.Material = "Unistrut";
+        unistrut.Parameters.Color = "#666666";
+
+        AddComponentWithUndo(unistrut);
+        RemoveConvertedSketch(line);
+    }
+
+    private void ConvertSketchRectangle(SketchRectanglePrimitive rectangle)
+    {
+        var choice = MessageBox.Show(
+            "Convert rectangle to junction box?\n\nYes = Junction Box\nNo = Electrical Panel",
+            "Convert Rectangle",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Question);
+
+        if (choice == MessageBoxResult.Cancel)
+            return;
+
+        var centerCanvas = new Point(
+            (rectangle.Start.X + rectangle.End.X) / 2,
+            (rectangle.Start.Y + rectangle.End.Y) / 2);
+        var centerWorld = CanvasToWorld(centerCanvas);
+        var worldWidth = Math.Max(0.1, Math.Abs(rectangle.End.X - rectangle.Start.X) / 20.0);
+        var worldDepth = Math.Max(0.1, Math.Abs(rectangle.End.Y - rectangle.Start.Y) / 20.0);
+
+        if (choice == MessageBoxResult.Yes)
+        {
+            var box = new BoxComponent
+            {
+                Name = "Junction Box",
+                VisualProfile = ElectricalComponentCatalog.Profiles.BoxJunction,
+                BoxType = "Junction Box",
+                Position = centerWorld
+            };
+            box.Parameters.Width = worldWidth;
+            box.Parameters.Depth = worldDepth;
+            AddComponentWithUndo(box);
+        }
+        else
+        {
+            var panel = new PanelComponent
+            {
+                Name = "Electrical Panel",
+                VisualProfile = ElectricalComponentCatalog.Profiles.PanelDistribution,
+                PanelType = "Distribution Panel",
+                Position = centerWorld
+            };
+            panel.Parameters.Width = worldWidth;
+            panel.Parameters.Depth = worldDepth;
+            AddComponentWithUndo(panel);
+        }
+
+        RemoveConvertedSketch(rectangle);
+    }
+
+    private void RemoveConvertedSketch(SketchPrimitive primitive)
+    {
+        _sketchPrimitives.Remove(primitive);
+        _selectedSketchPrimitive = null;
+        UpdateViewport();
+        Update2DCanvas();
+        UpdatePropertiesPanel();
+    }
+
+    private void FinalizeSketchLineDraft()
+    {
+        if (_sketchDraftLinePoints.Count >= 2)
+        {
+            _sketchPrimitives.Add(new SketchLinePrimitive(Guid.NewGuid().ToString(), _sketchDraftLinePoints.ToList()));
+            _selectedSketchPrimitive = _sketchPrimitives[^1];
+        }
+
+        _sketchDraftLinePoints.Clear();
+        RemoveSketchLineRubberBand();
+    }
+
+    private void ExitSketchModes()
+    {
+        _isSketchLineMode = false;
+        _isSketchRectangleMode = false;
+        _isSketchRectangleDragging = false;
+        _sketchDraftLinePoints.Clear();
+        RemoveSketchLineRubberBand();
+        RemoveSnapIndicator();
+        PlanCanvas.Cursor = Cursors.Arrow;
+        UpdateSketchToolButtons();
+    }
+
+    private void UpdateSketchToolButtons()
+    {
+        SketchLineButton.Background = _isSketchLineMode ? new SolidColorBrush(EditModeButtonColor) : SystemColors.ControlBrush;
+        SketchRectangleButton.Background = _isSketchRectangleMode ? new SolidColorBrush(EditModeButtonColor) : SystemColors.ControlBrush;
+        SketchLineButton.Content = _isSketchLineMode ? "Finish Sketch Line" : "Sketch Line";
+        SketchRectangleButton.Content = _isSketchRectangleMode ? "Finish Sketch Rect" : "Sketch Rectangle";
+        PlanCanvas.Cursor = (_isSketchLineMode || _isSketchRectangleMode) ? Cursors.Cross : Cursors.Arrow;
+    }
+
     private void AddConduit_Click(object sender, RoutedEventArgs e)
     {
         _viewModel.AddComponent(ComponentType.Conduit);
+        PostAddComponentMobileUX();
     }
     
     private void AddBox_Click(object sender, RoutedEventArgs e)
     {
         _viewModel.AddComponent(ComponentType.Box);
+        PostAddComponentMobileUX();
     }
     
     private void AddPanel_Click(object sender, RoutedEventArgs e)
     {
         _viewModel.AddComponent(ComponentType.Panel);
+        PostAddComponentMobileUX();
     }
     
     private void AddSupport_Click(object sender, RoutedEventArgs e)
     {
         _viewModel.AddComponent(ComponentType.Support);
+        PostAddComponentMobileUX();
     }
     
     private void AddCableTray_Click(object sender, RoutedEventArgs e)
     {
         _viewModel.AddComponent(ComponentType.CableTray);
+        PostAddComponentMobileUX();
     }
     
     private void AddHanger_Click(object sender, RoutedEventArgs e)
     {
         _viewModel.AddComponent(ComponentType.Hanger);
+        PostAddComponentMobileUX();
     }
     
     private void DeleteComponent_Click(object sender, RoutedEventArgs e)
@@ -1149,8 +3043,18 @@ public partial class MainWindow : Window
     {
         if (LibraryListBox.SelectedItem is ElectricalComponent component)
         {
-            _viewModel.AddComponent(component.Type);
+            _viewModel.AddComponentFromTemplate(component);
+            PostAddComponentMobileUX();
         }
+    }
+
+    private void PostAddComponentMobileUX()
+    {
+        if (!_isMobileView) return;
+
+        SetMobilePane(MobilePane.Canvas);
+        ViewTabs.SelectedIndex = 1;
+        Update2DCanvas();
     }
     
     // ===== Undo/Redo =====
@@ -1216,12 +3120,235 @@ public partial class MainWindow : Window
         ActionLogService.Instance.Log(LogCategory.View, "Switched to 2D Plan View");
         ViewTabs.SelectedIndex = 1;
         Update2DCanvas();
+        if (_isMobileView)
+        {
+            SetMobilePane(MobilePane.Canvas);
+        }
     }
     
     private void Show3DView_Click(object sender, RoutedEventArgs e)
     {
         ActionLogService.Instance.Log(LogCategory.View, "Switched to 3D Viewport");
         ViewTabs.SelectedIndex = 0;
+        if (_isMobileView)
+        {
+            SetMobilePane(MobilePane.Canvas);
+            MobileSectionTitleText.Text = "Plan (3D)";
+        }
+    }
+
+    private void MobileViewButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_isMobileView)
+        {
+            _desktopWindowState = WindowState;
+            _desktopWidth = Width;
+            _desktopHeight = Height;
+            _desktopLibraryColumnWidth = LibraryColumn.Width;
+            _desktopViewportColumnWidth = ViewportColumn.Width;
+            _desktopPropertiesColumnWidth = PropertiesColumn.Width;
+
+            WindowState = WindowState.Normal;
+            Width = MobileWindowWidth;
+            Height = MobileWindowHeight;
+
+            TopMenu.Visibility = Visibility.Collapsed;
+            DesktopToolBar.Visibility = Visibility.Collapsed;
+            MobileTopBar.Visibility = Visibility.Visible;
+            MobileBottomNav.Visibility = Visibility.Visible;
+            PdfControlsPanel.Visibility = Visibility.Collapsed;
+
+            _isMobileView = true;
+            ApplyMobileTheme();
+            ViewTabs.SelectedIndex = 1;
+            Update2DCanvas();
+            SetMobilePane(MobilePane.Canvas);
+
+            MobileViewButton.Content = "Desktop View";
+            ActionLogService.Instance.Log(LogCategory.View, "Mobile view enabled", $"Window size set to {MobileWindowWidth}x{MobileWindowHeight}");
+        }
+        else
+        {
+            TopMenu.Visibility = Visibility.Visible;
+            DesktopToolBar.Visibility = Visibility.Visible;
+            MobileTopBar.Visibility = Visibility.Collapsed;
+            MobileBottomNav.Visibility = Visibility.Collapsed;
+            PdfControlsPanel.Visibility = Visibility.Visible;
+            MainContentGrid.Background = Brushes.Transparent;
+
+            LibraryPanelContainer.Visibility = Visibility.Visible;
+            ViewportPanelContainer.Visibility = Visibility.Visible;
+            PropertiesPanelContainer.Visibility = Visibility.Visible;
+            LibraryColumn.Width = _desktopLibraryColumnWidth;
+            ViewportColumn.Width = _desktopViewportColumnWidth;
+            PropertiesColumn.Width = _desktopPropertiesColumnWidth;
+
+            Width = _desktopWidth;
+            Height = _desktopHeight;
+            WindowState = _desktopWindowState;
+
+            MobileViewButton.Content = "Mobile View";
+            _isMobileView = false;
+            ActionLogService.Instance.Log(LogCategory.View, "Mobile view disabled");
+        }
+    }
+
+    private void MobileThemeIosMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        SetMobileTheme(MobileTheme.IOS);
+    }
+
+    private void MobileThemeAndroidMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        SetMobileTheme(MobileTheme.AndroidMaterial);
+    }
+
+    private void MobileCanvasButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetMobilePane(MobilePane.Canvas);
+    }
+
+    private void MobileLibraryButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetMobilePane(MobilePane.Library);
+    }
+
+    private void MobilePropertiesButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetMobilePane(MobilePane.Properties);
+    }
+
+    private void MobileMoreButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button)
+        {
+            OpenContextMenuFromButton(button, PlacementMode.Bottom);
+        }
+    }
+
+    private void MobileAddTopButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button)
+        {
+            OpenContextMenuFromButton(button, PlacementMode.Bottom);
+        }
+    }
+
+    private static void OpenContextMenuFromButton(Button button, PlacementMode placementMode)
+    {
+        if (button.ContextMenu == null) return;
+        button.ContextMenu.PlacementTarget = button;
+        button.ContextMenu.Placement = placementMode;
+        button.ContextMenu.IsOpen = true;
+    }
+
+    private void SetMobileTheme(MobileTheme theme)
+    {
+        _mobileTheme = theme;
+        MobileThemeIosMenuItem.IsChecked = theme == MobileTheme.IOS;
+        MobileThemeAndroidMenuItem.IsChecked = theme == MobileTheme.AndroidMaterial;
+        ApplyMobileTheme();
+    }
+
+    private void ApplyMobileTheme()
+    {
+        bool isIOS = _mobileTheme == MobileTheme.IOS;
+        var primary = new SolidColorBrush(isIOS ? Color.FromRgb(0, 122, 255) : Color.FromRgb(26, 115, 232));
+        var border = new SolidColorBrush(isIOS ? Color.FromRgb(198, 198, 200) : Color.FromRgb(218, 220, 224));
+        var altSurface = new SolidColorBrush(isIOS ? Color.FromRgb(242, 242, 247) : Color.FromRgb(250, 250, 250));
+
+        MobileTopBar.Background = Brushes.White;
+        MobileTopBar.BorderBrush = border;
+        MobileBottomNav.Background = Brushes.White;
+        MobileBottomNav.BorderBrush = border;
+        if (_isMobileView)
+        {
+            MainContentGrid.Background = altSurface;
+        }
+
+        MobileTopBarGrid.Height = isIOS ? 52 : 56;
+        MobileSectionTitleText.FontSize = isIOS ? 17 : 18;
+        MobileSectionTitleText.FontWeight = isIOS ? FontWeights.SemiBold : FontWeights.Medium;
+
+        MobileUndoButton.Foreground = primary;
+        MobileRedoButton.Foreground = primary;
+        MobileAddTopButton.Foreground = primary;
+        MobileMoreButton.Foreground = primary;
+        MobileUndoButton.Content = isIOS ? "Undo" : "Undo";
+        MobileRedoButton.Content = isIOS ? "Redo" : "Redo";
+        MobileAddTopButton.Content = isIOS ? "Add" : "+ Add";
+        MobileMoreButton.Content = isIOS ? "More" : "Menu";
+
+        MobileCanvasButton.Content = isIOS ? "Canvas\nPlan" : "Canvas";
+        MobileLibraryButton.Content = isIOS ? "Library\nParts" : "Library";
+        MobilePropertiesButton.Content = isIOS ? "Properties\nEdit" : "Properties";
+
+        UpdateMobileNavigationVisuals();
+    }
+
+    private void SetMobilePane(MobilePane pane)
+    {
+        _activeMobilePane = pane;
+        if (!_isMobileView) return;
+
+        switch (_activeMobilePane)
+        {
+            case MobilePane.Canvas:
+                LibraryPanelContainer.Visibility = Visibility.Collapsed;
+                ViewportPanelContainer.Visibility = Visibility.Visible;
+                PropertiesPanelContainer.Visibility = Visibility.Collapsed;
+                LibraryColumn.Width = new GridLength(0);
+                ViewportColumn.Width = new GridLength(1, GridUnitType.Star);
+                PropertiesColumn.Width = new GridLength(0);
+                MobileAddTopButton.Visibility = Visibility.Visible;
+                MobileSectionTitleText.Text = "Plan";
+                ViewTabs.SelectedIndex = 1;
+                Update2DCanvas();
+                break;
+
+            case MobilePane.Library:
+                LibraryPanelContainer.Visibility = Visibility.Visible;
+                ViewportPanelContainer.Visibility = Visibility.Collapsed;
+                PropertiesPanelContainer.Visibility = Visibility.Collapsed;
+                LibraryColumn.Width = new GridLength(1, GridUnitType.Star);
+                ViewportColumn.Width = new GridLength(0);
+                PropertiesColumn.Width = new GridLength(0);
+                MobileAddTopButton.Visibility = Visibility.Visible;
+                MobileSectionTitleText.Text = "Library";
+                break;
+
+            case MobilePane.Properties:
+                LibraryPanelContainer.Visibility = Visibility.Collapsed;
+                ViewportPanelContainer.Visibility = Visibility.Collapsed;
+                PropertiesPanelContainer.Visibility = Visibility.Visible;
+                LibraryColumn.Width = new GridLength(0);
+                ViewportColumn.Width = new GridLength(0);
+                PropertiesColumn.Width = new GridLength(1, GridUnitType.Star);
+                MobileAddTopButton.Visibility = Visibility.Collapsed;
+                MobileSectionTitleText.Text = "Properties";
+                break;
+        }
+
+        UpdateMobileNavigationVisuals();
+    }
+
+    private void UpdateMobileNavigationVisuals()
+    {
+        bool isIOS = _mobileTheme == MobileTheme.IOS;
+        var selectedBrush = isIOS ? Brushes.Transparent : new SolidColorBrush(Color.FromRgb(232, 240, 254));
+        var selectedText = isIOS ? new SolidColorBrush(Color.FromRgb(0, 122, 255)) : new SolidColorBrush(Color.FromRgb(26, 115, 232));
+        var defaultBrush = Brushes.Transparent;
+        var defaultText = isIOS ? new SolidColorBrush(Color.FromRgb(142, 142, 147)) : new SolidColorBrush(Color.FromRgb(95, 99, 104));
+
+        MobileCanvasButton.Background = _activeMobilePane == MobilePane.Canvas ? selectedBrush : defaultBrush;
+        MobileLibraryButton.Background = _activeMobilePane == MobilePane.Library ? selectedBrush : defaultBrush;
+        MobilePropertiesButton.Background = _activeMobilePane == MobilePane.Properties ? selectedBrush : defaultBrush;
+        MobileCanvasButton.Foreground = _activeMobilePane == MobilePane.Canvas ? selectedText : defaultText;
+        MobileLibraryButton.Foreground = _activeMobilePane == MobilePane.Library ? selectedText : defaultText;
+        MobilePropertiesButton.Foreground = _activeMobilePane == MobilePane.Properties ? selectedText : defaultText;
+        MobileCanvasButton.FontWeight = _activeMobilePane == MobilePane.Canvas ? FontWeights.SemiBold : (isIOS ? FontWeights.Normal : FontWeights.Medium);
+        MobileLibraryButton.FontWeight = _activeMobilePane == MobilePane.Library ? FontWeights.SemiBold : (isIOS ? FontWeights.Normal : FontWeights.Medium);
+        MobilePropertiesButton.FontWeight = _activeMobilePane == MobilePane.Properties ? FontWeights.SemiBold : (isIOS ? FontWeights.Normal : FontWeights.Medium);
     }
     
     // ===== PDF Underlay =====
@@ -1307,6 +3434,8 @@ public partial class MainWindow : Window
         
         if (_isEditingConduitPath && _viewModel.SelectedComponent is ConduitComponent conduit)
         {
+            EnsureConduitHasEditableEndPoint(conduit);
+
             var handleHit = hits?
                 .Select(hit => hit.Visual)
                 .OfType<ModelVisual3D>()
@@ -1331,9 +3460,11 @@ public partial class MainWindow : Window
                 var localPoint = new Point3D(offset.X, offset.Y, offset.Z);
                 
                 conduit.BendPoints.Add(localPoint);
+                UpdateConduitLengthFromPath(conduit);
                 ActionLogService.Instance.Log(LogCategory.Edit, "Bend point added",
                     $"Conduit: {conduit.Name}, Point: ({localPoint.X:F2}, {localPoint.Y:F2}, {localPoint.Z:F2}), Total: {conduit.BendPoints.Count}");
                 UpdateViewport();
+                Update2DCanvas();
                 ShowBendPointHandles();
                 e.Handled = true;
                 return;
@@ -1351,7 +3482,13 @@ public partial class MainWindow : Window
         
         if (_isEditingConduitPath && matchedComponent is ConduitComponent)
         {
+            EnsureConduitHasEditableEndPoint((ConduitComponent)matchedComponent);
             ShowBendPointHandles();
+            Update2DCanvas();
+        }
+        else if (_isMobileView && matchedComponent != null)
+        {
+            SetMobilePane(MobilePane.Properties);
         }
     }
     
@@ -1382,7 +3519,10 @@ public partial class MainWindow : Window
                     }
                     
                     conduit.BendPoints[handleIndex] = newPoint;
+                    UpdateConduitLengthFromPath(conduit);
                     UpdateViewport();
+                    Update2DCanvas();
+                    UpdatePropertiesPanel();
                     ShowBendPointHandles();
                 }
             }
@@ -1409,6 +3549,8 @@ public partial class MainWindow : Window
                 ActionLogService.Instance.Log(LogCategory.Edit, "Bend points cleared",
                     $"Conduit: {conduit.Name}, Points removed: {conduit.BendPoints.Count}");
                 conduit.BendPoints.Clear();
+                if (conduit.Length <= 0)
+                    conduit.Length = 10.0;
                 UpdateViewport();
                 UpdatePropertiesPanel();
                 
@@ -1428,6 +3570,7 @@ public partial class MainWindow : Window
             ActionLogService.Instance.Log(LogCategory.Edit, "Last bend point deleted",
                 $"Conduit: {conduit.Name}, Removed: ({removed.X:F2}, {removed.Y:F2}, {removed.Z:F2}), Remaining: {conduit.BendPoints.Count - 1}");
             conduit.BendPoints.RemoveAt(conduit.BendPoints.Count - 1);
+            UpdateConduitLengthFromPath(conduit);
             UpdateViewport();
             UpdatePropertiesPanel();
             
@@ -1469,6 +3612,10 @@ public partial class MainWindow : Window
             component.Parameters.Material = MaterialTextBox.Text;
             component.Parameters.Elevation = double.Parse(ElevationTextBox.Text);
             component.Parameters.Color = ColorTextBox.Text;
+            component.Parameters.Manufacturer = ManufacturerTextBox.Text;
+            component.Parameters.PartNumber = PartNumberTextBox.Text;
+            component.Parameters.ReferenceUrl = ReferenceUrlTextBox.Text;
+            var catalogDataCleared = ClearCatalogMetadataIfDimensionsChanged(component);
             
             // Update layer assignment
             if (LayerComboBox.SelectedItem is Layer layer)
@@ -1478,16 +3625,46 @@ public partial class MainWindow : Window
             
             UpdateViewport();
             Update2DCanvas();
+            UpdatePropertiesPanel();
             ActionLogService.Instance.Log(LogCategory.Property, "Properties applied",
                 $"Name: {component.Name}, Pos: ({component.Position.X:F2}, {component.Position.Y:F2}, {component.Position.Z:F2}), " +
-                $"Material: {component.Parameters.Material}, Color: {component.Parameters.Color}");
-            MessageBox.Show("Properties updated successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                $"Material: {component.Parameters.Material}, Color: {component.Parameters.Color}, " +
+                $"Mfr: {component.Parameters.Manufacturer}, Part#: {component.Parameters.PartNumber}");
+            var successMessage = catalogDataCleared
+                ? "Properties updated. Catalog metadata was cleared because dimensions no longer match the validated catalog size."
+                : "Properties updated successfully!";
+            MessageBox.Show(successMessage, "Success", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
             ActionLogService.Instance.LogError(LogCategory.Property, "Failed to apply properties", ex);
             MessageBox.Show($"Error updating properties: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    private static bool ClearCatalogMetadataIfDimensionsChanged(ElectricalComponent component)
+    {
+        var parameters = component.Parameters;
+        if (!parameters.CatalogWidth.HasValue || !parameters.CatalogHeight.HasValue || !parameters.CatalogDepth.HasValue)
+            return false;
+
+        var matchesCatalog =
+            Math.Abs(parameters.Width - parameters.CatalogWidth.Value) <= CatalogDimensionTolerance &&
+            Math.Abs(parameters.Height - parameters.CatalogHeight.Value) <= CatalogDimensionTolerance &&
+            Math.Abs(parameters.Depth - parameters.CatalogDepth.Value) <= CatalogDimensionTolerance;
+
+        if (matchesCatalog)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(parameters.Manufacturer) &&
+            string.IsNullOrWhiteSpace(parameters.PartNumber) &&
+            string.IsNullOrWhiteSpace(parameters.ReferenceUrl))
+            return false;
+
+        parameters.Manufacturer = string.Empty;
+        parameters.PartNumber = string.Empty;
+        parameters.ReferenceUrl = string.Empty;
+        return true;
     }
     
     // ===== Project File Operations =====
@@ -1721,6 +3898,12 @@ public partial class MainWindow : Window
                     FinishFreehandConduit();
                     e.Handled = true;
                 }
+                else if (_isSketchLineMode || _isSketchRectangleMode)
+                {
+                    ExitSketchModes();
+                    Update2DCanvas();
+                    e.Handled = true;
+                }
                 else if (_isDrawingConduit)
                 {
                     FinishDrawingConduit();
@@ -1737,6 +3920,7 @@ public partial class MainWindow : Window
     
     private void ToggleEditConduitPath_Click(object sender, RoutedEventArgs e)
     {
+        ExitSketchModes();
         _isEditingConduitPath = !_isEditingConduitPath;
         ActionLogService.Instance.Log(LogCategory.Edit, "Edit conduit path toggled",
             $"Active: {_isEditingConduitPath}");
@@ -1746,12 +3930,16 @@ public partial class MainWindow : Window
             EditConduitPathButton.Background = new SolidColorBrush(EditModeButtonColor);
             EditConduitPathButton.Content = "Exit Edit Mode";
             
-            if (_viewModel.SelectedComponent is ConduitComponent)
+            if (_viewModel.SelectedComponent is ConduitComponent conduit)
             {
+                EnsureConduitHasEditableEndPoint(conduit);
+                UpdateConduitLengthFromPath(conduit);
                 ShowBendPointHandles();
+                Update2DCanvas();
                 MessageBox.Show("Edit Mode Active:\n" +
                     "• Click on conduit to add bend points\n" +
                     "• Drag orange handles to move bend points\n" +
+                    "• In 2D: click conduit segments to add bend points\n" +
                     "• Use 'Clear All Bend Points' to reset\n" +
                     "• Click 'Exit Edit Mode' when done", 
                     "Edit Conduit Path", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -1769,6 +3957,12 @@ public partial class MainWindow : Window
             EditConduitPathButton.Background = System.Windows.SystemColors.ControlBrush;
             EditConduitPathButton.Content = "Edit Conduit Path";
             HideBendPointHandles();
+            _isDraggingConduitBend2D = false;
+            _draggingConduit2D = null;
+            _draggingConduitBendIndex2D = -1;
+            _conduitBendHandleToIndexMap.Clear();
+            PlanCanvas.ReleaseMouseCapture();
+            Update2DCanvas();
             
             if (_draggedHandle != null)
             {
@@ -1786,6 +3980,9 @@ public partial class MainWindow : Window
         
         if (_viewModel.SelectedComponent is not ConduitComponent conduit)
             return;
+
+        EnsureConduitHasEditableEndPoint(conduit);
+        UpdateConduitLengthFromPath(conduit);
         
         var pathPoints = conduit.GetPathPoints();
         
@@ -1831,5 +4028,59 @@ public partial class MainWindow : Window
         
         visual.Content = model;
         return visual;
+    }
+
+    private sealed class ConduitVisualHost : FrameworkElement
+    {
+        private readonly VisualCollection _visuals;
+        private readonly DrawingVisual _drawingVisual;
+
+        public ConduitVisualHost()
+        {
+            _visuals = new VisualCollection(this);
+            _drawingVisual = new DrawingVisual();
+            _visuals.Add(_drawingVisual);
+
+            // Initialize visual tree first so any property-change callbacks
+            // that query VisualChildrenCount cannot hit null state.
+            IsHitTestVisible = false;
+            SnapsToDevicePixels = true;
+        }
+
+        public void Render(Action<DrawingContext> draw)
+        {
+            using var dc = _drawingVisual.RenderOpen();
+            draw(dc);
+        }
+
+        protected override int VisualChildrenCount => _visuals?.Count ?? 0;
+
+        protected override Visual GetVisualChild(int index)
+        {
+            return _visuals[index];
+        }
+    }
+
+    private void OpenReference_Click(object sender, RoutedEventArgs e)
+    {
+        var url = ReferenceUrlTextBox.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            MessageBox.Show("No reference URL is set for this component.", "Reference", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Unable to open URL: {ex.Message}", "Reference", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 }

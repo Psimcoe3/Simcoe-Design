@@ -38,6 +38,7 @@ public class SnapService
     {
         var result = new SnapResult { SnappedPoint = cursor, Type = SnapType.None, Snapped = false };
         double bestDist = SnapRadius;
+        var segList = segments.ToList();
         
         // Check endpoints
         if (SnapToEndpoints)
@@ -54,24 +55,9 @@ public class SnapService
         }
         
         // Check midpoints
-        if (SnapToMidpoints)
-        {
-            foreach (var seg in segments)
-            {
-                var mid = new Point((seg.A.X + seg.B.X) / 2, (seg.A.Y + seg.B.Y) / 2);
-                double dist = Distance(cursor, mid);
-                if (dist < bestDist)
-                {
-                    bestDist = dist;
-                    result = new SnapResult { SnappedPoint = mid, Type = SnapType.Midpoint, Snapped = true };
-                }
-            }
-        }
-        
         // Check intersections
         if (SnapToIntersections)
         {
-            var segList = segments.ToList();
             for (int i = 0; i < segList.Count; i++)
             {
                 for (int j = i + 1; j < segList.Count; j++)
@@ -85,6 +71,21 @@ public class SnapService
                             result = new SnapResult { SnappedPoint = intersection, Type = SnapType.Intersection, Snapped = true };
                         }
                     }
+                }
+            }
+        }
+
+        // Check midpoints
+        if (SnapToMidpoints)
+        {
+            foreach (var seg in segList)
+            {
+                var mid = new Point((seg.A.X + seg.B.X) / 2, (seg.A.Y + seg.B.Y) / 2);
+                double dist = Distance(cursor, mid);
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    result = new SnapResult { SnappedPoint = mid, Type = SnapType.Midpoint, Snapped = true };
                 }
             }
         }
