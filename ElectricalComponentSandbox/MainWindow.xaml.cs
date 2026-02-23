@@ -32,6 +32,8 @@ public partial class MainWindow : Window
     private BitmapSource? _cachedPdfBitmap;
     private string? _cachedPdfPath;
     private int _cachedPdfPage = -1;
+    private ModelVisual3D? _pdfUnderlayVisual3D;
+    private const double PdfUnderlayPlaneY = -0.02;
     private bool _isMobileView = false;
     private WindowState _desktopWindowState = WindowState.Maximized;
     private double _desktopWidth = 1400;
@@ -106,6 +108,12 @@ public partial class MainWindow : Window
     private const int MaxSegmentResolution = 50;
     private const int MinSegmentResolution = 5;
     private const double ResolutionScaleFactor = 10.0;
+    private const double CanvasWorldOrigin = 1000.0;
+    private const double CanvasWorldScale = 20.0;
+    private const double DefaultPlanCanvasSize = 2000.0;
+
+    private readonly record struct PlanWorldBounds(double MinX, double MaxX, double MinZ, double MaxZ);
+    private readonly record struct UnderlayCanvasFrame(PdfUnderlay Underlay, double ScaledWidth, double ScaledHeight, Point[] Corners);
 
     private enum MobilePane
     {
@@ -346,8 +354,10 @@ public partial class MainWindow : Window
             }
         }
         
+        _pdfUnderlayVisual3D = null;
         _visualToComponentMap.Clear();
         var layerVisibilityById = BuildLayerVisibilityLookup();
+        AddPdfUnderlayToViewport();
         
         // Add components to viewport
         foreach (var component in _viewModel.Components)
@@ -1051,65 +1061,208 @@ public partial class MainWindow : Window
         _cachedPdfPage = -1;
     }
 
-    private void DrawPdfUnderlay()
+    private BitmapSource? GetUnderlayBitmap()
     {
         if (_viewModel.PdfUnderlay == null || string.IsNullOrEmpty(_viewModel.PdfUnderlay.FilePath))
-            return;
-        
+            return null;
+
         if (!System.IO.File.Exists(_viewModel.PdfUnderlay.FilePath))
-            return;
-        
+            return null;
+
+        var filePath = _viewModel.PdfUnderlay.FilePath;
+        var pageNumber = Math.Max(0, _viewModel.PdfUnderlay.PageNumber - 1);
+
+        // Use cached bitmap if the file and page haven't changed.
+        if (_cachedPdfBitmap != null && _cachedPdfPath == filePath && _cachedPdfPage == pageNumber)
+            return _cachedPdfBitmap;
+
+        BitmapSource? bitmap = null;
+        var extension = System.IO.Path.GetExtension(filePath).ToLowerInvariant();
+
+        if (extension == ".pdf")
+        {
+            var pdfBytes = System.IO.File.ReadAllBytes(filePath);
+            using var skBitmap = Conversion.ToImage(pdfBytes, page: pageNumber);
+            using var image = skBitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+            using var memStream = new System.IO.MemoryStream();
+
+            image.SaveTo(memStream);
+            memStream.Position = 0;
+
+            var bitmapImage = new BitmapImage();
+            bitmapImage.BeginInit();
+            bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+            bitmapImage.StreamSource = memStream;
+            bitmapImage.EndInit();
+            bitmapImage.Freeze();
+            bitmap = bitmapImage;
+        }
+        else if (extension == ".png" || extension == ".jpg" || extension == ".jpeg" || extension == ".bmp")
+        {
+            var bitmapImage = new BitmapImage();
+            bitmapImage.BeginInit();
+            bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+            bitmapImage.UriSource = new Uri(filePath, UriKind.Absolute);
+            bitmapImage.EndInit();
+            bitmapImage.Freeze();
+            bitmap = bitmapImage;
+        }
+
+        _cachedPdfBitmap = bitmap;
+        _cachedPdfPath = filePath;
+        _cachedPdfPage = pageNumber;
+        return bitmap;
+    }
+
+    private static Point RotateCanvasPoint(Point point, double angleDegrees)
+    {
+        if (Math.Abs(angleDegrees) < 0.001)
+            return point;
+
+        var radians = angleDegrees * Math.PI / 180.0;
+        var cos = Math.Cos(radians);
+        var sin = Math.Sin(radians);
+
+        return new Point(
+            (point.X * cos) - (point.Y * sin),
+            (point.X * sin) + (point.Y * cos));
+    }
+
+    private static Point[] BuildUnderlayCanvasCorners(PdfUnderlay underlay, double scaledWidth, double scaledHeight)
+    {
+        var localTopLeft = new Point(0, 0);
+        var localTopRight = new Point(scaledWidth, 0);
+        var localBottomRight = new Point(scaledWidth, scaledHeight);
+        var localBottomLeft = new Point(0, scaledHeight);
+
+        var topLeftCanvas = RotateCanvasPoint(localTopLeft, underlay.RotationDegrees);
+        topLeftCanvas.Offset(underlay.OffsetX, underlay.OffsetY);
+
+        var topRightCanvas = RotateCanvasPoint(localTopRight, underlay.RotationDegrees);
+        topRightCanvas.Offset(underlay.OffsetX, underlay.OffsetY);
+
+        var bottomRightCanvas = RotateCanvasPoint(localBottomRight, underlay.RotationDegrees);
+        bottomRightCanvas.Offset(underlay.OffsetX, underlay.OffsetY);
+
+        var bottomLeftCanvas = RotateCanvasPoint(localBottomLeft, underlay.RotationDegrees);
+        bottomLeftCanvas.Offset(underlay.OffsetX, underlay.OffsetY);
+
+        return
+        [
+            topLeftCanvas,
+            topRightCanvas,
+            bottomRightCanvas,
+            bottomLeftCanvas
+        ];
+    }
+
+    private bool TryGetUnderlayCanvasFrame(out UnderlayCanvasFrame frame)
+    {
+        frame = default;
+
+        var underlay = _viewModel.PdfUnderlay;
+        if (underlay == null)
+            return false;
+
+        var bitmap = GetUnderlayBitmap();
+        if (bitmap == null || bitmap.PixelWidth <= 0 || bitmap.PixelHeight <= 0)
+            return false;
+
+        var scaledWidth = bitmap.PixelWidth * underlay.Scale;
+        var scaledHeight = bitmap.PixelHeight * underlay.Scale;
+        if (scaledWidth <= 0 || scaledHeight <= 0)
+            return false;
+
+        frame = new UnderlayCanvasFrame(
+            underlay,
+            scaledWidth,
+            scaledHeight,
+            BuildUnderlayCanvasCorners(underlay, scaledWidth, scaledHeight));
+
+        return true;
+    }
+
+    private void AddPdfUnderlayToViewport()
+    {
         try
         {
-            var filePath = _viewModel.PdfUnderlay.FilePath;
-            var pageNumber = Math.Max(0, _viewModel.PdfUnderlay.PageNumber - 1);
+            if (!TryGetUnderlayCanvasFrame(out var frame))
+                return;
 
-            // Use cached bitmap if the file and page haven't changed
-            BitmapSource? bitmap = null;
-            if (_cachedPdfBitmap != null && _cachedPdfPath == filePath && _cachedPdfPage == pageNumber)
-            {
-                bitmap = _cachedPdfBitmap;
-            }
-            else
-            {
-                var extension = System.IO.Path.GetExtension(filePath).ToLowerInvariant();
-                
-                // Handle PDF files
-                if (extension == ".pdf")
-                {
-                    var pdfBytes = System.IO.File.ReadAllBytes(filePath);
-                    using var skBitmap = Conversion.ToImage(pdfBytes, page: pageNumber);
-                    using var image = skBitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
-                    using var memStream = new System.IO.MemoryStream();
-                    
-                    image.SaveTo(memStream);
-                    memStream.Position = 0;
-                    
-                    var bitmapImage = new BitmapImage();
-                    bitmapImage.BeginInit();
-                    bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-                    bitmapImage.StreamSource = memStream;
-                    bitmapImage.EndInit();
-                    bitmapImage.Freeze();
-                    bitmap = bitmapImage;
-                }
-                // Handle image files (PNG, JPG, BMP)
-                else if (extension == ".png" || extension == ".jpg" || extension == ".jpeg" || extension == ".bmp")
-                {
-                    var bitmapImage = new BitmapImage();
-                    bitmapImage.BeginInit();
-                    bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-                    bitmapImage.UriSource = new Uri(filePath, UriKind.Absolute);
-                    bitmapImage.EndInit();
-                    bitmapImage.Freeze();
-                    bitmap = bitmapImage;
-                }
+            var bitmap = GetUnderlayBitmap();
+            if (bitmap == null)
+                return;
 
-                // Cache the result
-                _cachedPdfBitmap = bitmap;
-                _cachedPdfPath = filePath;
-                _cachedPdfPage = pageNumber;
-            }
+            var topLeftWorld = CanvasToWorld(frame.Corners[0]);
+            topLeftWorld.Y = PdfUnderlayPlaneY;
+            var topRightWorld = CanvasToWorld(frame.Corners[1]);
+            topRightWorld.Y = PdfUnderlayPlaneY;
+            var bottomRightWorld = CanvasToWorld(frame.Corners[2]);
+            bottomRightWorld.Y = PdfUnderlayPlaneY;
+            var bottomLeftWorld = CanvasToWorld(frame.Corners[3]);
+            bottomLeftWorld.Y = PdfUnderlayPlaneY;
+
+            var mesh = new MeshGeometry3D
+            {
+                Positions = new Point3DCollection
+                {
+                    topLeftWorld,
+                    topRightWorld,
+                    bottomRightWorld,
+                    bottomLeftWorld
+                },
+                TextureCoordinates = new PointCollection
+                {
+                    new Point(0, 0),
+                    new Point(1, 0),
+                    new Point(1, 1),
+                    new Point(0, 1)
+                },
+                TriangleIndices = new Int32Collection
+                {
+                    0, 1, 2,
+                    0, 2, 3
+                }
+            };
+
+            var brush = new ImageBrush(bitmap)
+            {
+                Opacity = frame.Underlay.Opacity,
+                Stretch = Stretch.Fill
+            };
+            var material = new DiffuseMaterial(brush);
+
+            var model = new GeometryModel3D(mesh, material)
+            {
+                BackMaterial = material
+            };
+
+            _pdfUnderlayVisual3D = new ModelVisual3D
+            {
+                Content = model
+            };
+
+            Viewport.Children.Add(_pdfUnderlayVisual3D);
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            ActionLogService.Instance.Log(LogCategory.Error, "Invalid page number for 3D PDF underlay",
+                $"Page {_viewModel.PdfUnderlay?.PageNumber ?? 1} does not exist in the document. {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            ActionLogService.Instance.Log(LogCategory.Error, "Failed to render 3D PDF/Image underlay", ex.Message);
+        }
+    }
+
+    private void DrawPdfUnderlay()
+    {
+        if (_viewModel.PdfUnderlay == null)
+            return;
+
+        try
+        {
+            var bitmap = GetUnderlayBitmap();
             
             if (bitmap != null)
             {
@@ -2014,6 +2167,7 @@ public partial class MainWindow : Window
         }
 
         worldPosition.Y = 0;
+        worldPosition = ClampWorldToPlanBounds(worldPosition);
         var component = _pendingPlacementComponent;
         component.Position = worldPosition;
         AddComponentWithUndo(component);
@@ -2134,9 +2288,17 @@ public partial class MainWindow : Window
             var snapped = ApplyDrawingSnap(pos);
             
             // If Shift is held, constrain to orthogonal angles
-            if (_drawingCanvasPoints.Count > 0 && Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift))
+            if (_drawingCanvasPoints.Count > 0 &&
+                (Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift)))
             {
                 snapped = ConstrainToAngle(_drawingCanvasPoints[^1], snapped);
+            }
+
+            snapped = ClampCanvasToPlanBounds(snapped);
+            if (_drawingCanvasPoints.Count > 0 && (_drawingCanvasPoints[^1] - snapped).Length < 0.5)
+            {
+                e.Handled = true;
+                return;
             }
             
             _drawingCanvasPoints.Add(snapped);
@@ -2238,7 +2400,7 @@ public partial class MainWindow : Window
 
         if (_pendingPlacementComponent != null)
         {
-            var snapped = ApplyDrawingSnap(pos);
+            var snapped = ClampCanvasToPlanBounds(ApplyDrawingSnap(pos));
             UpdateSnapIndicator(snapped, pos);
             e.Handled = true;
             return;
@@ -2265,11 +2427,12 @@ public partial class MainWindow : Window
         // --- Conduit drawing mode: update rubber-band line ---
         if (_isDrawingConduit && _drawingCanvasPoints.Count > 0)
         {
-            var snapped = ApplyDrawingSnap(pos);
+            var snapped = ClampCanvasToPlanBounds(ApplyDrawingSnap(pos));
             if (Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift))
             {
                 snapped = ConstrainToAngle(_drawingCanvasPoints[^1], snapped);
             }
+            snapped = ClampCanvasToPlanBounds(snapped);
             UpdateRubberBand(_drawingCanvasPoints[^1], snapped);
             UpdateSnapIndicator(snapped, pos);
             return;
@@ -2279,8 +2442,8 @@ public partial class MainWindow : Window
         if (_isDraggingConduitBend2D && _draggingConduit2D != null)
         {
             BeginFastInteractionMode();
-            var snapped = ApplyDrawingSnap(pos);
-            var worldPoint = CanvasToWorld(snapped);
+            var snapped = ClampCanvasToPlanBounds(ApplyDrawingSnap(pos));
+            var worldPoint = ClampWorldToPlanBounds(CanvasToWorld(snapped));
             var relativePoint = new Point3D(
                 worldPoint.X - _draggingConduit2D.Position.X,
                 0,
@@ -2295,7 +2458,7 @@ public partial class MainWindow : Window
             if (_draggingConduitBendIndex2D >= 0 && _draggingConduitBendIndex2D < _draggingConduit2D.BendPoints.Count)
             {
                 _draggingConduit2D.BendPoints[_draggingConduitBendIndex2D] = relativePoint;
-                UpdateConduitLengthFromPath(_draggingConduit2D);
+                ConstrainConduitPathToPlanBounds(_draggingConduit2D);
                 QueueSceneRefresh(update2D: true, update3D: true);
             }
 
@@ -2321,6 +2484,11 @@ public partial class MainWindow : Window
                 newPosition.Y = Math.Round(newPosition.Y / _viewModel.GridSize) * _viewModel.GridSize;
                 newPosition.Z = Math.Round(newPosition.Z / _viewModel.GridSize) * _viewModel.GridSize;
             }
+
+            newPosition = comp is ConduitComponent draggedConduit
+                ? ClampConduitPositionToPlanBounds(draggedConduit, newPosition)
+                : ClampWorldToPlanBounds(newPosition);
+
             comp.Position = newPosition;
 
             _lastMousePosition = pos;
@@ -2475,25 +2643,21 @@ public partial class MainWindow : Window
             
             // First point becomes the component position (world coords)
             var firstPt = _drawingCanvasPoints[0];
-            conduit.Position = CanvasToWorld(firstPt);
+            conduit.Position = ClampWorldToPlanBounds(CanvasToWorld(firstPt));
             
             // Remaining points become bend points (relative to position)
             for (int i = 1; i < _drawingCanvasPoints.Count; i++)
             {
-                var worldPt = CanvasToWorld(_drawingCanvasPoints[i]);
+                var worldPt = ClampWorldToPlanBounds(CanvasToWorld(_drawingCanvasPoints[i]));
                 var relative = new Point3D(
                     worldPt.X - conduit.Position.X,
                     worldPt.Y - conduit.Position.Y,
                     worldPt.Z - conduit.Position.Z);
                 conduit.BendPoints.Add(relative);
             }
-            
-            // Compute length from path
-            var pathPts = conduit.GetPathPoints();
-            double totalLen = 0;
-            for (int i = 0; i < pathPts.Count - 1; i++)
-                totalLen += (pathPts[i + 1] - pathPts[i]).Length;
-            conduit.Length = totalLen;
+
+            ConstrainConduitPathToPlanBounds(conduit);
+            var totalLen = conduit.Length;
             
             _viewModel.Components.Add(conduit);
             _viewModel.SelectedComponent = conduit;
@@ -2680,21 +2844,134 @@ public partial class MainWindow : Window
     /// </summary>
     private static Point3D CanvasToWorld(Point canvasPos)
     {
-        double worldX = (canvasPos.X - 1000) / 20.0;
-        double worldZ = (1000 - canvasPos.Y) / 20.0;
+        double worldX = (canvasPos.X - CanvasWorldOrigin) / CanvasWorldScale;
+        double worldZ = (CanvasWorldOrigin - canvasPos.Y) / CanvasWorldScale;
         return new Point3D(worldX, 0, worldZ);
     }
 
     private static Point WorldToCanvas(Point3D worldPos)
     {
-        return new Point(1000 + worldPos.X * 20, 1000 - worldPos.Z * 20);
+        return new Point(
+            CanvasWorldOrigin + worldPos.X * CanvasWorldScale,
+            CanvasWorldOrigin - worldPos.Z * CanvasWorldScale);
+    }
+
+    private PlanWorldBounds GetPlanWorldBounds()
+    {
+        if (TryGetUnderlayCanvasFrame(out var frame))
+        {
+            var worldCorners = frame.Corners.Select(CanvasToWorld).ToList();
+            return new PlanWorldBounds(
+                worldCorners.Min(p => p.X),
+                worldCorners.Max(p => p.X),
+                worldCorners.Min(p => p.Z),
+                worldCorners.Max(p => p.Z));
+        }
+
+        var canvasWidth = PlanCanvas?.Width > 0 ? PlanCanvas.Width : DefaultPlanCanvasSize;
+        var canvasHeight = PlanCanvas?.Height > 0 ? PlanCanvas.Height : DefaultPlanCanvasSize;
+
+        var topLeft = CanvasToWorld(new Point(0, 0));
+        var bottomRight = CanvasToWorld(new Point(canvasWidth, canvasHeight));
+
+        return new PlanWorldBounds(
+            Math.Min(topLeft.X, bottomRight.X),
+            Math.Max(topLeft.X, bottomRight.X),
+            Math.Min(bottomRight.Z, topLeft.Z),
+            Math.Max(bottomRight.Z, topLeft.Z));
+    }
+
+    private Point ClampCanvasToPlanBounds(Point canvasPoint)
+    {
+        if (TryGetUnderlayCanvasFrame(out var frame))
+        {
+            var local = canvasPoint;
+            local.Offset(-frame.Underlay.OffsetX, -frame.Underlay.OffsetY);
+            local = RotateCanvasPoint(local, -frame.Underlay.RotationDegrees);
+
+            var clampedLocal = new Point(
+                Math.Clamp(local.X, 0, frame.ScaledWidth),
+                Math.Clamp(local.Y, 0, frame.ScaledHeight));
+
+            var constrainedCanvas = RotateCanvasPoint(clampedLocal, frame.Underlay.RotationDegrees);
+            constrainedCanvas.Offset(frame.Underlay.OffsetX, frame.Underlay.OffsetY);
+            return constrainedCanvas;
+        }
+
+        var canvasWidth = PlanCanvas?.Width > 0 ? PlanCanvas.Width : DefaultPlanCanvasSize;
+        var canvasHeight = PlanCanvas?.Height > 0 ? PlanCanvas.Height : DefaultPlanCanvasSize;
+
+        return new Point(
+            Math.Clamp(canvasPoint.X, 0, canvasWidth),
+            Math.Clamp(canvasPoint.Y, 0, canvasHeight));
+    }
+
+    private Point3D ClampWorldToPlanBounds(Point3D worldPosition)
+    {
+        var canvasPoint = WorldToCanvas(worldPosition);
+        var constrainedCanvasPoint = ClampCanvasToPlanBounds(canvasPoint);
+        var constrainedWorld = CanvasToWorld(constrainedCanvasPoint);
+        constrainedWorld.Y = worldPosition.Y;
+        return constrainedWorld;
+    }
+
+    private Point3D ClampConduitPositionToPlanBounds(ConduitComponent conduit, Point3D desiredPosition)
+    {
+        var bounds = GetPlanWorldBounds();
+        var path = conduit.GetPathPoints();
+        if (path.Count == 0)
+            return ClampWorldToPlanBounds(desiredPosition);
+
+        var minRelX = path.Min(p => p.X);
+        var maxRelX = path.Max(p => p.X);
+        var minRelZ = path.Min(p => p.Z);
+        var maxRelZ = path.Max(p => p.Z);
+
+        return new Point3D(
+            Math.Clamp(desiredPosition.X, bounds.MinX - minRelX, bounds.MaxX - maxRelX),
+            desiredPosition.Y,
+            Math.Clamp(desiredPosition.Z, bounds.MinZ - minRelZ, bounds.MaxZ - maxRelZ));
+    }
+
+    private void ConstrainConduitPathToPlanBounds(ConduitComponent conduit)
+    {
+        if (conduit.BendPoints.Count == 0)
+        {
+            conduit.Position = ClampWorldToPlanBounds(conduit.Position);
+            return;
+        }
+
+        var absolutePath = conduit.GetPathPoints()
+            .Select(p => new Point3D(
+                conduit.Position.X + p.X,
+                conduit.Position.Y + p.Y,
+                conduit.Position.Z + p.Z))
+            .Select(ClampWorldToPlanBounds)
+            .ToList();
+
+        if (absolutePath.Count == 0)
+            return;
+
+        var origin = absolutePath[0];
+        conduit.Position = origin;
+        conduit.BendPoints.Clear();
+
+        for (int i = 1; i < absolutePath.Count; i++)
+        {
+            conduit.BendPoints.Add(new Point3D(
+                absolutePath[i].X - origin.X,
+                absolutePath[i].Y - origin.Y,
+                absolutePath[i].Z - origin.Z));
+        }
+
+        UpdateConduitLengthFromPath(conduit);
     }
 
     private static List<Point> GetConduitCanvasPathPoints(ConduitComponent conduit)
     {
         var origin = WorldToCanvas(conduit.Position);
         return conduit.GetPathPoints()
-            .Select(p => new Point(origin.X + p.X * 20, origin.Y - p.Z * 20))
+            .Select(p => new Point(origin.X + p.X * CanvasWorldScale, origin.Y - p.Z * CanvasWorldScale))
             .ToList();
     }
 
@@ -2781,8 +3058,8 @@ public partial class MainWindow : Window
 
         EnsureConduitHasEditableEndPoint(conduit);
 
-        var snappedCanvas = ApplyDrawingSnap(bestProjection);
-        var worldPoint = CanvasToWorld(snappedCanvas);
+        var snappedCanvas = ClampCanvasToPlanBounds(ApplyDrawingSnap(bestProjection));
+        var worldPoint = ClampWorldToPlanBounds(CanvasToWorld(snappedCanvas));
         var relativePoint = new Point3D(
             worldPoint.X - conduit.Position.X,
             0,
@@ -2796,7 +3073,7 @@ public partial class MainWindow : Window
 
         int insertIndex = Math.Clamp(bestSegment, 0, conduit.BendPoints.Count);
         conduit.BendPoints.Insert(insertIndex, relativePoint);
-        UpdateConduitLengthFromPath(conduit);
+        ConstrainConduitPathToPlanBounds(conduit);
 
         ActionLogService.Instance.Log(LogCategory.Edit, "2D bend point inserted",
             $"Conduit: {conduit.Name}, Index: {insertIndex}, Point: ({relativePoint.X:F2}, {relativePoint.Z:F2})");
@@ -2985,19 +3262,19 @@ public partial class MainWindow : Window
             VisualProfile = ElectricalComponentCatalog.Profiles.ConduitEmt
         };
 
-        var startWorld = CanvasToWorld(line.Points[0]);
+        var startWorld = ClampWorldToPlanBounds(CanvasToWorld(line.Points[0]));
         conduit.Position = startWorld;
 
         for (int i = 1; i < line.Points.Count; i++)
         {
-            var world = CanvasToWorld(line.Points[i]);
+            var world = ClampWorldToPlanBounds(CanvasToWorld(line.Points[i]));
             conduit.BendPoints.Add(new Point3D(
                 world.X - startWorld.X,
                 0,
                 world.Z - startWorld.Z));
         }
 
-        UpdateConduitLengthFromPath(conduit);
+        ConstrainConduitPathToPlanBounds(conduit);
         AddComponentWithUndo(conduit);
         RemoveConvertedSketch(line);
     }
@@ -3599,6 +3876,7 @@ public partial class MainWindow : Window
             
             // Render the PDF/Image on the canvas
             Update2DCanvas();
+            UpdateViewport();
             
             MessageBox.Show($"Underlay imported: {System.IO.Path.GetFileName(dialog.FileName)}\n" +
                 $"Auto-fitted to canvas (scale {underlay.Scale:F4}).\n" +
@@ -3614,6 +3892,7 @@ public partial class MainWindow : Window
             ActionLogService.Instance.Log(LogCategory.View, "PDF opacity changed", $"Value: {e.NewValue:F2}");
             _viewModel.PdfUnderlay.Opacity = e.NewValue;
             Update2DCanvas();
+            UpdateViewport();
         }
     }
     
@@ -3649,7 +3928,9 @@ public partial class MainWindow : Window
     private void Viewport_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         var position = e.GetPosition(Viewport);
-        var hits = Viewport3DHelper.FindHits(Viewport.Viewport, position);
+        var hits = Viewport3DHelper.FindHits(Viewport.Viewport, position)?
+            .Where(hit => !ReferenceEquals(hit.Visual, _pdfUnderlayVisual3D))
+            .ToList();
 
         if (_pendingPlacementComponent != null)
         {
@@ -3684,12 +3965,12 @@ public partial class MainWindow : Window
             var rayHit = hits?.FirstOrDefault();
             if (rayHit != null)
             {
-                var hitPoint = rayHit.Position;
+                var hitPoint = ClampWorldToPlanBounds(rayHit.Position);
                 var offset = hitPoint - _viewModel.SelectedComponent.Position;
                 var localPoint = new Point3D(offset.X, offset.Y, offset.Z);
                 
                 conduit.BendPoints.Add(localPoint);
-                UpdateConduitLengthFromPath(conduit);
+                ConstrainConduitPathToPlanBounds(conduit);
                 ActionLogService.Instance.Log(LogCategory.Edit, "Bend point added",
                     $"Conduit: {conduit.Name}, Point: ({localPoint.X:F2}, {localPoint.Y:F2}, {localPoint.Z:F2}), Total: {conduit.BendPoints.Count}");
                 UpdateViewport();
@@ -3734,9 +4015,12 @@ public partial class MainWindow : Window
             if (handleIndex < conduit.BendPoints.Count)
             {
                 var hits = Viewport3DHelper.FindHits(Viewport.Viewport, position);
-                if (hits != null && hits.Any())
+                var filteredHits = hits?
+                    .Where(hit => !ReferenceEquals(hit.Visual, _pdfUnderlayVisual3D))
+                    .ToList();
+                if (filteredHits != null && filteredHits.Any())
                 {
-                    var hitPoint = hits.First().Position;
+                    var hitPoint = ClampWorldToPlanBounds(filteredHits.First().Position);
                     var offset = hitPoint - _viewModel.SelectedComponent.Position;
                     var newPoint = new Point3D(offset.X, offset.Y, offset.Z);
                     
@@ -3748,7 +4032,7 @@ public partial class MainWindow : Window
                     }
                     
                     conduit.BendPoints[handleIndex] = newPoint;
-                    UpdateConduitLengthFromPath(conduit);
+                    ConstrainConduitPathToPlanBounds(conduit);
                     UpdateViewport();
                     Update2DCanvas();
                     UpdatePropertiesPanel();

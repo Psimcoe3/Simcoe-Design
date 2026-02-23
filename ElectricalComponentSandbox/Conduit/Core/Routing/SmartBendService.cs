@@ -7,8 +7,8 @@ namespace ElectricalComponentSandbox.Conduit.Core.Routing;
 /// </summary>
 public enum SmartBendType
 {
-    Stub90,   // 90° stub-up or stub-down
-    Kick90,   // 90° kick (offset with 90° bends)
+    Stub90,   // 90-degree stub-up or stub-down
+    Kick90,   // 90-degree kick (offset with 90-degree bends)
     Offset,   // Offset bend (two equal bends)
     Saddle    // 3-bend or 4-bend saddle
 }
@@ -32,6 +32,29 @@ public class BendTableEntry
 public class SmartBendService
 {
     private readonly List<BendTableEntry> _bendTable = new();
+    private const double AngleLookupTolerance = 0.5;
+
+    private static readonly IReadOnlyDictionary<double, double> OffsetMultipliers =
+        new Dictionary<double, double>
+        {
+            [10] = 6.0,
+            [15] = 3.86,
+            [22.5] = 2.6,
+            [30] = 2.0,
+            [45] = 1.4,
+            [60] = 1.2
+        };
+
+    private static readonly IReadOnlyDictionary<double, double> OffsetShrinkPerInch =
+        new Dictionary<double, double>
+        {
+            [10] = 1.0 / 16.0,
+            [15] = 1.0 / 8.0,
+            [22.5] = 3.0 / 16.0,
+            [30] = 1.0 / 4.0,
+            [45] = 3.0 / 8.0,
+            [60] = 1.0 / 2.0
+        };
 
     public IReadOnlyList<BendTableEntry> BendTable => _bendTable;
 
@@ -214,6 +237,144 @@ public class SmartBendService
             SegmentCount = segments.Count,
             BendCount = bendAngles.Count
         };
+    }
+
+    /// <summary>
+    /// Stub-up mark location measured from conduit end.
+    /// </summary>
+    public double CalculateStubMark(double desiredStubHeightInches, double takeUpInches)
+    {
+        if (desiredStubHeightInches < 0)
+            throw new ArgumentOutOfRangeException(nameof(desiredStubHeightInches));
+        if (takeUpInches < 0)
+            throw new ArgumentOutOfRangeException(nameof(takeUpInches));
+
+        return desiredStubHeightInches - takeUpInches;
+    }
+
+    /// <summary>
+    /// Returns the field multiplier for common offset bend angles.
+    /// </summary>
+    public bool TryGetOffsetMultiplier(double angleDegrees, out double multiplier) =>
+        TryLookupAngleValue(OffsetMultipliers, angleDegrees, out multiplier);
+
+    /// <summary>
+    /// Returns shrink-per-inch factor for common offset bend angles.
+    /// </summary>
+    public bool TryGetOffsetShrinkPerInch(double angleDegrees, out double shrinkPerInch) =>
+        TryLookupAngleValue(OffsetShrinkPerInch, angleDegrees, out shrinkPerInch);
+
+    /// <summary>
+    /// Distance between the two offset bends.
+    /// </summary>
+    public double CalculateOffsetSpacing(double offsetDepthInches, double angleDegrees)
+    {
+        if (offsetDepthInches < 0)
+            throw new ArgumentOutOfRangeException(nameof(offsetDepthInches));
+
+        if (TryGetOffsetMultiplier(angleDegrees, out var multiplier))
+            return offsetDepthInches * multiplier;
+
+        // Fallback to trig form: spacing = offset * csc(theta)
+        var thetaRadians = angleDegrees * Math.PI / 180.0;
+        if (thetaRadians <= 0 || thetaRadians >= Math.PI / 2)
+            throw new ArgumentOutOfRangeException(nameof(angleDegrees), "Angle must be between 0 and 90 degrees.");
+
+        return offsetDepthInches / Math.Sin(thetaRadians);
+    }
+
+    /// <summary>
+    /// Offset shrink compensation along the run.
+    /// </summary>
+    public double CalculateOffsetShrink(double offsetDepthInches, double angleDegrees)
+    {
+        if (offsetDepthInches < 0)
+            throw new ArgumentOutOfRangeException(nameof(offsetDepthInches));
+
+        if (TryGetOffsetShrinkPerInch(angleDegrees, out var shrinkPerInch))
+            return offsetDepthInches * shrinkPerInch;
+
+        var sorted = OffsetShrinkPerInch.OrderBy(p => p.Key).ToList();
+        if (sorted.Count == 0)
+            return 0;
+
+        if (angleDegrees <= sorted[0].Key)
+            return offsetDepthInches * sorted[0].Value;
+
+        if (angleDegrees >= sorted[^1].Key)
+            return offsetDepthInches * sorted[^1].Value;
+
+        for (int i = 0; i < sorted.Count - 1; i++)
+        {
+            var left = sorted[i];
+            var right = sorted[i + 1];
+            if (angleDegrees < left.Key || angleDegrees > right.Key)
+                continue;
+
+            var t = (angleDegrees - left.Key) / (right.Key - left.Key);
+            var interpolated = Lerp(left.Value, right.Value, t);
+            return offsetDepthInches * interpolated;
+        }
+
+        return offsetDepthInches * sorted[^1].Value;
+    }
+
+    /// <summary>
+    /// Marks for an offset laid out toward an obstruction.
+    /// </summary>
+    public (double FirstMarkInches, double SecondMarkInches, double SpacingInches, double ShrinkInches)
+        CalculateOffsetMarksTowardObstruction(double distanceToObstructionInches, double offsetDepthInches, double angleDegrees)
+    {
+        if (distanceToObstructionInches < 0)
+            throw new ArgumentOutOfRangeException(nameof(distanceToObstructionInches));
+
+        var spacing = CalculateOffsetSpacing(offsetDepthInches, angleDegrees);
+        var shrink = CalculateOffsetShrink(offsetDepthInches, angleDegrees);
+        var firstMark = distanceToObstructionInches + shrink;
+        var secondMark = firstMark - spacing;
+        return (firstMark, secondMark, spacing, shrink);
+    }
+
+    /// <summary>
+    /// Center angle for a symmetric 3-point saddle.
+    /// </summary>
+    public static double CalculateThreePointSaddleCenterAngle(double outerAngleDegrees) =>
+        outerAngleDegrees * 2.0;
+
+    /// <summary>
+    /// True when center angle equals twice outer angle within tolerance.
+    /// </summary>
+    public static bool IsSymmetricThreePointSaddle(double centerAngleDegrees, double outerAngleDegrees, double toleranceDegrees = 0.5) =>
+        Math.Abs(centerAngleDegrees - (2.0 * outerAngleDegrees)) <= Math.Abs(toleranceDegrees);
+
+    /// <summary>
+    /// Rule-of-thumb 45-degree center saddle layout (22.5/45/22.5).
+    /// </summary>
+    public (double OuterMarkOffsetInches, double TotalOutsideSpacingInches)
+        CalculateThreePointSaddleMarks45(double obstacleWidthInches)
+    {
+        if (obstacleWidthInches < 0)
+            throw new ArgumentOutOfRangeException(nameof(obstacleWidthInches));
+
+        var outerOffset = obstacleWidthInches * 2.0;
+        return (outerOffset, outerOffset * 2.0);
+    }
+
+    private static bool TryLookupAngleValue(IReadOnlyDictionary<double, double> table, double angleDegrees, out double value)
+    {
+        value = 0;
+        if (table.Count == 0)
+            return false;
+
+        var nearest = table.Keys
+            .OrderBy(k => Math.Abs(k - angleDegrees))
+            .First();
+
+        if (Math.Abs(nearest - angleDegrees) > AngleLookupTolerance)
+            return false;
+
+        value = table[nearest];
+        return true;
     }
 
     private static double Lerp(double a, double b, double t) => a + (b - a) * t;

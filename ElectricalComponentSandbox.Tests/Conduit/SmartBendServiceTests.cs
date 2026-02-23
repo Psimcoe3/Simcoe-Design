@@ -30,7 +30,7 @@ public class SmartBendServiceTests
     public void LookupDeduct_Interpolated_ReturnsReasonableValue()
     {
         var svc = new SmartBendService();
-        var entry = svc.LookupDeduct("1/2", 67.5); // Between 45° and 90°
+        var entry = svc.LookupDeduct("1/2", 67.5); // Between 45 and 90 degrees
         Assert.NotNull(entry);
         Assert.True(entry!.DeductInches > 2.5);
         Assert.True(entry.DeductInches < 5.0);
@@ -47,7 +47,7 @@ public class SmartBendServiceTests
     public void ComputeCutLength_WithBends_DeductsCorrectly()
     {
         var svc = new SmartBendService();
-        // 120 inches raw, 90° bend at start, 45° at end
+        // 120 inches raw, 90-degree bend at start, 45-degree at end
         double cut = svc.ComputeCutLength(120, "1/2", 90, 45);
         // Should deduct 5.0 + 2.5 = 7.5
         Assert.Equal(120 - 5.0 - 2.5, cut, 1);
@@ -135,5 +135,62 @@ public class SmartBendServiceTests
         var entry = svc.LookupDeduct("3/4", 90);
         Assert.NotNull(entry);
         Assert.Equal(6.0, entry!.DeductInches);
+    }
+
+    [Fact]
+    public void CalculateStubMark_SubtractsTakeUp()
+    {
+        var svc = new SmartBendService();
+        var mark = svc.CalculateStubMark(14.0, 6.0);
+        Assert.Equal(8.0, mark, 3);
+    }
+
+    [Fact]
+    public void CalculateOffsetSpacing_UsesMultiplierTable()
+    {
+        var svc = new SmartBendService();
+        var spacing = svc.CalculateOffsetSpacing(6.0, 30.0);
+        Assert.Equal(12.0, spacing, 3);
+    }
+
+    [Fact]
+    public void CalculateOffsetSpacing_FallsBackToTrig()
+    {
+        var svc = new SmartBendService();
+        var spacing = svc.CalculateOffsetSpacing(6.0, 20.0);
+        var expected = 6.0 / Math.Sin(20.0 * Math.PI / 180.0);
+        Assert.Equal(expected, spacing, 6);
+    }
+
+    [Fact]
+    public void CalculateOffsetShrink_UsesShrinkTable()
+    {
+        var svc = new SmartBendService();
+        var shrink = svc.CalculateOffsetShrink(6.0, 30.0);
+        Assert.Equal(1.5, shrink, 3);
+    }
+
+    [Fact]
+    public void CalculateOffsetMarksTowardObstruction_ComputesExpectedValues()
+    {
+        var svc = new SmartBendService();
+        var result = svc.CalculateOffsetMarksTowardObstruction(40.0, 6.0, 30.0);
+
+        Assert.Equal(12.0, result.SpacingInches, 3);
+        Assert.Equal(1.5, result.ShrinkInches, 3);
+        Assert.Equal(41.5, result.FirstMarkInches, 3);
+        Assert.Equal(29.5, result.SecondMarkInches, 3);
+    }
+
+    [Fact]
+    public void ThreePointSaddleHelpers_ReturnExpectedRuleOfThumb()
+    {
+        Assert.True(SmartBendService.IsSymmetricThreePointSaddle(45.0, 22.5));
+        Assert.Equal(45.0, SmartBendService.CalculateThreePointSaddleCenterAngle(22.5), 3);
+
+        var svc = new SmartBendService();
+        var marks = svc.CalculateThreePointSaddleMarks45(4.0);
+        Assert.Equal(8.0, marks.OuterMarkOffsetInches, 3);
+        Assert.Equal(16.0, marks.TotalOutsideSpacingInches, 3);
     }
 }

@@ -65,7 +65,7 @@ public partial class MainWindow
         if (!_isFreehandDrawing)
             return false;
 
-        var snappedCanvas = ApplyDrawingSnap(canvasPoint);
+        var snappedCanvas = ClampCanvasToPlanBounds(ApplyDrawingSnap(canvasPoint));
         ConduitEngine.DrawingTool.IsShiftHeld = IsShiftHeld();
         ConduitEngine.OnClick(CanvasToConduitWorld(snappedCanvas));
         DrawFreehandPreview();
@@ -77,7 +77,7 @@ public partial class MainWindow
         if (!_isFreehandDrawing || !ConduitEngine.DrawingTool.IsDrawing)
             return false;
 
-        var snappedCanvas = ApplyDrawingSnap(canvasPoint);
+        var snappedCanvas = ClampCanvasToPlanBounds(ApplyDrawingSnap(canvasPoint));
         ConduitEngine.DrawingTool.IsShiftHeld = IsShiftHeld();
         ConduitEngine.OnMouseMove(CanvasToConduitWorld(snappedCanvas));
         DrawFreehandPreview();
@@ -203,11 +203,45 @@ public partial class MainWindow
         _conduitRunPolylines.Add(polyline);
     }
 
-    private static Point CanvasToConduitWorld(Point canvas) =>
-        new((canvas.X - 1000.0) / 20.0, (1000.0 - canvas.Y) / 20.0);
+    private Point CanvasToConduitWorld(Point canvas)
+    {
+        var constrainedCanvas = ClampCanvasToPlanBounds(canvas);
+        return new(
+            (constrainedCanvas.X - CanvasWorldOrigin) / CanvasWorldScale,
+            (CanvasWorldOrigin - constrainedCanvas.Y) / CanvasWorldScale);
+    }
 
     private static Point ConduitWorldToCanvas(Point world) =>
-        new(1000.0 + world.X * 20.0, 1000.0 - world.Y * 20.0);
+        new(
+            CanvasWorldOrigin + world.X * CanvasWorldScale,
+            CanvasWorldOrigin - world.Y * CanvasWorldScale);
+
+    private List<XYZ> BuildDefaultAutoRoutePath(double elevation)
+    {
+        var bounds = GetPlanWorldBounds();
+        var width = Math.Max(1.0, bounds.MaxX - bounds.MinX);
+        var depth = Math.Max(1.0, bounds.MaxZ - bounds.MinZ);
+
+        return
+        [
+            new XYZ(bounds.MinX + width * 0.10, bounds.MinZ + depth * 0.15, elevation),
+            new XYZ(bounds.MinX + width * 0.60, bounds.MinZ + depth * 0.15, elevation),
+            new XYZ(bounds.MinX + width * 0.60, bounds.MinZ + depth * 0.55, elevation),
+            new XYZ(bounds.MinX + width * 0.60, bounds.MinZ + depth * 0.55, elevation + 3)
+        ];
+    }
+
+    private static List<XYZ> RemoveDuplicateRoutePoints(IEnumerable<XYZ> routePoints)
+    {
+        var deduped = new List<XYZ>();
+        foreach (var point in routePoints)
+        {
+            if (deduped.Count == 0 || deduped[^1].DistanceTo(point) > 0.0001)
+                deduped.Add(point);
+        }
+
+        return deduped;
+    }
 
     // ----- 3D rendering -----
 
@@ -301,30 +335,38 @@ public partial class MainWindow
         {
             foreach (var point in selectedConduit.GetPathPoints())
             {
-                path.Add(new XYZ(
+                var absolutePoint = new Point3D(
                     selectedConduit.Position.X + point.X,
-                    selectedConduit.Position.Z + point.Z,
+                    0,
+                    selectedConduit.Position.Z + point.Z);
+                var constrainedPoint = ClampWorldToPlanBounds(absolutePoint);
+
+                path.Add(new XYZ(
+                    constrainedPoint.X,
+                    constrainedPoint.Z,
                     elevation));
             }
         }
 
+        path = RemoveDuplicateRoutePoints(path);
         if (path.Count < 2)
         {
-            path = new List<XYZ>
-            {
-                new XYZ(0, 0, elevation),
-                new XYZ(12, 0, elevation),
-                new XYZ(12, 8, elevation),
-                new XYZ(12, 8, elevation + 3)
-            };
+            path = BuildDefaultAutoRoutePath(elevation);
         }
+
+        var planBounds = GetPlanWorldBounds();
+        var minElevation = Math.Min(path.Min(p => p.Z), elevation) - 2.0;
+        var maxElevation = Math.Max(path.Max(p => p.Z), elevation) + 12.0;
 
         var run = ConduitEngine.AutoRouteAlongPath(path, new RoutingOptions
         {
             ConduitTypeId = ConduitEngine.Store.Settings.DefaultConduitTypeId,
             TradeSize = ConduitEngine.DrawingTool.TradeSize,
             Elevation = elevation,
-            Material = ConduitEngine.DrawingTool.Material
+            Material = ConduitEngine.DrawingTool.Material,
+            RoutingBounds = new ObstacleBox(
+                new XYZ(planBounds.MinX, planBounds.MinZ, minElevation),
+                new XYZ(planBounds.MaxX, planBounds.MaxZ, maxElevation))
         });
 
         if (run == null)
