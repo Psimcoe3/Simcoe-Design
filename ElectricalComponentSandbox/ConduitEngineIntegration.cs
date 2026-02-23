@@ -21,6 +21,11 @@ namespace ElectricalComponentSandbox;
 /// </summary>
 public partial class MainWindow
 {
+    private const string ExportRunsDisabledTooltip = "Disabled: no conduit runs. Use Auto-Route or Freehand Conduit first.";
+    private const string ExportRunsCsvReadyTooltip = "Export conduit run schedule to CSV.";
+    private const string ExportConduitJsonReadyTooltip = "Export conduit runs and fittings to JSON.";
+    private const string ExportRunsMissingMessage = "No conduit runs to export.\n\nCreate at least one run using Auto-Route or Freehand Conduit, then export again.";
+
     private ConduitViewModel? _conduitVm;
     private bool _isFreehandDrawing;
     private readonly List<Polyline> _conduitRunPolylines = new();
@@ -32,6 +37,33 @@ public partial class MainWindow
 
     private static bool IsShiftHeld() =>
         Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
+
+    private bool HasConduitRuns() => ConduitEngine.Store.GetAllRuns().Any();
+
+    private void RefreshConduitActionUiState()
+    {
+        var hasRuns = HasConduitRuns();
+
+        ExportRunsCsvButton.IsEnabled = hasRuns;
+        ExportRunsCsvButton.ToolTip = hasRuns
+            ? ExportRunsCsvReadyTooltip
+            : ExportRunsDisabledTooltip;
+
+        ExportConduitJsonButton.IsEnabled = hasRuns;
+        ExportConduitJsonButton.ToolTip = hasRuns
+            ? ExportConduitJsonReadyTooltip
+            : ExportRunsDisabledTooltip;
+    }
+
+    private bool EnsureConduitRunsAvailable(string title)
+    {
+        if (HasConduitRuns())
+            return true;
+
+        RefreshConduitActionUiState();
+        MessageBox.Show(ExportRunsMissingMessage, title, MessageBoxButton.OK, MessageBoxImage.Warning);
+        return false;
+    }
 
     // ----- Freehand conduit tool -----
 
@@ -110,6 +142,7 @@ public partial class MainWindow
                 $"RunId: {run.RunId}, Segments: {run.SegmentIds.Count}, Fittings: {run.FittingIds.Count}");
             UpdateViewport();
             Update2DCanvas();
+            RefreshConduitActionUiState();
         }
         else
         {
@@ -371,12 +404,14 @@ public partial class MainWindow
 
         if (run == null)
         {
+            RefreshConduitActionUiState();
             MessageBox.Show("Auto-route did not generate a run.", "Auto-Route", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         UpdateViewport();
         Update2DCanvas();
+        RefreshConduitActionUiState();
 
         MessageBox.Show(
             $"Run {run.RunId}\nSegments: {run.SegmentIds.Count}\nFittings: {run.FittingIds.Count}\nLength: {run.ComputeTotalLength(ConduitEngine.Store):F2} ft",
@@ -387,11 +422,8 @@ public partial class MainWindow
 
     private async void ExportRunSchedule_Click(object sender, RoutedEventArgs e)
     {
-        if (!ConduitEngine.Store.GetAllRuns().Any())
-        {
-            MessageBox.Show("No conduit runs to export.", "Export Runs CSV", MessageBoxButton.OK, MessageBoxImage.Warning);
+        if (!EnsureConduitRunsAvailable("Export Runs CSV"))
             return;
-        }
 
         var dialog = new SaveFileDialog
         {
@@ -408,11 +440,8 @@ public partial class MainWindow
 
     private async void ExportConduitJson_Click(object sender, RoutedEventArgs e)
     {
-        if (!ConduitEngine.Store.GetAllRuns().Any())
-        {
-            MessageBox.Show("No conduit runs to export.", "Export Conduit JSON", MessageBoxButton.OK, MessageBoxImage.Warning);
+        if (!EnsureConduitRunsAvailable("Export Conduit JSON"))
             return;
-        }
 
         var dialog = new SaveFileDialog
         {

@@ -112,9 +112,11 @@
             <Separator/>
             <Button x:Name="FreehandConduitButton" Content="Freehand Conduit" Click="FreehandConduit_Click" ToolTip="Freehand sketch conduit path."/>
             <Separator/>
-            <Button Content="Auto-Route" Click="AutoRoute_Click"/>
-            <Button Content="Export Runs CSV" Click="ExportRunSchedule_Click"/>
-            <Button Content="Export Conduit JSON" Click="ExportConduitJson_Click"/>
+            <Button x:Name="AutoRouteButton" Content="Auto-Route" Click="AutoRoute_Click" ToolTip="Generate a conduit run from the selected path or a default route."/>
+            <Button x:Name="ExportRunsCsvButton" Content="Export Runs CSV" Click="ExportRunSchedule_Click" IsEnabled="False"
+                    ToolTip="Disabled until at least one conduit run exists. Use Auto-Route or Freehand Conduit first."/>
+            <Button x:Name="ExportConduitJsonButton" Content="Export Conduit JSON" Click="ExportConduitJson_Click" IsEnabled="False"
+                    ToolTip="Disabled until at least one conduit run exists. Use Auto-Route or Freehand Conduit first."/>
             <Separator/>
             <TextBlock Text="Detail:" VerticalAlignment="Center" Margin="5,0,2,0"/>
             <ComboBox x:Name="DetailLevelCombo" Width="75" SelectionChanged="DetailLevel_Changed" SelectedIndex="0">

@@ -369,6 +369,7 @@ public partial class MainWindow : Window
         }
 
         UpdateConduitRuns3D();
+        RefreshConduitActionUiState();
     }
     
     private void AddComponentToViewport(ElectricalComponent component)
@@ -1160,26 +1161,33 @@ public partial class MainWindow : Window
     {
         frame = default;
 
-        var underlay = _viewModel.PdfUnderlay;
-        if (underlay == null)
+        try
+        {
+            var underlay = _viewModel.PdfUnderlay;
+            if (underlay == null)
+                return false;
+
+            var bitmap = GetUnderlayBitmap();
+            if (bitmap == null || bitmap.PixelWidth <= 0 || bitmap.PixelHeight <= 0)
+                return false;
+
+            var scaledWidth = bitmap.PixelWidth * underlay.Scale;
+            var scaledHeight = bitmap.PixelHeight * underlay.Scale;
+            if (scaledWidth <= 0 || scaledHeight <= 0)
+                return false;
+
+            frame = new UnderlayCanvasFrame(
+                underlay,
+                scaledWidth,
+                scaledHeight,
+                BuildUnderlayCanvasCorners(underlay, scaledWidth, scaledHeight));
+
+            return true;
+        }
+        catch
+        {
             return false;
-
-        var bitmap = GetUnderlayBitmap();
-        if (bitmap == null || bitmap.PixelWidth <= 0 || bitmap.PixelHeight <= 0)
-            return false;
-
-        var scaledWidth = bitmap.PixelWidth * underlay.Scale;
-        var scaledHeight = bitmap.PixelHeight * underlay.Scale;
-        if (scaledWidth <= 0 || scaledHeight <= 0)
-            return false;
-
-        frame = new UnderlayCanvasFrame(
-            underlay,
-            scaledWidth,
-            scaledHeight,
-            BuildUnderlayCanvasCorners(underlay, scaledWidth, scaledHeight));
-
-        return true;
+        }
     }
 
     private void AddPdfUnderlayToViewport()
