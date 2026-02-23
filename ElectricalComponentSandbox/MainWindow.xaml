@@ -387,13 +387,13 @@
                                 <!-- Transform Properties -->
                                 <TextBlock Text="Transform" FontWeight="Bold" Margin="0,10,0,0"/>
                                 
-                                <TextBlock Text="Position X:"/>
+                                <TextBlock Text="Position X (2D left/right):"/>
                                 <TextBox x:Name="PositionXTextBox"/>
                                 
-                                <TextBlock Text="Position Y:"/>
+                                <TextBlock Text="Position Y (elevation):"/>
                                 <TextBox x:Name="PositionYTextBox"/>
                                 
-                                <TextBlock Text="Position Z:"/>
+                                <TextBlock Text="Position Z (2D up/down):"/>
                                 <TextBox x:Name="PositionZTextBox"/>
                                 
                                 <TextBlock Text="Rotation X:"/>
