@@ -31,10 +31,14 @@ public partial class MainWindow : Window
     private readonly List<Visual3D> _selectionDimensionVisuals = new();
     private readonly Dictionary<Visual3D, char> _dimensionVisualAxisMap = new();
     private readonly Dictionary<string, DimensionAxisOffsets> _dimensionOffsetsByComponentId = new(StringComparer.Ordinal);
+    private readonly List<CustomDimensionAnnotation> _customDimensionAnnotations = new();
     private bool _isDraggingDimensionAnnotation = false;
     private char _draggingDimensionAxis = '\0';
     private Point _dimensionDragStartMousePosition;
     private double _dimensionDragStartOffsetFeet = 0.0;
+    private bool _isAddingCustomDimension = false;
+    private Point3D? _pendingCustomDimensionStartLocal = null;
+    private string? _pendingCustomDimensionComponentId = null;
     private ModelVisual3D? _draggedHandle = null;
     private Point _lastMousePosition;
     private BitmapSource? _cachedPdfBitmap;
@@ -121,7 +125,6 @@ public partial class MainWindow : Window
     private const double DefaultPlanCanvasSize = 2000.0;
     private const int DefaultDimensionInchFractionDenominator = 16;
     private const double InViewDimensionMinSpan = 1e-4;
-    private const int MaxInViewDimensionsPerAxis = 6;
 
     private DimensionDisplayMode _dimensionDisplayMode = DimensionDisplayMode.FeetInches;
     private int _dimensionInchFractionDenominator = DefaultDimensionInchFractionDenominator;
@@ -130,6 +133,15 @@ public partial class MainWindow : Window
     private readonly record struct UnderlayCanvasFrame(PdfUnderlay Underlay, double ScaledWidth, double ScaledHeight, Point[] Corners);
     private readonly record struct DimensionEntry(string Label, double FeetValue);
     private readonly record struct AxisDimensionSpan(char Axis, double ValueFeet, double MinCoordinate, double MaxCoordinate);
+    private readonly record struct DimensionEdgePlacement(double EdgeX, double EdgeY, double EdgeZ, double OutwardX, double OutwardY, double OutwardZ);
+    private readonly record struct AxisDimensionGuide(char Axis, double ValueFeet, Point3D EdgeStart, Point3D EdgeEnd, Vector3D Outward);
+    private sealed class CustomDimensionAnnotation
+    {
+        public string ComponentId { get; init; } = string.Empty;
+        public Point3D StartLocal { get; init; }
+        public Point3D EndLocal { get; init; }
+        public char Axis { get; init; }
+    }
     private sealed class DimensionAxisOffsets
     {
         public double X;
@@ -170,6 +182,7 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
         InitializeDimensionDisplayDefaults();
         ApplyDesktopPaneLayout();
+        UpdateCustomDimensionUiState();
         
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
         
@@ -306,6 +319,96 @@ public partial class MainWindow : Window
     {
         _dimensionDisplayMode = GetSelectedDimensionDisplayMode();
         _dimensionInchFractionDenominator = GetSelectedDimensionIncrementDenominator();
+    }
+
+    private static char GetDominantAxis(Vector3D delta)
+    {
+        var absX = Math.Abs(delta.X);
+        var absY = Math.Abs(delta.Y);
+        var absZ = Math.Abs(delta.Z);
+
+        if (absX >= absY && absX >= absZ)
+            return 'X';
+        if (absY >= absX && absY >= absZ)
+            return 'Y';
+
+        return 'Z';
+    }
+
+    private void CancelCustomDimensionMode()
+    {
+        _isAddingCustomDimension = false;
+        _pendingCustomDimensionStartLocal = null;
+        _pendingCustomDimensionComponentId = null;
+    }
+
+    private void PruneCustomDimensions()
+    {
+        if (_customDimensionAnnotations.Count == 0)
+            return;
+
+        var validComponentIds = _viewModel.Components
+            .Select(component => component.Id)
+            .ToHashSet(StringComparer.Ordinal);
+
+        _customDimensionAnnotations.RemoveAll(annotation => !validComponentIds.Contains(annotation.ComponentId));
+
+        if (!string.IsNullOrEmpty(_pendingCustomDimensionComponentId) &&
+            !validComponentIds.Contains(_pendingCustomDimensionComponentId))
+        {
+            _pendingCustomDimensionStartLocal = null;
+            _pendingCustomDimensionComponentId = null;
+        }
+    }
+
+    private void UpdateCustomDimensionUiState()
+    {
+        if (CustomDimensionModeButton == null ||
+            ClearCustomDimensionsButton == null ||
+            CustomDimensionModeTextBlock == null)
+        {
+            return;
+        }
+
+        CustomDimensionModeButton.Content = _isAddingCustomDimension
+            ? "Cancel Custom Dimension"
+            : "Add Custom Dimension";
+
+        var selected = _viewModel?.SelectedComponent;
+        var selectedCount = selected == null
+            ? 0
+            : _customDimensionAnnotations.Count(annotation => string.Equals(annotation.ComponentId, selected.Id, StringComparison.Ordinal));
+
+        ClearCustomDimensionsButton.IsEnabled = selected == null
+            ? _customDimensionAnnotations.Count > 0
+            : selectedCount > 0;
+
+        if (_isAddingCustomDimension)
+        {
+            if (selected == null)
+            {
+                CustomDimensionModeTextBlock.Text = "Custom dim mode: select a component, then click two points in 3D.";
+            }
+            else if (!_pendingCustomDimensionStartLocal.HasValue)
+            {
+                CustomDimensionModeTextBlock.Text = "Custom dim mode: click first point on selected component.";
+            }
+            else
+            {
+                CustomDimensionModeTextBlock.Text = "Custom dim mode: click second point to place dimension.";
+            }
+
+            return;
+        }
+
+        if (selected == null)
+        {
+            CustomDimensionModeTextBlock.Text = $"Custom dimensions total: {_customDimensionAnnotations.Count}";
+        }
+        else
+        {
+            CustomDimensionModeTextBlock.Text = $"Custom dimensions on selected: {selectedCount}";
+        }
     }
 
     private DimensionDisplayMode GetSelectedDimensionDisplayMode()
@@ -609,44 +712,360 @@ public partial class MainWindow : Window
         }
     }
 
-    private List<AxisDimensionSpan> BuildUniqueAxisDimensionSpans(IReadOnlyList<Point3D> points)
+    private static List<AxisDimensionSpan> BuildPrimaryAxisDimensionSpans(Rect3D bounds)
     {
-        var incrementFeet = Math.Max(InViewDimensionMinSpan, GetDisplayIncrementFeet());
-        var uniqueByAxisAndValue = new Dictionary<(char Axis, long Quantized), AxisDimensionSpan>();
+        var spans = new List<AxisDimensionSpan>(3);
+        var maxX = bounds.X + bounds.SizeX;
+        var maxY = bounds.Y + bounds.SizeY;
+        var maxZ = bounds.Z + bounds.SizeZ;
 
-        void AddSpan(char axis, double value, double min, double max)
+        if (bounds.SizeX >= InViewDimensionMinSpan)
+            spans.Add(new AxisDimensionSpan('X', bounds.SizeX, bounds.X, maxX));
+        if (bounds.SizeY >= InViewDimensionMinSpan)
+            spans.Add(new AxisDimensionSpan('Y', bounds.SizeY, bounds.Y, maxY));
+        if (bounds.SizeZ >= InViewDimensionMinSpan)
+            spans.Add(new AxisDimensionSpan('Z', bounds.SizeZ, bounds.Z, maxZ));
+
+        return spans;
+    }
+
+    private static double SelectVisibleEdge(double min, double max, double cameraValue)
+    {
+        var center = (min + max) * 0.5;
+        return cameraValue >= center ? max : min;
+    }
+
+    private static double GetOutwardSign(double selectedEdge, double min, double max)
+    {
+        var center = (min + max) * 0.5;
+        return selectedEdge >= center ? 1.0 : -1.0;
+    }
+
+    private DimensionEdgePlacement BuildDimensionEdgePlacement(Rect3D bounds)
+    {
+        var minX = bounds.X;
+        var minY = bounds.Y;
+        var minZ = bounds.Z;
+        var maxX = bounds.X + bounds.SizeX;
+        var maxY = bounds.Y + bounds.SizeY;
+        var maxZ = bounds.Z + bounds.SizeZ;
+
+        Point3D cameraPosition;
+        if (Viewport.Camera is ProjectionCamera projectionCamera)
         {
-            if (value < InViewDimensionMinSpan)
-                return;
-
-            var quantized = (long)Math.Round(value / incrementFeet, MidpointRounding.AwayFromZero);
-            var key = (axis, quantized);
-            if (uniqueByAxisAndValue.ContainsKey(key))
-                return;
-
-            uniqueByAxisAndValue[key] = new AxisDimensionSpan(axis, value, min, max);
+            cameraPosition = projectionCamera.Position;
+        }
+        else
+        {
+            cameraPosition = new Point3D(
+                maxX + Math.Max(1.0, bounds.SizeX),
+                maxY + Math.Max(1.0, bounds.SizeY),
+                maxZ + Math.Max(1.0, bounds.SizeZ));
         }
 
-        for (var i = 0; i < points.Count - 1; i++)
+        var edgeX = SelectVisibleEdge(minX, maxX, cameraPosition.X);
+        var edgeY = SelectVisibleEdge(minY, maxY, cameraPosition.Y);
+        var edgeZ = SelectVisibleEdge(minZ, maxZ, cameraPosition.Z);
+
+        return new DimensionEdgePlacement(
+            edgeX,
+            edgeY,
+            edgeZ,
+            GetOutwardSign(edgeX, minX, maxX),
+            GetOutwardSign(edgeY, minY, maxY),
+            GetOutwardSign(edgeZ, minZ, maxZ));
+    }
+
+    private bool TryGetViewportCameraPosition(out Point3D cameraPosition)
+    {
+        if (Viewport.Camera is ProjectionCamera projectionCamera)
         {
-            for (var j = i + 1; j < points.Count; j++)
+            cameraPosition = projectionCamera.Position;
+            return true;
+        }
+
+        cameraPosition = default;
+        return false;
+    }
+
+    private static Rect3D CreateParameterPrismBounds(double width, double height, double depth)
+    {
+        var clampedWidth = Math.Max(InViewDimensionMinSpan, width);
+        var clampedHeight = Math.Max(InViewDimensionMinSpan, height);
+        var clampedDepth = Math.Max(InViewDimensionMinSpan, depth);
+        return new Rect3D(
+            -clampedWidth / 2.0,
+            0.0,
+            -clampedDepth / 2.0,
+            clampedWidth,
+            clampedHeight,
+            clampedDepth);
+    }
+
+    private bool TryGetNominalLocalDimensionBounds(ElectricalComponent component, out Rect3D localBounds)
+    {
+        static bool IsValidLength(double value) => !double.IsNaN(value) && !double.IsInfinity(value) && value > InViewDimensionMinSpan;
+
+        static double ChooseLength(double primary, double fallback)
+        {
+            if (IsValidLength(primary))
+                return primary;
+            if (IsValidLength(fallback))
+                return fallback;
+            return InViewDimensionMinSpan;
+        }
+
+        switch (component)
+        {
+            case HangerComponent hanger:
+                localBounds = CreateParameterPrismBounds(
+                    ChooseLength(component.Parameters.Width, hanger.RodDiameter),
+                    ChooseLength(component.Parameters.Height, hanger.RodLength),
+                    ChooseLength(component.Parameters.Depth, hanger.RodDiameter));
+                return IsValidBounds(localBounds);
+
+            case ConduitComponent conduit:
+                localBounds = CreateParameterPrismBounds(
+                    ChooseLength(component.Parameters.Width, conduit.Diameter),
+                    ChooseLength(component.Parameters.Height, conduit.Diameter),
+                    ChooseLength(component.Parameters.Depth, conduit.Length));
+                return IsValidBounds(localBounds);
+
+            case CableTrayComponent tray:
+                localBounds = CreateParameterPrismBounds(
+                    ChooseLength(component.Parameters.Width, tray.TrayWidth),
+                    ChooseLength(component.Parameters.Height, tray.TrayDepth),
+                    ChooseLength(component.Parameters.Depth, tray.Length));
+                return IsValidBounds(localBounds);
+
+            case BoxComponent:
+            case PanelComponent:
+            case SupportComponent:
+            default:
+                localBounds = CreateParameterPrismBounds(
+                    ChooseLength(component.Parameters.Width, 0.0),
+                    ChooseLength(component.Parameters.Height, 0.0),
+                    ChooseLength(component.Parameters.Depth, 0.0));
+                return IsValidBounds(localBounds);
+        }
+    }
+
+    private List<AxisDimensionGuide> BuildAxisDimensionGuides(Rect3D localBounds, Transform3D transform)
+    {
+        var guides = new List<AxisDimensionGuide>(3);
+        if (!IsValidBounds(localBounds))
+            return guides;
+
+        var minX = localBounds.X;
+        var minY = localBounds.Y;
+        var minZ = localBounds.Z;
+        var maxX = minX + localBounds.SizeX;
+        var maxY = minY + localBounds.SizeY;
+        var maxZ = minZ + localBounds.SizeZ;
+
+        var localCenter = new Point3D(
+            minX + localBounds.SizeX / 2.0,
+            minY + localBounds.SizeY / 2.0,
+            minZ + localBounds.SizeZ / 2.0);
+
+        var hasCamera = TryGetViewportCameraPosition(out var cameraWorld);
+        Point3D localCamera;
+        if (hasCamera && transform.Inverse != null)
+        {
+            localCamera = transform.Inverse.Transform(cameraWorld);
+        }
+        else
+        {
+            localCamera = new Point3D(
+                maxX + Math.Max(1.0, localBounds.SizeX),
+                maxY + Math.Max(1.0, localBounds.SizeY),
+                maxZ + Math.Max(1.0, localBounds.SizeZ));
+        }
+
+        var xEdge = SelectVisibleEdge(minX, maxX, localCamera.X);
+        var yEdge = SelectVisibleEdge(minY, maxY, localCamera.Y);
+        var zEdge = SelectVisibleEdge(minZ, maxZ, localCamera.Z);
+        var cornerLocal = new Point3D(xEdge, yEdge, zEdge);
+
+        var centerWorld = transform.Transform(localCenter);
+        var cornerWorld = transform.Transform(cornerLocal);
+
+        AxisDimensionGuide? CreateGuide(char axis, Point3D startLocal, Point3D endLocal, double valueFeet)
+        {
+            if (valueFeet < InViewDimensionMinSpan)
+                return null;
+
+            var edgeStart = transform.Transform(startLocal);
+            var edgeEnd = transform.Transform(endLocal);
+            var axisDirection = edgeEnd - edgeStart;
+            if (axisDirection.Length < 1e-6)
+                return null;
+            axisDirection.Normalize();
+
+            var outward = cornerWorld - centerWorld;
+            outward -= axisDirection * Vector3D.DotProduct(outward, axisDirection);
+
+            if (outward.Length < 1e-6 && hasCamera)
             {
-                var a = points[i];
-                var b = points[j];
-                AddSpan('X', Math.Abs(a.X - b.X), Math.Min(a.X, b.X), Math.Max(a.X, b.X));
-                AddSpan('Y', Math.Abs(a.Y - b.Y), Math.Min(a.Y, b.Y), Math.Max(a.Y, b.Y));
-                AddSpan('Z', Math.Abs(a.Z - b.Z), Math.Min(a.Z, b.Z), Math.Max(a.Z, b.Z));
+                outward = cameraWorld - centerWorld;
+                outward -= axisDirection * Vector3D.DotProduct(outward, axisDirection);
             }
+
+            if (outward.Length < 1e-6)
+            {
+                outward = Vector3D.CrossProduct(axisDirection, new Vector3D(0, 1, 0));
+                if (outward.Length < 1e-6)
+                    outward = Vector3D.CrossProduct(axisDirection, new Vector3D(1, 0, 0));
+            }
+
+            if (outward.Length < 1e-6)
+                return null;
+
+            outward.Normalize();
+
+            var midpoint = new Point3D(
+                (edgeStart.X + edgeEnd.X) / 2.0,
+                (edgeStart.Y + edgeEnd.Y) / 2.0,
+                (edgeStart.Z + edgeEnd.Z) / 2.0);
+            var centerToMid = midpoint - centerWorld;
+            if (Vector3D.DotProduct(outward, centerToMid) < 0)
+                outward = -outward;
+
+            return new AxisDimensionGuide(axis, valueFeet, edgeStart, edgeEnd, outward);
         }
 
-        return uniqueByAxisAndValue.Values
-            .GroupBy(span => span.Axis)
-            .SelectMany(group => group
-                .OrderBy(span => span.ValueFeet)
-                .Take(MaxInViewDimensionsPerAxis))
-            .OrderBy(span => span.Axis)
-            .ThenBy(span => span.ValueFeet)
-            .ToList();
+        var xGuide = CreateGuide(
+            'X',
+            new Point3D(minX, yEdge, zEdge),
+            new Point3D(maxX, yEdge, zEdge),
+            localBounds.SizeX);
+        if (xGuide.HasValue)
+            guides.Add(xGuide.Value);
+
+        var yGuide = CreateGuide(
+            'Y',
+            new Point3D(xEdge, minY, zEdge),
+            new Point3D(xEdge, maxY, zEdge),
+            localBounds.SizeY);
+        if (yGuide.HasValue)
+            guides.Add(yGuide.Value);
+
+        var zGuide = CreateGuide(
+            'Z',
+            new Point3D(xEdge, yEdge, minZ),
+            new Point3D(xEdge, yEdge, maxZ),
+            localBounds.SizeZ);
+        if (zGuide.HasValue)
+            guides.Add(zGuide.Value);
+
+        return guides;
+    }
+
+    private void AddDimensionTicks(Point3D start, Point3D end, AxisDimensionGuide guide)
+    {
+        var axisDirection = end - start;
+        if (axisDirection.Length < 1e-6)
+            return;
+        axisDirection.Normalize();
+
+        var tickDirection = Vector3D.CrossProduct(axisDirection, guide.Outward);
+        if (tickDirection.Length < 1e-6 && TryGetViewportCameraPosition(out var cameraPosition))
+        {
+            var toCamera = cameraPosition - start;
+            tickDirection = Vector3D.CrossProduct(axisDirection, toCamera);
+        }
+
+        if (tickDirection.Length < 1e-6)
+            return;
+
+        tickDirection.Normalize();
+
+        var dimensionLength = (end - start).Length;
+        var tickHalfLength = Math.Max(0.03, dimensionLength * 0.03);
+
+        AddDimensionLineVisual(start - tickDirection * tickHalfLength, start + tickDirection * tickHalfLength, guide.Axis);
+        AddDimensionLineVisual(end - tickDirection * tickHalfLength, end + tickDirection * tickHalfLength, guide.Axis);
+    }
+
+    private void DrawAxisDimensionGuide(AxisDimensionGuide guide, double axisOffset)
+    {
+        var clampedOffset = Math.Max(0.0, axisOffset);
+        var offsetVector = guide.Outward * clampedOffset;
+        var lineStart = guide.EdgeStart + offsetVector;
+        var lineEnd = guide.EdgeEnd + offsetVector;
+
+        AddDimensionLineVisual(lineStart, lineEnd, guide.Axis);
+        AddDimensionLineVisual(guide.EdgeStart, lineStart, guide.Axis);
+        AddDimensionLineVisual(guide.EdgeEnd, lineEnd, guide.Axis);
+        AddDimensionTicks(lineStart, lineEnd, guide);
+
+        var dimensionLength = (guide.EdgeEnd - guide.EdgeStart).Length;
+        var textOffset = Math.Max(0.04, dimensionLength * 0.06);
+        var labelPosition = new Point3D(
+            (lineStart.X + lineEnd.X) / 2.0 + guide.Outward.X * textOffset,
+            (lineStart.Y + lineEnd.Y) / 2.0 + guide.Outward.Y * textOffset,
+            (lineStart.Z + lineEnd.Z) / 2.0 + guide.Outward.Z * textOffset);
+
+        AddDimensionTextVisual(labelPosition, $"{guide.Axis}: {FormatLengthForDisplay(guide.ValueFeet)}", guide.Axis);
+    }
+
+    private Vector3D BuildCameraFacingOutward(Point3D start, Point3D end)
+    {
+        var axisDirection = end - start;
+        if (axisDirection.Length < 1e-6)
+            return new Vector3D(0, 1, 0);
+
+        axisDirection.Normalize();
+        var midpoint = new Point3D(
+            (start.X + end.X) / 2.0,
+            (start.Y + end.Y) / 2.0,
+            (start.Z + end.Z) / 2.0);
+
+        Vector3D outward;
+        if (TryGetViewportCameraPosition(out var cameraPosition))
+        {
+            outward = cameraPosition - midpoint;
+            outward -= axisDirection * Vector3D.DotProduct(outward, axisDirection);
+        }
+        else
+        {
+            outward = Vector3D.CrossProduct(axisDirection, new Vector3D(0, 1, 0));
+        }
+
+        if (outward.Length < 1e-6)
+            outward = Vector3D.CrossProduct(axisDirection, new Vector3D(1, 0, 0));
+        if (outward.Length < 1e-6)
+            outward = new Vector3D(0, 1, 0);
+
+        outward.Normalize();
+        return outward;
+    }
+
+    private void AddCustomDimensionAnnotations(IReadOnlyDictionary<string, bool> layerVisibilityById)
+    {
+        if (_customDimensionAnnotations.Count == 0)
+            return;
+
+        foreach (var annotation in _customDimensionAnnotations)
+        {
+            var component = _viewModel.Components.FirstOrDefault(c => string.Equals(c.Id, annotation.ComponentId, StringComparison.Ordinal));
+            if (component == null)
+                continue;
+            if (!IsLayerVisible(layerVisibilityById, component.LayerId))
+                continue;
+
+            var transform = CreateComponentTransform(component);
+            var startWorld = transform.Transform(annotation.StartLocal);
+            var endWorld = transform.Transform(annotation.EndLocal);
+            var delta = endWorld - startWorld;
+            if (delta.Length < InViewDimensionMinSpan)
+                continue;
+
+            var outward = BuildCameraFacingOutward(startWorld, endWorld);
+            var guide = new AxisDimensionGuide(annotation.Axis, delta.Length, startWorld, endWorld, outward);
+            var axisOffset = GetDimensionAxisOffset(component, annotation.Axis);
+            DrawAxisDimensionGuide(guide, axisOffset);
+        }
     }
 
     private void AddDimensionLineVisual(Point3D start, Point3D end, char axis)
@@ -681,92 +1100,107 @@ public partial class MainWindow : Window
         _dimensionVisualAxisMap[label] = axis;
     }
 
-    private void DrawXAxisDimensions(Rect3D bounds, IReadOnlyList<AxisDimensionSpan> spans, double axisOffset)
+    private void DrawXAxisDimensions(Rect3D bounds, IReadOnlyList<AxisDimensionSpan> spans, double axisOffset, DimensionEdgePlacement placement)
     {
         if (spans.Count == 0)
             return;
 
         var effectiveOffset = Math.Max(0.0, axisOffset);
-        var stackOffset = Math.Max(0.24, Math.Max(bounds.SizeX, bounds.SizeZ) * 0.06);
-        var textOffset = Math.Max(0.1, stackOffset * 0.45);
-        var frontZ = bounds.Z + bounds.SizeZ + effectiveOffset;
-        var baseY = bounds.Y - effectiveOffset;
-        var anchorZ = bounds.Z + bounds.SizeZ;
-        var anchorY = bounds.Y;
+        var stackOffset = Math.Max(0.08, Math.Max(bounds.SizeX, bounds.SizeZ) * 0.04);
+        var textOffset = Math.Max(0.04, stackOffset * 0.5);
+        var anchorY = placement.EdgeY;
+        var anchorZ = placement.EdgeZ;
+        var baseY = anchorY + placement.OutwardY * effectiveOffset;
+        var baseZ = anchorZ + placement.OutwardZ * effectiveOffset;
 
         for (var index = 0; index < spans.Count; index++)
         {
             var span = spans[index];
-            var y = baseY - index * stackOffset;
+            var stack = index * stackOffset;
+            var y = baseY + placement.OutwardY * stack;
+            var z = baseZ + placement.OutwardZ * stack;
             var x1 = span.MinCoordinate;
             var x2 = span.MaxCoordinate;
-            var start = new Point3D(x1, y, frontZ);
-            var end = new Point3D(x2, y, frontZ);
+            var start = new Point3D(x1, y, z);
+            var end = new Point3D(x2, y, z);
             AddDimensionLineVisual(start, end, 'X');
             AddDimensionLineVisual(new Point3D(x1, anchorY, anchorZ), start, 'X');
             AddDimensionLineVisual(new Point3D(x2, anchorY, anchorZ), end, 'X');
 
-            var labelPos = new Point3D((x1 + x2) / 2.0, y - textOffset, frontZ);
+            var labelPos = new Point3D(
+                (x1 + x2) / 2.0,
+                y + placement.OutwardY * textOffset,
+                z + placement.OutwardZ * textOffset);
             AddDimensionTextVisual(labelPos, $"X: {FormatLengthForDisplay(span.ValueFeet)}", 'X');
         }
     }
 
-    private void DrawYAxisDimensions(Rect3D bounds, IReadOnlyList<AxisDimensionSpan> spans, double axisOffset)
+    private void DrawYAxisDimensions(Rect3D bounds, IReadOnlyList<AxisDimensionSpan> spans, double axisOffset, DimensionEdgePlacement placement)
     {
         if (spans.Count == 0)
             return;
 
         var effectiveOffset = Math.Max(0.0, axisOffset);
-        var stackOffset = Math.Max(0.24, Math.Max(bounds.SizeX, bounds.SizeZ) * 0.06);
-        var textOffset = Math.Max(0.1, stackOffset * 0.45);
-        var frontZ = bounds.Z + bounds.SizeZ + effectiveOffset;
-        var anchorX = bounds.X + bounds.SizeX;
-        var baseX = anchorX + effectiveOffset;
-        var anchorZ = bounds.Z + bounds.SizeZ;
+        var stackOffset = Math.Max(0.08, Math.Max(bounds.SizeX, bounds.SizeZ) * 0.04);
+        var textOffset = Math.Max(0.04, stackOffset * 0.5);
+        var anchorX = placement.EdgeX;
+        var anchorZ = placement.EdgeZ;
+        var baseX = anchorX + placement.OutwardX * effectiveOffset;
+        var baseZ = anchorZ + placement.OutwardZ * effectiveOffset;
 
         for (var index = 0; index < spans.Count; index++)
         {
             var span = spans[index];
-            var x = baseX + index * stackOffset;
+            var stack = index * stackOffset;
+            var x = baseX + placement.OutwardX * stack;
+            var z = baseZ + placement.OutwardZ * stack;
             var y1 = span.MinCoordinate;
             var y2 = span.MaxCoordinate;
-            var start = new Point3D(x, y1, frontZ);
-            var end = new Point3D(x, y2, frontZ);
+            var start = new Point3D(x, y1, z);
+            var end = new Point3D(x, y2, z);
             AddDimensionLineVisual(start, end, 'Y');
             AddDimensionLineVisual(new Point3D(anchorX, y1, anchorZ), start, 'Y');
             AddDimensionLineVisual(new Point3D(anchorX, y2, anchorZ), end, 'Y');
 
-            var labelPos = new Point3D(x + textOffset, (y1 + y2) / 2.0, frontZ);
+            var labelPos = new Point3D(
+                x + placement.OutwardX * textOffset,
+                (y1 + y2) / 2.0,
+                z + placement.OutwardZ * textOffset);
             AddDimensionTextVisual(labelPos, $"Y: {FormatLengthForDisplay(span.ValueFeet)}", 'Y');
         }
     }
 
-    private void DrawZAxisDimensions(Rect3D bounds, IReadOnlyList<AxisDimensionSpan> spans, double axisOffset)
+    private void DrawZAxisDimensions(Rect3D bounds, IReadOnlyList<AxisDimensionSpan> spans, double axisOffset, DimensionEdgePlacement placement)
     {
         if (spans.Count == 0)
             return;
 
         var effectiveOffset = Math.Max(0.0, axisOffset);
-        var stackOffset = Math.Max(0.24, Math.Max(bounds.SizeX, bounds.SizeZ) * 0.06);
-        var textOffset = Math.Max(0.1, stackOffset * 0.45);
-        var baseX = bounds.X - effectiveOffset;
-        var baseY = bounds.Y - effectiveOffset;
-        var anchorX = bounds.X;
-        var anchorY = bounds.Y;
+        var stackOffset = Math.Max(0.08, Math.Max(bounds.SizeX, bounds.SizeZ) * 0.04);
+        var textOffset = Math.Max(0.04, stackOffset * 0.5);
+        var anchorX = placement.EdgeX;
+        var anchorY = placement.EdgeY;
+        var baseX = anchorX + placement.OutwardX * effectiveOffset;
+        var baseY = anchorY + placement.OutwardY * effectiveOffset;
 
         for (var index = 0; index < spans.Count; index++)
         {
             var span = spans[index];
-            var x = baseX - index * stackOffset;
+            var stack = index * stackOffset;
+            var x = baseX + placement.OutwardX * stack;
+            var y = baseY + placement.OutwardY * stack;
             var z1 = span.MinCoordinate;
             var z2 = span.MaxCoordinate;
-            var start = new Point3D(x, baseY, z1);
-            var end = new Point3D(x, baseY, z2);
+            var start = new Point3D(x, y, z1);
+            var end = new Point3D(x, y, z2);
             AddDimensionLineVisual(start, end, 'Z');
             AddDimensionLineVisual(new Point3D(anchorX, anchorY, z1), start, 'Z');
             AddDimensionLineVisual(new Point3D(anchorX, anchorY, z2), end, 'Z');
 
-            var labelPos = new Point3D(x, baseY - textOffset, (z1 + z2) / 2.0);
+            var labelPos = new Point3D(
+                x + placement.OutwardX * textOffset,
+                y + placement.OutwardY * textOffset,
+                (z1 + z2) / 2.0);
             AddDimensionTextVisual(labelPos, $"Z: {FormatLengthForDisplay(span.ValueFeet)}", 'Z');
         }
     }
@@ -789,33 +1223,30 @@ public partial class MainWindow : Window
         if (!IsLayerVisible(layerVisibilityById, selected.LayerId))
             return;
 
-        if (!TryGetComponentWorldBounds(selected, out var worldBounds))
+        if (!TryGetComponentWorldBounds(selected, out _))
             return;
 
         var transform = CreateComponentTransform(selected);
-        var referencePoints = GetComponentDimensionReferencePoints(selected, transform, worldBounds);
-        if (referencePoints.Count < 2)
-            referencePoints = BuildBoundsCorners(worldBounds).ToList();
-
-        if (referencePoints.Count < 2)
+        if (!TryGetNominalLocalDimensionBounds(selected, out var localBounds))
             return;
 
-        var referenceBounds = CreateBoundsFromPoints(referencePoints);
-        if (!IsValidBounds(referenceBounds))
-            referenceBounds = worldBounds;
-
-        var spans = BuildUniqueAxisDimensionSpans(referencePoints);
-        if (spans.Count == 0)
+        var guides = BuildAxisDimensionGuides(localBounds, transform);
+        if (guides.Count == 0)
             return;
 
-        var xSpans = spans.Where(span => span.Axis == 'X').ToList();
-        var ySpans = spans.Where(span => span.Axis == 'Y').ToList();
-        var zSpans = spans.Where(span => span.Axis == 'Z').ToList();
+        var guideOffsets = GetDimensionAxisOffsets(selected);
+        foreach (var guide in guides)
+        {
+            var axisOffset = guide.Axis switch
+            {
+                'X' => guideOffsets.X,
+                'Y' => guideOffsets.Y,
+                'Z' => guideOffsets.Z,
+                _ => 0.0
+            };
 
-        var offsets = GetDimensionAxisOffsets(selected);
-        DrawXAxisDimensions(referenceBounds, xSpans, offsets.X);
-        DrawYAxisDimensions(referenceBounds, ySpans, offsets.Y);
-        DrawZAxisDimensions(referenceBounds, zSpans, offsets.Z);
+            DrawAxisDimensionGuide(guide, axisOffset);
+        }
     }
     
     private void UpdatePropertiesPanel()
@@ -864,6 +1295,8 @@ public partial class MainWindow : Window
         {
             ConduitProperties.Visibility = Visibility.Collapsed;
         }
+
+        UpdateCustomDimensionUiState();
     }
     
     private void ClearPropertiesPanel()
@@ -886,10 +1319,12 @@ public partial class MainWindow : Window
         PartNumberTextBox.Text = string.Empty;
         ReferenceUrlTextBox.Text = string.Empty;
         UpdateSelectedDimensionsDisplay(null);
+        UpdateCustomDimensionUiState();
     }
     
     private void UpdateViewport()
     {
+        PruneCustomDimensions();
         ClearSelectionDimensionVisuals();
 
         // Clear existing models and mapping
@@ -917,7 +1352,9 @@ public partial class MainWindow : Window
 
         UpdateConduitRuns3D();
         AddSelectionDimensionAnnotations(layerVisibilityById);
+        AddCustomDimensionAnnotations(layerVisibilityById);
         RefreshConduitActionUiState();
+        UpdateCustomDimensionUiState();
     }
 
     private static Transform3DGroup CreateComponentTransform(ElectricalComponent component)
@@ -4097,6 +4534,47 @@ public partial class MainWindow : Window
             $"Increment: 1/{_dimensionInchFractionDenominator}\"");
         UpdatePropertiesPanel();
     }
+
+    private void AddCustomDimension_Click(object sender, RoutedEventArgs e)
+    {
+        _isAddingCustomDimension = !_isAddingCustomDimension;
+        _pendingCustomDimensionStartLocal = null;
+        _pendingCustomDimensionComponentId = null;
+
+        ActionLogService.Instance.Log(LogCategory.View, "Custom dimension mode toggled",
+            $"Enabled: {_isAddingCustomDimension}");
+
+        UpdateCustomDimensionUiState();
+    }
+
+    private void ClearCustomDimensions_Click(object sender, RoutedEventArgs e)
+    {
+        int removed;
+        var selected = _viewModel.SelectedComponent;
+        if (selected != null)
+        {
+            removed = _customDimensionAnnotations.RemoveAll(annotation =>
+                string.Equals(annotation.ComponentId, selected.Id, StringComparison.Ordinal));
+        }
+        else
+        {
+            removed = _customDimensionAnnotations.Count;
+            _customDimensionAnnotations.Clear();
+        }
+
+        if (removed > 0)
+        {
+            ActionLogService.Instance.Log(LogCategory.Edit, "Custom dimensions cleared",
+                selected == null
+                    ? $"Removed: {removed} (all components)"
+                    : $"Component: {selected.Name}, Removed: {removed}");
+            UpdateViewport();
+        }
+
+        _pendingCustomDimensionStartLocal = null;
+        _pendingCustomDimensionComponentId = null;
+        UpdateCustomDimensionUiState();
+    }
     
     // ===== View Switching =====
 
@@ -4526,6 +5004,74 @@ public partial class MainWindow : Window
             }
         }
 
+        if (_isAddingCustomDimension)
+        {
+            var selected = _viewModel.SelectedComponent;
+            if (selected == null)
+            {
+                UpdateCustomDimensionUiState();
+                e.Handled = true;
+                return;
+            }
+
+            var selectedHit = hits?
+                .FirstOrDefault(hit =>
+                    hit.Visual is ModelVisual3D visual &&
+                    _visualToComponentMap.TryGetValue(visual, out var component) &&
+                    string.Equals(component.Id, selected.Id, StringComparison.Ordinal));
+
+            if (selectedHit == null)
+            {
+                UpdateCustomDimensionUiState();
+                e.Handled = true;
+                return;
+            }
+
+            var transform = CreateComponentTransform(selected);
+            if (transform.Inverse == null)
+            {
+                UpdateCustomDimensionUiState();
+                e.Handled = true;
+                return;
+            }
+
+            var localHit = transform.Inverse.Transform(selectedHit.Position);
+            if (!_pendingCustomDimensionStartLocal.HasValue ||
+                !string.Equals(_pendingCustomDimensionComponentId, selected.Id, StringComparison.Ordinal))
+            {
+                _pendingCustomDimensionStartLocal = localHit;
+                _pendingCustomDimensionComponentId = selected.Id;
+                ActionLogService.Instance.Log(LogCategory.Edit, "Custom dimension first point",
+                    $"Component: {selected.Name}, Point: ({localHit.X:F2}, {localHit.Y:F2}, {localHit.Z:F2})");
+            }
+            else
+            {
+                var startLocal = _pendingCustomDimensionStartLocal.Value;
+                var endLocal = localHit;
+                var localDelta = endLocal - startLocal;
+                if (localDelta.Length >= InViewDimensionMinSpan)
+                {
+                    var axis = GetDominantAxis(localDelta);
+                    _customDimensionAnnotations.Add(new CustomDimensionAnnotation
+                    {
+                        ComponentId = selected.Id,
+                        StartLocal = startLocal,
+                        EndLocal = endLocal,
+                        Axis = axis
+                    });
+                    ActionLogService.Instance.Log(LogCategory.Edit, "Custom dimension added",
+                        $"Component: {selected.Name}, Axis: {axis}, Length: {localDelta.Length:F3}");
+                    UpdateViewport();
+                }
+
+                _pendingCustomDimensionStartLocal = null;
+            }
+
+            UpdateCustomDimensionUiState();
+            e.Handled = true;
+            return;
+        }
+
         if (!_isEditingConduitPath && _viewModel.SelectedComponent != null)
         {
             var draggedAxisVisual = hits?
@@ -4817,6 +5363,8 @@ public partial class MainWindow : Window
             MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
         {
             CancelPendingPlacement(logCancellation: false);
+            CancelCustomDimensionMode();
+            _customDimensionAnnotations.Clear();
             _viewModel.Components.Clear();
             _viewModel.Layers.Clear();
             _viewModel.PdfUnderlay = null;
@@ -4852,6 +5400,8 @@ public partial class MainWindow : Window
                 if (project != null)
                 {
                     CancelPendingPlacement(logCancellation: false);
+                    CancelCustomDimensionMode();
+                    _customDimensionAnnotations.Clear();
                     _viewModel.LoadFromProject(project);
                     _currentFilePath = dialog.FileName;
                     Title = $"Electrical Component Sandbox - {System.IO.Path.GetFileName(dialog.FileName)}";

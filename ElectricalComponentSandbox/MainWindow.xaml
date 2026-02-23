@@ -442,6 +442,20 @@
                                     </ComboBox>
                                 </StackPanel>
                                 <ListBox x:Name="SelectedDimensionsListBox" Height="100" Margin="0,2,0,6" IsHitTestVisible="False"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                    <Button x:Name="CustomDimensionModeButton"
+                                            Content="Add Custom Dimension"
+                                            Click="AddCustomDimension_Click"
+                                            Margin="0,0,6,0"/>
+                                    <Button x:Name="ClearCustomDimensionsButton"
+                                            Content="Clear Custom Dims"
+                                            Click="ClearCustomDimensions_Click"/>
+                                </StackPanel>
+                                <TextBlock x:Name="CustomDimensionModeTextBlock"
+                                           Text="Custom dimensions total: 0"
+                                           Foreground="Gray"
+                                           FontStyle="Italic"
+                                           Margin="0,0,0,6"/>
                                 
                                 <TextBlock Text="Material:"/>
                                 <TextBox x:Name="MaterialTextBox"/>
