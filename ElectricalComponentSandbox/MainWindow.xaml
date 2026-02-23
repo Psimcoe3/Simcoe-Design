@@ -82,6 +82,9 @@
                 <MenuItem Header="Show Grid" IsCheckable="True" IsChecked="{Binding ShowGrid}"/>
                 <MenuItem Header="Snap to Grid" IsCheckable="True" IsChecked="{Binding SnapToGrid}"/>
                 <Separator/>
+                <MenuItem x:Name="ShowLibraryPanelMenuItem" Header="Show Left Panel" IsCheckable="True" IsChecked="True" Click="ShowLibraryPanelMenuItem_Click"/>
+                <MenuItem x:Name="ShowPropertiesPanelMenuItem" Header="Show Right Panel" IsCheckable="True" IsChecked="True" Click="ShowPropertiesPanelMenuItem_Click"/>
+                <Separator/>
                 <MenuItem Header="2D Plan View" Click="Show2DView_Click"/>
                 <MenuItem Header="3D Viewport" Click="Show3DView_Click"/>
             </MenuItem>
@@ -261,6 +264,19 @@
                            SelectionChanged="LayerListBox_SelectionChanged"/>
                 </DockPanel>
             </Border>
+
+            <GridSplitter x:Name="LibraryGridSplitter"
+                          Grid.Column="0"
+                          Width="6"
+                          Panel.ZIndex="10"
+                          Cursor="SizeWE"
+                          HorizontalAlignment="Right"
+                          VerticalAlignment="Stretch"
+                          ResizeDirection="Columns"
+                          ResizeBehavior="PreviousAndNext"
+                          ShowsPreview="True"
+                          Background="#22000000"
+                          DragCompleted="LibraryGridSplitter_DragCompleted"/>
             
             <!-- 2D/3D Viewport Tab -->
             <Border x:Name="ViewportPanelContainer" Grid.Column="1" BorderBrush="Gray" BorderThickness="0,0,1,0">
@@ -438,6 +454,19 @@
                     </ScrollViewer>
                 </DockPanel>
             </Border>
+
+            <GridSplitter x:Name="PropertiesGridSplitter"
+                          Grid.Column="1"
+                          Width="6"
+                          Panel.ZIndex="10"
+                          Cursor="SizeWE"
+                          HorizontalAlignment="Right"
+                          VerticalAlignment="Stretch"
+                          ResizeDirection="Columns"
+                          ResizeBehavior="PreviousAndNext"
+                          ShowsPreview="True"
+                          Background="#22000000"
+                          DragCompleted="PropertiesGridSplitter_DragCompleted"/>
 
         </Grid>
     </DockPanel>

@@ -39,6 +39,8 @@ public partial class MainWindow : Window
     private GridLength _desktopLibraryColumnWidth = new GridLength(200);
     private GridLength _desktopViewportColumnWidth = new GridLength(1, GridUnitType.Star);
     private GridLength _desktopPropertiesColumnWidth = new GridLength(300);
+    private bool _showDesktopLibraryPanel = true;
+    private bool _showDesktopPropertiesPanel = true;
     private MobilePane _activeMobilePane = MobilePane.Canvas;
     private MobileTheme _mobileTheme = MobileTheme.IOS;
     private const double MobileWindowWidth = 430;
@@ -130,6 +132,7 @@ public partial class MainWindow : Window
         _interactionQualityRestoreTimer.Tick += InteractionQualityRestoreTimer_Tick;
         _viewModel = new MainViewModel();
         DataContext = _viewModel;
+        ApplyDesktopPaneLayout();
         
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
         
@@ -3235,6 +3238,102 @@ public partial class MainWindow : Window
     }
     
     // ===== View Switching =====
+
+    private void ShowLibraryPanelMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        _showDesktopLibraryPanel = ShowLibraryPanelMenuItem.IsChecked;
+        if (_isMobileView) return;
+
+        ApplyDesktopPaneLayout();
+        ActionLogService.Instance.Log(LogCategory.View, "Left panel visibility changed",
+            $"Visible: {_showDesktopLibraryPanel}");
+    }
+
+    private void ShowPropertiesPanelMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        _showDesktopPropertiesPanel = ShowPropertiesPanelMenuItem.IsChecked;
+        if (_isMobileView) return;
+
+        ApplyDesktopPaneLayout();
+        ActionLogService.Instance.Log(LogCategory.View, "Right panel visibility changed",
+            $"Visible: {_showDesktopPropertiesPanel}");
+    }
+
+    private void LibraryGridSplitter_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        if (_isMobileView || !_showDesktopLibraryPanel)
+            return;
+
+        if (LibraryColumn.Width.Value <= 0)
+            return;
+
+        _desktopLibraryColumnWidth = LibraryColumn.Width;
+        ActionLogService.Instance.Log(LogCategory.View, "Left panel resized",
+            $"Width: {_desktopLibraryColumnWidth.Value:F0}");
+    }
+
+    private void PropertiesGridSplitter_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        if (_isMobileView || !_showDesktopPropertiesPanel)
+            return;
+
+        if (PropertiesColumn.Width.Value <= 0)
+            return;
+
+        _desktopPropertiesColumnWidth = PropertiesColumn.Width;
+        ActionLogService.Instance.Log(LogCategory.View, "Right panel resized",
+            $"Width: {_desktopPropertiesColumnWidth.Value:F0}");
+    }
+
+    private void ApplyDesktopPaneLayout()
+    {
+        if (_isMobileView)
+            return;
+
+        ViewportPanelContainer.Visibility = Visibility.Visible;
+        ViewportColumn.Width = EnsureVisibleColumnWidth(_desktopViewportColumnWidth, 1, GridUnitType.Star);
+
+        if (_showDesktopLibraryPanel)
+        {
+            LibraryPanelContainer.Visibility = Visibility.Visible;
+            LibraryColumn.Width = EnsureVisibleColumnWidth(_desktopLibraryColumnWidth, 200);
+        }
+        else
+        {
+            if (LibraryColumn.Width.Value > 0)
+                _desktopLibraryColumnWidth = LibraryColumn.Width;
+
+            LibraryPanelContainer.Visibility = Visibility.Collapsed;
+            LibraryColumn.Width = new GridLength(0);
+        }
+
+        if (_showDesktopPropertiesPanel)
+        {
+            PropertiesPanelContainer.Visibility = Visibility.Visible;
+            PropertiesColumn.Width = EnsureVisibleColumnWidth(_desktopPropertiesColumnWidth, 300);
+        }
+        else
+        {
+            if (PropertiesColumn.Width.Value > 0)
+                _desktopPropertiesColumnWidth = PropertiesColumn.Width;
+
+            PropertiesPanelContainer.Visibility = Visibility.Collapsed;
+            PropertiesColumn.Width = new GridLength(0);
+        }
+
+        LibraryGridSplitter.Visibility = _showDesktopLibraryPanel ? Visibility.Visible : Visibility.Collapsed;
+        PropertiesGridSplitter.Visibility = _showDesktopPropertiesPanel ? Visibility.Visible : Visibility.Collapsed;
+        ShowLibraryPanelMenuItem.IsChecked = _showDesktopLibraryPanel;
+        ShowPropertiesPanelMenuItem.IsChecked = _showDesktopPropertiesPanel;
+    }
+
+    private static GridLength EnsureVisibleColumnWidth(GridLength width, double fallbackValue, GridUnitType fallbackUnit = GridUnitType.Pixel)
+    {
+        if (width.Value > 0)
+            return width;
+
+        return new GridLength(fallbackValue, fallbackUnit);
+    }
     
     private void Show2DView_Click(object sender, RoutedEventArgs e)
     {
@@ -3265,9 +3364,12 @@ public partial class MainWindow : Window
             _desktopWindowState = WindowState;
             _desktopWidth = Width;
             _desktopHeight = Height;
-            _desktopLibraryColumnWidth = LibraryColumn.Width;
-            _desktopViewportColumnWidth = ViewportColumn.Width;
-            _desktopPropertiesColumnWidth = PropertiesColumn.Width;
+            if (_showDesktopLibraryPanel && LibraryColumn.Width.Value > 0)
+                _desktopLibraryColumnWidth = LibraryColumn.Width;
+            if (ViewportColumn.Width.Value > 0)
+                _desktopViewportColumnWidth = ViewportColumn.Width;
+            if (_showDesktopPropertiesPanel && PropertiesColumn.Width.Value > 0)
+                _desktopPropertiesColumnWidth = PropertiesColumn.Width;
 
             WindowState = WindowState.Normal;
             Width = MobileWindowWidth;
@@ -3297,19 +3399,13 @@ public partial class MainWindow : Window
             PdfControlsPanel.Visibility = Visibility.Visible;
             MainContentGrid.Background = Brushes.Transparent;
 
-            LibraryPanelContainer.Visibility = Visibility.Visible;
-            ViewportPanelContainer.Visibility = Visibility.Visible;
-            PropertiesPanelContainer.Visibility = Visibility.Visible;
-            LibraryColumn.Width = _desktopLibraryColumnWidth;
-            ViewportColumn.Width = _desktopViewportColumnWidth;
-            PropertiesColumn.Width = _desktopPropertiesColumnWidth;
-
             Width = _desktopWidth;
             Height = _desktopHeight;
             WindowState = _desktopWindowState;
 
             MobileViewButton.Content = "Mobile View";
             _isMobileView = false;
+            ApplyDesktopPaneLayout();
             ActionLogService.Instance.Log(LogCategory.View, "Mobile view disabled");
         }
     }
@@ -3411,6 +3507,8 @@ public partial class MainWindow : Window
     {
         _activeMobilePane = pane;
         if (!_isMobileView) return;
+        LibraryGridSplitter.Visibility = Visibility.Collapsed;
+        PropertiesGridSplitter.Visibility = Visibility.Collapsed;
 
         switch (_activeMobilePane)
         {
