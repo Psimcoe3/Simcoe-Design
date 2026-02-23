@@ -108,6 +108,36 @@ public class SmartBendService
     }
 
     /// <summary>
+    /// Inserts or replaces a bend table entry for a trade size/angle pair.
+    /// </summary>
+    public void UpsertEntry(string tradeSize, double angleDegrees, double bendRadiusInches, double deductInches,
+        double tangentLengthInches, double gainInches)
+    {
+        var existing = _bendTable.FirstOrDefault(entry =>
+            string.Equals(entry.TradeSize, tradeSize, StringComparison.OrdinalIgnoreCase) &&
+            Math.Abs(entry.AngleDegrees - angleDegrees) <= AngleLookupTolerance);
+
+        if (existing == null)
+        {
+            _bendTable.Add(new BendTableEntry
+            {
+                TradeSize = tradeSize,
+                AngleDegrees = angleDegrees,
+                BendRadius = bendRadiusInches,
+                DeductInches = deductInches,
+                TangentLengthInches = tangentLengthInches,
+                GainInches = gainInches
+            });
+            return;
+        }
+
+        existing.BendRadius = bendRadiusInches;
+        existing.DeductInches = deductInches;
+        existing.TangentLengthInches = tangentLengthInches;
+        existing.GainInches = gainInches;
+    }
+
+    /// <summary>
     /// Loads bend table entries from CSV lines (header + data).
     /// Format: TradeSize,AngleDegrees,BendRadius,DeductInches,TangentLengthInches,GainInches
     /// </summary>

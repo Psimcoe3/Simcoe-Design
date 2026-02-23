@@ -68,6 +68,7 @@
                 <Separator/>
                 <MenuItem Header="Export JSON..." Click="ExportJson_Click" InputGestureText="Ctrl+E"/>
                 <MenuItem Header="Export BOM CSV..." Click="ExportBomCsv_Click"/>
+                <MenuItem Header="Run Revit Introspection..." Click="RunRevitIntrospection_Click"/>
                 <Separator/>
                 <MenuItem Header="Exit" Click="Exit_Click"/>
             </MenuItem>
@@ -450,6 +451,20 @@
                                     <Button x:Name="ClearCustomDimensionsButton"
                                             Content="Clear Custom Dims"
                                             Click="ClearCustomDimensions_Click"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                    <TextBlock Text="Snap:" VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="CustomDimensionSnapModeCombo"
+                                              Width="140"
+                                              Margin="5,0,0,0"
+                                              SelectionChanged="CustomDimensionSnapMode_Changed">
+                                        <ComboBoxItem Tag="Auto" Content="Auto" IsSelected="True"/>
+                                        <ComboBoxItem Tag="Edge" Content="Edge"/>
+                                        <ComboBoxItem Tag="Point" Content="Point"/>
+                                        <ComboBoxItem Tag="Face" Content="Face"/>
+                                        <ComboBoxItem Tag="Center" Content="Center"/>
+                                        <ComboBoxItem Tag="Intersection" Content="Intersection"/>
+                                    </ComboBox>
                                 </StackPanel>
                                 <TextBlock x:Name="CustomDimensionModeTextBlock"
                                            Text="Custom dimensions total: 0"

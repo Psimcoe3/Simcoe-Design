@@ -13,6 +13,8 @@ using Microsoft.Win32;
 using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.ViewModels;
 using ElectricalComponentSandbox.Services;
+using ElectricalComponentSandbox.Services.Dimensioning;
+using ElectricalComponentSandbox.Services.RevitIntrospection;
 using HelixToolkit.Wpf;
 using PDFtoImage;
 
@@ -32,13 +34,15 @@ public partial class MainWindow : Window
     private readonly Dictionary<Visual3D, char> _dimensionVisualAxisMap = new();
     private readonly Dictionary<string, DimensionAxisOffsets> _dimensionOffsetsByComponentId = new(StringComparer.Ordinal);
     private readonly List<CustomDimensionAnnotation> _customDimensionAnnotations = new();
+    private readonly List<Visual3D> _customDimensionPreviewVisuals = new();
+    private readonly HashSet<Visual3D> _customDimensionPreviewVisualSet = new();
     private bool _isDraggingDimensionAnnotation = false;
     private char _draggingDimensionAxis = '\0';
     private Point _dimensionDragStartMousePosition;
     private double _dimensionDragStartOffsetFeet = 0.0;
     private bool _isAddingCustomDimension = false;
-    private Point3D? _pendingCustomDimensionStartLocal = null;
-    private string? _pendingCustomDimensionComponentId = null;
+    private CustomDimensionAnchor? _pendingCustomDimensionStartAnchor = null;
+    private CustomDimensionSnapMode _customDimensionSnapMode = CustomDimensionSnapMode.Auto;
     private ModelVisual3D? _draggedHandle = null;
     private Point _lastMousePosition;
     private BitmapSource? _cachedPdfBitmap;
@@ -97,6 +101,12 @@ public partial class MainWindow : Window
     private bool _pendingPropertiesRefresh = false;
     private ElectricalComponent? _pendingPlacementComponent = null;
     private string? _pendingPlacementSource = null;
+    private StratusImperialDefaults _stratusImperialDefaults = StratusImperialDefaults.Empty;
+    private const string DefaultStratusXmlDirectory = @"C:\Users\Paul\STRATUS\2.23.26\xml files";
+    private readonly RevitIntrospectionOptions _revitIntrospectionOptions;
+    private readonly RevitGeometryMeasurementIntrospectionService _revitIntrospectionService;
+    private readonly DimensionSnapSelectionService _dimensionSnapSelectionService = new();
+    private readonly DimensionPlacementState _customDimensionPlacementState = new();
     
     // Conduit drawing mode (Bluebeam-style polyline tool)
     private bool _isDrawingConduit = false;
@@ -125,6 +135,8 @@ public partial class MainWindow : Window
     private const double DefaultPlanCanvasSize = 2000.0;
     private const int DefaultDimensionInchFractionDenominator = 16;
     private const double InViewDimensionMinSpan = 1e-4;
+    private const double BaseDimensionSnapTolerancePx = 12.0;
+    private const double BaselineWorldUnitsPerPixel = 0.05;
 
     private DimensionDisplayMode _dimensionDisplayMode = DimensionDisplayMode.FeetInches;
     private int _dimensionInchFractionDenominator = DefaultDimensionInchFractionDenominator;
@@ -135,11 +147,18 @@ public partial class MainWindow : Window
     private readonly record struct AxisDimensionSpan(char Axis, double ValueFeet, double MinCoordinate, double MaxCoordinate);
     private readonly record struct DimensionEdgePlacement(double EdgeX, double EdgeY, double EdgeZ, double OutwardX, double OutwardY, double OutwardZ);
     private readonly record struct AxisDimensionGuide(char Axis, double ValueFeet, Point3D EdgeStart, Point3D EdgeEnd, Vector3D Outward);
+    private readonly record struct SemanticEdge(Point3D StartLocal, Point3D EndLocal);
+    private readonly record struct SemanticFace(char Axis, double AxisValue, double MinA, double MaxA, double MinB, double MaxB);
+    private sealed class CustomDimensionAnchor
+    {
+        public string? ComponentId { get; init; }
+        public Point3D LocalPoint { get; init; }
+        public Point3D WorldPoint { get; init; }
+    }
     private sealed class CustomDimensionAnnotation
     {
-        public string ComponentId { get; init; } = string.Empty;
-        public Point3D StartLocal { get; init; }
-        public Point3D EndLocal { get; init; }
+        public CustomDimensionAnchor Start { get; init; } = new();
+        public CustomDimensionAnchor End { get; init; } = new();
         public char Axis { get; init; }
     }
     private sealed class DimensionAxisOffsets
@@ -147,6 +166,14 @@ public partial class MainWindow : Window
         public double X;
         public double Y;
         public double Z;
+    }
+    private sealed class ComponentSemanticReferences
+    {
+        public Rect3D LocalBounds { get; init; }
+        public Point3D CenterLocal { get; init; }
+        public List<Point3D> PointLocals { get; } = new();
+        public List<SemanticEdge> EdgeLocals { get; } = new();
+        public List<SemanticFace> FaceLocals { get; } = new();
     }
 
     private enum MobilePane
@@ -160,6 +187,16 @@ public partial class MainWindow : Window
     {
         FeetInches,
         DecimalFeet
+    }
+
+    private enum CustomDimensionSnapMode
+    {
+        Auto,
+        Edge,
+        Point,
+        Face,
+        Center,
+        Intersection
     }
 
     private enum MobileTheme
@@ -181,12 +218,18 @@ public partial class MainWindow : Window
         _viewModel = new MainViewModel();
         DataContext = _viewModel;
         InitializeDimensionDisplayDefaults();
+        _revitIntrospectionOptions = RevitIntrospectionOptions.FromEnvironment();
+        _revitIntrospectionService = RevitGeometryMeasurementIntrospectionService.CreateDefault(_revitIntrospectionOptions);
+        _customDimensionSnapMode = GetSelectedCustomDimensionSnapMode();
+        InitializeStratusImperialDefaults();
         ApplyDesktopPaneLayout();
         UpdateCustomDimensionUiState();
         
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
         
         ActionLogService.Instance.Log(LogCategory.Application, "MainWindow initialized");
+        ActionLogService.Instance.Log(LogCategory.Application, "Revit introspection feature state",
+            $"Enabled: {_revitIntrospectionOptions.IsEnabled}, PathOverride: {_revitIntrospectionOptions.InstallPathOverride ?? "(auto)"}");
         Closed += (s, e) =>
         {
             ActionLogService.Instance.LogSeparator("SESSION SUMMARY");
@@ -195,6 +238,65 @@ public partial class MainWindow : Window
                 $"Units: {_viewModel.UnitSystemName}, Grid: {_viewModel.GridSize}");
             ActionLogService.Instance.Log(LogCategory.Application, "MainWindow closed");
         };
+    }
+
+    private static string GetStratusXmlDirectory()
+    {
+        var configured = Environment.GetEnvironmentVariable("STRATUS_XML_DIR");
+        return string.IsNullOrWhiteSpace(configured)
+            ? DefaultStratusXmlDirectory
+            : configured.Trim();
+    }
+
+    private void InitializeStratusImperialDefaults()
+    {
+        var stratusDirectory = GetStratusXmlDirectory();
+        _stratusImperialDefaults = StratusImperialDefaultsLoader.LoadImperialDefaults(stratusDirectory);
+
+        if (!_stratusImperialDefaults.HasData)
+        {
+            ActionLogService.Instance.Log(LogCategory.Application, "STRATUS imperial defaults not loaded",
+                $"Directory: {stratusDirectory}");
+            return;
+        }
+
+        ConfigureConduitEngineFromStratusDefaults();
+
+        ActionLogService.Instance.Log(LogCategory.Application, "STRATUS imperial defaults loaded",
+            $"Directory: {stratusDirectory}, BendSettings: {_stratusImperialDefaults.BendSettings.Count}, " +
+            $"RunSpacings: {_stratusImperialDefaults.RunAlignmentSpacings.Count}, WireSpecs: {_stratusImperialDefaults.WireSpecifications.Count}, " +
+            $"MaxFill: {_stratusImperialDefaults.MaximumWireFill?.ToString("0.###", CultureInfo.InvariantCulture) ?? "n/a"}");
+    }
+
+    private void ConfigureConduitEngineFromStratusDefaults()
+    {
+        if (!_stratusImperialDefaults.HasData || _stratusImperialDefaults.BendSettings.Count == 0)
+            return;
+
+        var groupedByTradeSize = _stratusImperialDefaults.BendSettings
+            .GroupBy(setting => setting.TradeSize, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var tradeGroup in groupedByTradeSize)
+        {
+            var selectedSetting = tradeGroup
+                .OrderBy(setting => string.Equals(setting.BenderName, _stratusImperialDefaults.PreferredBenderName, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenBy(setting => setting.BenderName, StringComparer.OrdinalIgnoreCase)
+                .First();
+
+            var existing90 = ConduitEngine.BendService.LookupDeduct(tradeGroup.Key, 90);
+            var bendRadiusInches = selectedSetting.RadiusFeet * UnitConversionService.InchesPerFoot;
+            var deductInches = selectedSetting.DeductFeet * UnitConversionService.InchesPerFoot;
+            var tangentInches = existing90?.TangentLengthInches ?? bendRadiusInches;
+            var gainInches = existing90?.GainInches ?? Math.Max(0.0, deductInches * 0.5);
+
+            ConduitEngine.BendService.UpsertEntry(
+                tradeGroup.Key,
+                90.0,
+                bendRadiusInches,
+                deductInches,
+                tangentInches,
+                gainInches);
+        }
     }
     
     // ===== Window-Level Input Logging (captures ALL clicks, keys, scrolls) =====
@@ -338,8 +440,9 @@ public partial class MainWindow : Window
     private void CancelCustomDimensionMode()
     {
         _isAddingCustomDimension = false;
-        _pendingCustomDimensionStartLocal = null;
-        _pendingCustomDimensionComponentId = null;
+        _pendingCustomDimensionStartAnchor = null;
+        _customDimensionPlacementState.Reset();
+        ClearCustomDimensionPreview();
     }
 
     private void PruneCustomDimensions()
@@ -351,13 +454,16 @@ public partial class MainWindow : Window
             .Select(component => component.Id)
             .ToHashSet(StringComparer.Ordinal);
 
-        _customDimensionAnnotations.RemoveAll(annotation => !validComponentIds.Contains(annotation.ComponentId));
+        _customDimensionAnnotations.RemoveAll(annotation =>
+            (!string.IsNullOrEmpty(annotation.Start.ComponentId) && !validComponentIds.Contains(annotation.Start.ComponentId)) ||
+            (!string.IsNullOrEmpty(annotation.End.ComponentId) && !validComponentIds.Contains(annotation.End.ComponentId)));
 
-        if (!string.IsNullOrEmpty(_pendingCustomDimensionComponentId) &&
-            !validComponentIds.Contains(_pendingCustomDimensionComponentId))
+        if (_pendingCustomDimensionStartAnchor != null &&
+            !string.IsNullOrEmpty(_pendingCustomDimensionStartAnchor.ComponentId) &&
+            !validComponentIds.Contains(_pendingCustomDimensionStartAnchor.ComponentId))
         {
-            _pendingCustomDimensionStartLocal = null;
-            _pendingCustomDimensionComponentId = null;
+            _pendingCustomDimensionStartAnchor = null;
+            _customDimensionPlacementState.Reset();
         }
     }
 
@@ -377,7 +483,9 @@ public partial class MainWindow : Window
         var selected = _viewModel?.SelectedComponent;
         var selectedCount = selected == null
             ? 0
-            : _customDimensionAnnotations.Count(annotation => string.Equals(annotation.ComponentId, selected.Id, StringComparison.Ordinal));
+            : _customDimensionAnnotations.Count(annotation =>
+                string.Equals(annotation.Start.ComponentId, selected.Id, StringComparison.Ordinal) ||
+                string.Equals(annotation.End.ComponentId, selected.Id, StringComparison.Ordinal));
 
         ClearCustomDimensionsButton.IsEnabled = selected == null
             ? _customDimensionAnnotations.Count > 0
@@ -385,17 +493,13 @@ public partial class MainWindow : Window
 
         if (_isAddingCustomDimension)
         {
-            if (selected == null)
+            if (_pendingCustomDimensionStartAnchor == null)
             {
-                CustomDimensionModeTextBlock.Text = "Custom dim mode: select a component, then click two points in 3D.";
-            }
-            else if (!_pendingCustomDimensionStartLocal.HasValue)
-            {
-                CustomDimensionModeTextBlock.Text = "Custom dim mode: click first point on selected component.";
+                CustomDimensionModeTextBlock.Text = $"Custom dim mode ({_customDimensionSnapMode} snap): click first point.";
             }
             else
             {
-                CustomDimensionModeTextBlock.Text = "Custom dim mode: click second point to place dimension.";
+                CustomDimensionModeTextBlock.Text = $"Custom dim mode ({_customDimensionSnapMode} snap): click second point.";
             }
 
             return;
@@ -435,9 +539,500 @@ public partial class MainWindow : Window
         return DefaultDimensionInchFractionDenominator;
     }
 
+    private CustomDimensionSnapMode GetSelectedCustomDimensionSnapMode()
+    {
+        if (CustomDimensionSnapModeCombo?.SelectedItem is ComboBoxItem item &&
+            Enum.TryParse<CustomDimensionSnapMode>(item.Tag?.ToString(), out var mode))
+        {
+            return mode;
+        }
+
+        return CustomDimensionSnapMode.Auto;
+    }
+
+    private bool ShouldIgnoreHitVisual(Viewport3DHelper.HitResult hit)
+    {
+        if (ReferenceEquals(hit.Visual, _pdfUnderlayVisual3D))
+            return true;
+
+        return hit.Visual is Visual3D visual && _customDimensionPreviewVisualSet.Contains(visual);
+    }
+
+    private List<Viewport3DHelper.HitResult>? GetSceneHits(Point screenPoint)
+    {
+        return Viewport3DHelper.FindHits(Viewport.Viewport, screenPoint)?
+            .Where(hit => !ShouldIgnoreHitVisual(hit))
+            .ToList();
+    }
+
+    private static Color GetCustomDimensionSnapPreviewColor(CustomDimensionSnapMode mode)
+    {
+        return mode switch
+        {
+            CustomDimensionSnapMode.Point => Colors.DarkOrange,
+            CustomDimensionSnapMode.Edge => Colors.ForestGreen,
+            CustomDimensionSnapMode.Face => Colors.SteelBlue,
+            CustomDimensionSnapMode.Center => Colors.MediumPurple,
+            CustomDimensionSnapMode.Intersection => Colors.Crimson,
+            _ => Colors.DimGray
+        };
+    }
+
+    private void TrackCustomDimensionPreviewVisual(Visual3D visual)
+    {
+        _customDimensionPreviewVisuals.Add(visual);
+        _customDimensionPreviewVisualSet.Add(visual);
+    }
+
+    private void ClearCustomDimensionPreview()
+    {
+        if (_customDimensionPreviewVisuals.Count == 0)
+            return;
+
+        foreach (var visual in _customDimensionPreviewVisuals)
+            Viewport.Children.Remove(visual);
+        _customDimensionPreviewVisuals.Clear();
+        _customDimensionPreviewVisualSet.Clear();
+    }
+
+    private void ShowCustomDimensionPreview(CustomDimensionAnchor anchor, CustomDimensionSnapMode mode, bool secondPointPending)
+    {
+        ClearCustomDimensionPreview();
+
+        var previewColor = GetCustomDimensionSnapPreviewColor(mode);
+        var markerRadius = Math.Max(0.01, EstimateWorldUnitsPerPixel(anchor.WorldPoint) * 5.0);
+        var marker = new SphereVisual3D
+        {
+            Center = anchor.WorldPoint,
+            Radius = markerRadius,
+            Fill = new SolidColorBrush(previewColor),
+            ThetaDiv = 18,
+            PhiDiv = 12
+        };
+        Viewport.Children.Add(marker);
+        TrackCustomDimensionPreviewVisual(marker);
+
+        var label = new BillboardTextVisual3D
+        {
+            Position = new Point3D(anchor.WorldPoint.X, anchor.WorldPoint.Y + markerRadius * 2.0, anchor.WorldPoint.Z),
+            Text = $"{mode} snap",
+            Foreground = Brushes.Black,
+            Background = Brushes.White,
+            BorderBrush = Brushes.Black,
+            BorderThickness = new Thickness(0.6),
+            FontSize = 12,
+            Padding = new Thickness(3, 1, 3, 1)
+        };
+        Viewport.Children.Add(label);
+        TrackCustomDimensionPreviewVisual(label);
+
+        if (!secondPointPending ||
+            _pendingCustomDimensionStartAnchor == null ||
+            !TryResolveCustomDimensionAnchorWorldPoint(_pendingCustomDimensionStartAnchor, out var startWorld))
+        {
+            return;
+        }
+
+        var guideLine = new LinesVisual3D
+        {
+            Color = previewColor,
+            Thickness = 1.6
+        };
+        guideLine.Points.Add(startWorld);
+        guideLine.Points.Add(anchor.WorldPoint);
+        Viewport.Children.Add(guideLine);
+        TrackCustomDimensionPreviewVisual(guideLine);
+
+        var startMarker = new SphereVisual3D
+        {
+            Center = startWorld,
+            Radius = markerRadius * 0.8,
+            Fill = Brushes.White,
+            ThetaDiv = 16,
+            PhiDiv = 10
+        };
+        Viewport.Children.Add(startMarker);
+        TrackCustomDimensionPreviewVisual(startMarker);
+    }
+
+    private void UpdateCustomDimensionPreview(Point screenPoint)
+    {
+        if (!_isAddingCustomDimension)
+        {
+            _customDimensionPlacementState.LastPreviewSnap = null;
+            ClearCustomDimensionPreview();
+            return;
+        }
+
+        var hits = GetSceneHits(screenPoint);
+        if (hits == null || hits.Count == 0 ||
+            !TryGetSnappedCustomDimensionAnchor(screenPoint, hits, out var snappedAnchor, out var snappedMode))
+        {
+            _customDimensionPlacementState.LastPreviewSnap = null;
+            ClearCustomDimensionPreview();
+            return;
+        }
+
+        ShowCustomDimensionPreview(snappedAnchor, snappedMode, _pendingCustomDimensionStartAnchor != null);
+    }
+
+    private static Point3D ClosestPointOnSegment(Point3D a, Point3D b, Point3D point)
+    {
+        var segment = b - a;
+        var lengthSquared = segment.LengthSquared;
+        if (lengthSquared < 1e-8)
+            return a;
+
+        var t = Vector3D.DotProduct(point - a, segment) / lengthSquared;
+        t = Math.Max(0.0, Math.Min(1.0, t));
+        return a + segment * t;
+    }
+
+    private double ComputeScreenSnapDistance(Point screenPoint, Point3D worldPoint)
+    {
+        var projected = Viewport3DHelper.Point3DtoPoint2D(Viewport.Viewport, worldPoint);
+        if (double.IsNaN(projected.X) || double.IsNaN(projected.Y) ||
+            double.IsInfinity(projected.X) || double.IsInfinity(projected.Y))
+        {
+            return double.MaxValue;
+        }
+
+        return (projected - screenPoint).Length;
+    }
+
+    private static DimensionSnapKind ToDimensionSnapKind(CustomDimensionSnapMode mode)
+    {
+        return mode switch
+        {
+            CustomDimensionSnapMode.Point => DimensionSnapKind.Point,
+            CustomDimensionSnapMode.Edge => DimensionSnapKind.Edge,
+            CustomDimensionSnapMode.Face => DimensionSnapKind.Face,
+            CustomDimensionSnapMode.Center => DimensionSnapKind.Center,
+            CustomDimensionSnapMode.Intersection => DimensionSnapKind.Intersection,
+            _ => DimensionSnapKind.None
+        };
+    }
+
+    private static CustomDimensionSnapMode ToCustomDimensionSnapMode(DimensionSnapKind kind)
+    {
+        return kind switch
+        {
+            DimensionSnapKind.Point => CustomDimensionSnapMode.Point,
+            DimensionSnapKind.Edge => CustomDimensionSnapMode.Edge,
+            DimensionSnapKind.Face => CustomDimensionSnapMode.Face,
+            DimensionSnapKind.Center => CustomDimensionSnapMode.Center,
+            DimensionSnapKind.Intersection => CustomDimensionSnapMode.Intersection,
+            _ => CustomDimensionSnapMode.Auto
+        };
+    }
+
+    private double GetDimensionSnapTolerancePixels(IReadOnlyList<DimensionSnapCandidateInfo> candidates)
+    {
+        var referencePoint = candidates.Count > 0
+            ? candidates[0].WorldPoint
+            : _viewModel.SelectedComponent?.Position ?? new Point3D(0, 0, 0);
+
+        var worldUnitsPerPixel = EstimateWorldUnitsPerPixel(referencePoint);
+        var scale = Math.Clamp(worldUnitsPerPixel / BaselineWorldUnitsPerPixel, 0.75, 2.5);
+        return BaseDimensionSnapTolerancePx * scale;
+    }
+
+    private static bool AreEquivalentAnchors(CustomDimensionAnchor a, CustomDimensionAnchor b)
+    {
+        if (!string.Equals(a.ComponentId, b.ComponentId, StringComparison.Ordinal))
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(a.ComponentId))
+            return (a.LocalPoint - b.LocalPoint).Length <= 1e-4;
+
+        return (a.WorldPoint - b.WorldPoint).Length <= 1e-4;
+    }
+
+    private static bool CanDimensionPair(CustomDimensionAnchor first, CustomDimensionAnchor second)
+    {
+        return !AreEquivalentAnchors(first, second);
+    }
+
+    private bool TryGetComponentFromHit(Viewport3DHelper.HitResult hit, out ElectricalComponent component, out Transform3D componentTransform)
+    {
+        component = null!;
+        componentTransform = Transform3D.Identity;
+        if (hit.Visual is not ModelVisual3D visual ||
+            !_visualToComponentMap.TryGetValue(visual, out var resolvedComponent) ||
+            resolvedComponent == null)
+        {
+            return false;
+        }
+
+        component = resolvedComponent;
+        componentTransform = CreateComponentTransform(component);
+        return true;
+    }
+
+    private bool TryGetSnappedCustomDimensionAnchor(Point screenPoint, IReadOnlyList<Viewport3DHelper.HitResult> hits, out CustomDimensionAnchor anchor, out CustomDimensionSnapMode modeUsed)
+    {
+        anchor = null!;
+        modeUsed = _customDimensionSnapMode;
+        if (hits.Count == 0)
+            return false;
+
+        var candidates = new List<DimensionSnapCandidateInfo>();
+        var componentHits = new List<(Viewport3DHelper.HitResult Hit, ElectricalComponent Component, Transform3D Transform, Point3D LocalHit, ComponentSemanticReferences References)>();
+        var semanticByComponentId = new Dictionary<string, ComponentSemanticReferences>(StringComparer.Ordinal);
+
+        foreach (var hit in hits)
+        {
+            if (!TryGetComponentFromHit(hit, out var component, out var transform))
+                continue;
+
+            if (transform.Inverse == null)
+                continue;
+
+            var localHit = transform.Inverse.Transform(hit.Position);
+            if (!semanticByComponentId.TryGetValue(component.Id, out var semanticReferences))
+            {
+                if (!TryBuildComponentSemanticReferences(component, out semanticReferences))
+                    continue;
+                semanticByComponentId[component.Id] = semanticReferences;
+            }
+
+            componentHits.Add((hit, component, transform, localHit, semanticReferences));
+
+            void AddCandidate(CustomDimensionSnapMode mode, Point3D localPoint)
+            {
+                var worldPoint = transform.Transform(localPoint);
+                var screenDistance = ComputeScreenSnapDistance(screenPoint, worldPoint);
+                if (screenDistance == double.MaxValue)
+                    return;
+
+                candidates.Add(new DimensionSnapCandidateInfo
+                {
+                    Kind = ToDimensionSnapKind(mode),
+                    ElementId = component.Id,
+                    WorldPoint = worldPoint,
+                    LocalPoint = localPoint,
+                    ScreenDistancePx = screenDistance,
+                    IsVisibleInView = true,
+                    IsValidForDimension = true,
+                    HasStableReference = true
+                });
+            }
+
+            Point3D? bestFaceLocal = null;
+            var bestFaceDistance = double.MaxValue;
+            foreach (var face in semanticReferences.FaceLocals)
+            {
+                var projected = ProjectPointOntoFace(face, localHit);
+                var distance = (projected - localHit).LengthSquared;
+                if (distance < bestFaceDistance)
+                {
+                    bestFaceDistance = distance;
+                    bestFaceLocal = projected;
+                }
+            }
+
+            if (bestFaceLocal.HasValue)
+                AddCandidate(CustomDimensionSnapMode.Face, bestFaceLocal.Value);
+            else
+                AddCandidate(CustomDimensionSnapMode.Face, localHit);
+
+            AddCandidate(CustomDimensionSnapMode.Center, semanticReferences.CenterLocal);
+
+            if (semanticReferences.PointLocals.Count > 0)
+            {
+                var nearestPoint = semanticReferences.PointLocals[0];
+                var nearestPointDistance = (nearestPoint - localHit).LengthSquared;
+                for (var i = 1; i < semanticReferences.PointLocals.Count; i++)
+                {
+                    var point = semanticReferences.PointLocals[i];
+                    var distance = (point - localHit).LengthSquared;
+                    if (distance < nearestPointDistance)
+                    {
+                        nearestPointDistance = distance;
+                        nearestPoint = point;
+                    }
+                }
+
+                AddCandidate(CustomDimensionSnapMode.Point, nearestPoint);
+            }
+
+            Point3D? bestEdgeLocal = null;
+            var bestEdgeDistance = double.MaxValue;
+            foreach (var edge in semanticReferences.EdgeLocals)
+            {
+                var projected = ClosestPointOnSegment(edge.StartLocal, edge.EndLocal, localHit);
+                var distance = (projected - localHit).LengthSquared;
+                if (distance < bestEdgeDistance)
+                {
+                    bestEdgeDistance = distance;
+                    bestEdgeLocal = projected;
+                }
+            }
+
+            if (bestEdgeLocal.HasValue)
+                AddCandidate(CustomDimensionSnapMode.Edge, bestEdgeLocal.Value);
+        }
+
+        if (componentHits.Count >= 2)
+        {
+            for (var i = 0; i < componentHits.Count - 1; i++)
+            {
+                for (var j = i + 1; j < componentHits.Count; j++)
+                {
+                    var a = componentHits[i];
+                    var b = componentHits[j];
+                    if (string.Equals(a.Component.Id, b.Component.Id, StringComparison.Ordinal))
+                        continue;
+
+                    var intersectionWorld = new Point3D(
+                        (a.Transform.Transform(a.LocalHit).X + b.Transform.Transform(b.LocalHit).X) / 2.0,
+                        (a.Transform.Transform(a.LocalHit).Y + b.Transform.Transform(b.LocalHit).Y) / 2.0,
+                        (a.Transform.Transform(a.LocalHit).Z + b.Transform.Transform(b.LocalHit).Z) / 2.0);
+                    var score = ComputeScreenSnapDistance(screenPoint, intersectionWorld);
+                    if (score == double.MaxValue)
+                        continue;
+
+                    candidates.Add(new DimensionSnapCandidateInfo
+                    {
+                        Kind = DimensionSnapKind.Intersection,
+                        ElementId = null,
+                        WorldPoint = intersectionWorld,
+                        LocalPoint = default,
+                        ScreenDistancePx = score,
+                        IsVisibleInView = true,
+                        IsValidForDimension = true,
+                        HasStableReference = false
+                    });
+                }
+            }
+        }
+
+        if (candidates.Count == 0)
+            return false;
+
+        var requestedKind = _customDimensionSnapMode == CustomDimensionSnapMode.Auto
+            ? DimensionSnapKind.None
+            : ToDimensionSnapKind(_customDimensionSnapMode);
+        var selectionContext = new DimensionSnapSelectionContext
+        {
+            SnapTolerancePx = GetDimensionSnapTolerancePixels(candidates),
+            RequestedKind = requestedKind,
+            LastPreviewSnap = _customDimensionPlacementState.LastPreviewSnap
+        };
+
+        var selectedCandidate = _dimensionSnapSelectionService.SelectBestCandidate(candidates, selectionContext);
+        if (selectedCandidate == null)
+            return false;
+
+        _customDimensionPlacementState.LastPreviewSnap = selectedCandidate;
+
+        anchor = new CustomDimensionAnchor
+        {
+            ComponentId = selectedCandidate.ElementId,
+            LocalPoint = selectedCandidate.LocalPoint,
+            WorldPoint = selectedCandidate.WorldPoint
+        };
+        modeUsed = ToCustomDimensionSnapMode(selectedCandidate.Kind);
+        return true;
+    }
+
+    private bool TryResolveCustomDimensionAnchorWorldPoint(CustomDimensionAnchor anchor, out Point3D worldPoint)
+    {
+        if (!string.IsNullOrEmpty(anchor.ComponentId))
+        {
+            var component = _viewModel.Components.FirstOrDefault(c => string.Equals(c.Id, anchor.ComponentId, StringComparison.Ordinal));
+            if (component != null)
+            {
+                worldPoint = CreateComponentTransform(component).Transform(anchor.LocalPoint);
+                return true;
+            }
+        }
+
+        worldPoint = anchor.WorldPoint;
+        return true;
+    }
+
+    private bool IsCustomDimensionAnchorVisible(CustomDimensionAnchor anchor, IReadOnlyDictionary<string, bool> layerVisibilityById)
+    {
+        if (string.IsNullOrEmpty(anchor.ComponentId))
+            return true;
+
+        var component = _viewModel.Components.FirstOrDefault(c => string.Equals(c.Id, anchor.ComponentId, StringComparison.Ordinal));
+        return component != null && IsLayerVisible(layerVisibilityById, component.LayerId);
+    }
+
     private static bool IsFinitePositiveLength(double value)
     {
         return !double.IsNaN(value) && !double.IsInfinity(value) && value > 0.0;
+    }
+
+    private static string? ResolveConduitTradeSize(ConduitComponent conduit)
+    {
+        return StratusImperialDefaultsLoader.ResolveTradeSizeFromConduitTypeText(conduit.ConduitType)
+            ?? StratusImperialDefaultsLoader.ResolveTradeSizeFromOuterDiameterFeet(conduit.Diameter);
+    }
+
+    private StratusImperialBendSetting? TryGetConduitImperialBendSetting(ConduitComponent conduit)
+    {
+        if (!_stratusImperialDefaults.HasData)
+            return null;
+
+        var tradeSize = ResolveConduitTradeSize(conduit);
+        if (string.IsNullOrWhiteSpace(tradeSize))
+            return null;
+
+        return _stratusImperialDefaults.FindPreferredBendSetting(conduit.ConduitType ?? string.Empty, tradeSize);
+    }
+
+    private double GetConduitMinimumSegmentSpacingFeet(ConduitComponent conduit)
+    {
+        return TryGetConduitImperialBendSetting(conduit)?.MinimumDistanceBetweenBendsFeet ?? 0.0;
+    }
+
+    private bool TryValidateConduitMinimumSegmentSpacing(
+        ConduitComponent conduit,
+        out double minimumSpacingFeet,
+        out double shortestSegmentFeet,
+        out int shortestSegmentIndex)
+    {
+        minimumSpacingFeet = GetConduitMinimumSegmentSpacingFeet(conduit);
+        shortestSegmentFeet = double.PositiveInfinity;
+        shortestSegmentIndex = -1;
+
+        if (minimumSpacingFeet <= InViewDimensionMinSpan)
+            return true;
+
+        var path = conduit.GetPathPoints();
+        if (path.Count < 2)
+            return true;
+
+        for (int i = 0; i < path.Count - 1; i++)
+        {
+            var length = (path[i + 1] - path[i]).Length;
+            if (length < shortestSegmentFeet)
+            {
+                shortestSegmentFeet = length;
+                shortestSegmentIndex = i;
+            }
+        }
+
+        return shortestSegmentFeet + 1e-6 >= minimumSpacingFeet;
+    }
+
+    private static void SyncConduitDimensionalParameters(ConduitComponent conduit)
+    {
+        conduit.Parameters.Width = conduit.Diameter;
+        conduit.Parameters.Height = conduit.Diameter;
+        conduit.Parameters.Depth = conduit.Length;
+    }
+
+    private void ApplyImperialDefaultsToConduit(ConduitComponent conduit)
+    {
+        SyncConduitDimensionalParameters(conduit);
+
+        var bendSetting = TryGetConduitImperialBendSetting(conduit);
+        if (bendSetting != null)
+            conduit.BendRadius = Math.Max(conduit.BendRadius, bendSetting.RadiusFeet);
     }
 
     private DimensionAxisOffsets GetDimensionAxisOffsets(ElectricalComponent component)
@@ -538,9 +1133,33 @@ public partial class MainWindow : Window
         switch (component)
         {
             case ConduitComponent conduit:
+                SyncConduitDimensionalParameters(conduit);
                 Add("Diameter", conduit.Diameter);
                 Add("Length", conduit.Length);
                 Add("Bend Radius", conduit.BendRadius);
+
+                var bendSetting = TryGetConduitImperialBendSetting(conduit);
+                if (bendSetting != null)
+                {
+                    Add("Take-up (90)", bendSetting.DeductFeet);
+                    Add("Min Bend Spacing", bendSetting.MinimumDistanceBetweenBendsFeet);
+                    Add("Min Kick-90", bendSetting.MinimumDistanceKick90Feet);
+                    Add("Min Offset Spacing", bendSetting.MinimumDistanceOffsetFeet);
+                    Add("Min 3-Point Saddle", bendSetting.MinimumDistanceSaddle3PointFeet);
+                    Add("Min 4-Point Saddle", bendSetting.MinimumDistanceSaddle4PointFeet);
+                    Add("Min Stub", bendSetting.DefaultEndLengthStubFeet);
+
+                    foreach (var minimumHeight in bendSetting.MinimumHeightByAngleFeet.OrderBy(entry => entry.Key))
+                    {
+                        if (minimumHeight.Value > InViewDimensionMinSpan)
+                            Add($"Min Height @{minimumHeight.Key:0.#}deg", minimumHeight.Value);
+                    }
+                }
+
+                var tradeSize = ResolveConduitTradeSize(conduit);
+                var spacingFeet = tradeSize == null ? null : _stratusImperialDefaults.FindParallelSpacingFeet(tradeSize, tradeSize);
+                if (spacingFeet.HasValue && spacingFeet.Value > 0.0)
+                    Add("Parallel Spacing (CTC)", spacingFeet.Value);
                 break;
 
             case CableTrayComponent tray:
@@ -802,6 +1421,19 @@ public partial class MainWindow : Window
             clampedDepth);
     }
 
+    private bool TryGetRenderedLocalDimensionBounds(ElectricalComponent component, out Rect3D localBounds)
+    {
+        var geometry = CreateComponentGeometry(component);
+        if (geometry != null && IsValidBounds(geometry.Bounds))
+        {
+            localBounds = geometry.Bounds;
+            return true;
+        }
+
+        localBounds = Rect3D.Empty;
+        return false;
+    }
+
     private bool TryGetNominalLocalDimensionBounds(ElectricalComponent component, out Rect3D localBounds)
     {
         static bool IsValidLength(double value) => !double.IsNaN(value) && !double.IsInfinity(value) && value > InViewDimensionMinSpan;
@@ -825,6 +1457,9 @@ public partial class MainWindow : Window
                 return IsValidBounds(localBounds);
 
             case ConduitComponent conduit:
+                if (TryGetRenderedLocalDimensionBounds(component, out localBounds))
+                    return true;
+
                 localBounds = CreateParameterPrismBounds(
                     ChooseLength(component.Parameters.Width, conduit.Diameter),
                     ChooseLength(component.Parameters.Height, conduit.Diameter),
@@ -832,6 +1467,9 @@ public partial class MainWindow : Window
                 return IsValidBounds(localBounds);
 
             case CableTrayComponent tray:
+                if (TryGetRenderedLocalDimensionBounds(component, out localBounds))
+                    return true;
+
                 localBounds = CreateParameterPrismBounds(
                     ChooseLength(component.Parameters.Width, tray.TrayWidth),
                     ChooseLength(component.Parameters.Height, tray.TrayDepth),
@@ -848,6 +1486,153 @@ public partial class MainWindow : Window
                     ChooseLength(component.Parameters.Depth, 0.0));
                 return IsValidBounds(localBounds);
         }
+    }
+
+    private static void AddUniqueSemanticPoint(List<Point3D> points, Point3D candidate)
+    {
+        const double tolerance = 1e-5;
+        foreach (var existing in points)
+        {
+            if ((existing - candidate).Length <= tolerance)
+                return;
+        }
+
+        points.Add(candidate);
+    }
+
+    private static List<SemanticEdge> BuildBoundsEdges(Rect3D bounds)
+    {
+        var corners = BuildBoundsCorners(bounds);
+        return
+        [
+            new SemanticEdge(corners[0], corners[4]),
+            new SemanticEdge(corners[1], corners[5]),
+            new SemanticEdge(corners[2], corners[6]),
+            new SemanticEdge(corners[3], corners[7]),
+            new SemanticEdge(corners[0], corners[2]),
+            new SemanticEdge(corners[1], corners[3]),
+            new SemanticEdge(corners[4], corners[6]),
+            new SemanticEdge(corners[5], corners[7]),
+            new SemanticEdge(corners[0], corners[1]),
+            new SemanticEdge(corners[2], corners[3]),
+            new SemanticEdge(corners[4], corners[5]),
+            new SemanticEdge(corners[6], corners[7])
+        ];
+    }
+
+    private static List<SemanticFace> BuildBoundsFaces(Rect3D bounds)
+    {
+        var minX = bounds.X;
+        var minY = bounds.Y;
+        var minZ = bounds.Z;
+        var maxX = bounds.X + bounds.SizeX;
+        var maxY = bounds.Y + bounds.SizeY;
+        var maxZ = bounds.Z + bounds.SizeZ;
+
+        return
+        [
+            new SemanticFace('X', minX, minY, maxY, minZ, maxZ),
+            new SemanticFace('X', maxX, minY, maxY, minZ, maxZ),
+            new SemanticFace('Y', minY, minX, maxX, minZ, maxZ),
+            new SemanticFace('Y', maxY, minX, maxX, minZ, maxZ),
+            new SemanticFace('Z', minZ, minX, maxX, minY, maxY),
+            new SemanticFace('Z', maxZ, minX, maxX, minY, maxY)
+        ];
+    }
+
+    private static Point3D ProjectPointOntoFace(SemanticFace face, Point3D localPoint)
+    {
+        return face.Axis switch
+        {
+            'X' => new Point3D(
+                face.AxisValue,
+                Math.Max(face.MinA, Math.Min(face.MaxA, localPoint.Y)),
+                Math.Max(face.MinB, Math.Min(face.MaxB, localPoint.Z))),
+            'Y' => new Point3D(
+                Math.Max(face.MinA, Math.Min(face.MaxA, localPoint.X)),
+                face.AxisValue,
+                Math.Max(face.MinB, Math.Min(face.MaxB, localPoint.Z))),
+            _ => new Point3D(
+                Math.Max(face.MinA, Math.Min(face.MaxA, localPoint.X)),
+                Math.Max(face.MinB, Math.Min(face.MaxB, localPoint.Y)),
+                face.AxisValue)
+        };
+    }
+
+    private bool TryBuildComponentSemanticReferences(ElectricalComponent component, out ComponentSemanticReferences references)
+    {
+        references = null!;
+        if (!TryGetNominalLocalDimensionBounds(component, out var localBounds))
+            return false;
+
+        var semantic = new ComponentSemanticReferences
+        {
+            LocalBounds = localBounds,
+            CenterLocal = new Point3D(
+                localBounds.X + localBounds.SizeX / 2.0,
+                localBounds.Y + localBounds.SizeY / 2.0,
+                localBounds.Z + localBounds.SizeZ / 2.0)
+        };
+
+        semantic.FaceLocals.AddRange(BuildBoundsFaces(localBounds));
+
+        switch (component)
+        {
+            case ConduitComponent conduit:
+            {
+                var pathPoints = conduit.GetPathPoints();
+                foreach (var point in pathPoints)
+                    AddUniqueSemanticPoint(semantic.PointLocals, point);
+
+                for (var i = 0; i < pathPoints.Count - 1; i++)
+                {
+                    if ((pathPoints[i + 1] - pathPoints[i]).Length >= InViewDimensionMinSpan)
+                        semantic.EdgeLocals.Add(new SemanticEdge(pathPoints[i], pathPoints[i + 1]));
+                }
+                break;
+            }
+
+            case CableTrayComponent tray:
+            {
+                var pathPoints = tray.GetPathPoints();
+                foreach (var point in pathPoints)
+                    AddUniqueSemanticPoint(semantic.PointLocals, point);
+
+                for (var i = 0; i < pathPoints.Count - 1; i++)
+                {
+                    if ((pathPoints[i + 1] - pathPoints[i]).Length >= InViewDimensionMinSpan)
+                        semantic.EdgeLocals.Add(new SemanticEdge(pathPoints[i], pathPoints[i + 1]));
+                }
+                break;
+            }
+
+            default:
+                foreach (var corner in BuildBoundsCorners(localBounds))
+                    AddUniqueSemanticPoint(semantic.PointLocals, corner);
+
+                semantic.EdgeLocals.AddRange(BuildBoundsEdges(localBounds));
+                break;
+        }
+
+        AddUniqueSemanticPoint(semantic.PointLocals, semantic.CenterLocal);
+
+        if (semantic.PointLocals.Count == 0)
+        {
+            foreach (var corner in BuildBoundsCorners(localBounds))
+                AddUniqueSemanticPoint(semantic.PointLocals, corner);
+        }
+
+        if (semantic.EdgeLocals.Count == 0)
+        {
+            foreach (var edge in BuildBoundsEdges(localBounds))
+            {
+                if ((edge.EndLocal - edge.StartLocal).Length >= InViewDimensionMinSpan)
+                    semantic.EdgeLocals.Add(edge);
+            }
+        }
+
+        references = semantic;
+        return true;
     }
 
     private List<AxisDimensionGuide> BuildAxisDimensionGuides(Rect3D localBounds, Transform3D transform)
@@ -1048,22 +1833,34 @@ public partial class MainWindow : Window
 
         foreach (var annotation in _customDimensionAnnotations)
         {
-            var component = _viewModel.Components.FirstOrDefault(c => string.Equals(c.Id, annotation.ComponentId, StringComparison.Ordinal));
-            if (component == null)
+            if (!IsCustomDimensionAnchorVisible(annotation.Start, layerVisibilityById) ||
+                !IsCustomDimensionAnchorVisible(annotation.End, layerVisibilityById))
+            {
                 continue;
-            if (!IsLayerVisible(layerVisibilityById, component.LayerId))
-                continue;
+            }
 
-            var transform = CreateComponentTransform(component);
-            var startWorld = transform.Transform(annotation.StartLocal);
-            var endWorld = transform.Transform(annotation.EndLocal);
+            if (!TryResolveCustomDimensionAnchorWorldPoint(annotation.Start, out var startWorld) ||
+                !TryResolveCustomDimensionAnchorWorldPoint(annotation.End, out var endWorld))
+            {
+                continue;
+            }
+
             var delta = endWorld - startWorld;
             if (delta.Length < InViewDimensionMinSpan)
                 continue;
 
             var outward = BuildCameraFacingOutward(startWorld, endWorld);
             var guide = new AxisDimensionGuide(annotation.Axis, delta.Length, startWorld, endWorld, outward);
-            var axisOffset = GetDimensionAxisOffset(component, annotation.Axis);
+
+            ElectricalComponent? offsetComponent = null;
+            if (!string.IsNullOrEmpty(annotation.Start.ComponentId))
+                offsetComponent = _viewModel.Components.FirstOrDefault(c => string.Equals(c.Id, annotation.Start.ComponentId, StringComparison.Ordinal));
+            if (offsetComponent == null && !string.IsNullOrEmpty(annotation.End.ComponentId))
+                offsetComponent = _viewModel.Components.FirstOrDefault(c => string.Equals(c.Id, annotation.End.ComponentId, StringComparison.Ordinal));
+
+            var axisOffset = offsetComponent == null
+                ? 0.0
+                : GetDimensionAxisOffset(offsetComponent, annotation.Axis);
             DrawAxisDimensionGuide(guide, axisOffset);
         }
     }
@@ -1325,6 +2122,7 @@ public partial class MainWindow : Window
     private void UpdateViewport()
     {
         PruneCustomDimensions();
+        ClearCustomDimensionPreview();
         ClearSelectionDimensionVisuals();
 
         // Clear existing models and mapping
@@ -3088,6 +3886,8 @@ public partial class MainWindow : Window
     {
         if (_viewModel.ActiveLayer != null)
             component.LayerId = _viewModel.ActiveLayer.Id;
+        if (component is ConduitComponent conduit)
+            ApplyImperialDefaultsToConduit(conduit);
 
         var action = new AddComponentAction(_viewModel.Components, component);
         _viewModel.UndoRedo.Execute(action);
@@ -3455,7 +4255,15 @@ public partial class MainWindow : Window
 
             if (_draggingConduitBendIndex2D >= 0 && _draggingConduitBendIndex2D < _draggingConduit2D.BendPoints.Count)
             {
+                var originalPoint = _draggingConduit2D.BendPoints[_draggingConduitBendIndex2D];
                 _draggingConduit2D.BendPoints[_draggingConduitBendIndex2D] = relativePoint;
+
+                if (!TryValidateConduitMinimumSegmentSpacing(_draggingConduit2D, out _, out _, out _))
+                {
+                    _draggingConduit2D.BendPoints[_draggingConduitBendIndex2D] = originalPoint;
+                    return;
+                }
+
                 ConstrainConduitPathToPlanBounds(_draggingConduit2D);
                 QueueSceneRefresh(update2D: true, update3D: true);
             }
@@ -3936,6 +4744,7 @@ public partial class MainWindow : Window
         if (conduit.BendPoints.Count == 0)
         {
             conduit.Position = ClampWorldToPlanBounds(conduit.Position);
+            UpdateConduitLengthFromPath(conduit);
             return;
         }
 
@@ -3981,7 +4790,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private static void UpdateConduitLengthFromPath(ConduitComponent conduit)
+    private void UpdateConduitLengthFromPath(ConduitComponent conduit)
     {
         var points = conduit.GetPathPoints();
         double total = 0;
@@ -3991,6 +4800,7 @@ public partial class MainWindow : Window
         }
 
         conduit.Length = total;
+        ApplyImperialDefaultsToConduit(conduit);
     }
 
     private static double DistanceToSegment(Point point, Point a, Point b, out Point closestPoint, out double t)
@@ -4071,6 +4881,15 @@ public partial class MainWindow : Window
 
         int insertIndex = Math.Clamp(bestSegment, 0, conduit.BendPoints.Count);
         conduit.BendPoints.Insert(insertIndex, relativePoint);
+
+        if (!TryValidateConduitMinimumSegmentSpacing(conduit, out var minimumSpacingFeet, out var shortestSegmentFeet, out var shortestSegmentIndex))
+        {
+            conduit.BendPoints.RemoveAt(insertIndex);
+            ActionLogService.Instance.Log(LogCategory.Edit, "2D bend point rejected (minimum spacing)",
+                $"Conduit: {conduit.Name}, SegmentIndex: {shortestSegmentIndex}, Shortest: {shortestSegmentFeet:F3} ft, Minimum: {minimumSpacingFeet:F3} ft");
+            return false;
+        }
+
         ConstrainConduitPathToPlanBounds(conduit);
 
         ActionLogService.Instance.Log(LogCategory.Edit, "2D bend point inserted",
@@ -4538,12 +5357,27 @@ public partial class MainWindow : Window
     private void AddCustomDimension_Click(object sender, RoutedEventArgs e)
     {
         _isAddingCustomDimension = !_isAddingCustomDimension;
-        _pendingCustomDimensionStartLocal = null;
-        _pendingCustomDimensionComponentId = null;
+        _pendingCustomDimensionStartAnchor = null;
+        _customDimensionPlacementState.Reset();
+        ClearCustomDimensionPreview();
 
         ActionLogService.Instance.Log(LogCategory.View, "Custom dimension mode toggled",
             $"Enabled: {_isAddingCustomDimension}");
 
+        if (_isAddingCustomDimension && Viewport.IsMouseOver)
+            UpdateCustomDimensionPreview(Mouse.GetPosition(Viewport));
+
+        UpdateCustomDimensionUiState();
+    }
+
+    private void CustomDimensionSnapMode_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        _customDimensionSnapMode = GetSelectedCustomDimensionSnapMode();
+        _customDimensionPlacementState.LastPreviewSnap = null;
+        ActionLogService.Instance.Log(LogCategory.View, "Custom dimension snap mode changed",
+            $"Mode: {_customDimensionSnapMode}");
+        if (_isAddingCustomDimension && Viewport.IsMouseOver)
+            UpdateCustomDimensionPreview(Mouse.GetPosition(Viewport));
         UpdateCustomDimensionUiState();
     }
 
@@ -4554,7 +5388,8 @@ public partial class MainWindow : Window
         if (selected != null)
         {
             removed = _customDimensionAnnotations.RemoveAll(annotation =>
-                string.Equals(annotation.ComponentId, selected.Id, StringComparison.Ordinal));
+                string.Equals(annotation.Start.ComponentId, selected.Id, StringComparison.Ordinal) ||
+                string.Equals(annotation.End.ComponentId, selected.Id, StringComparison.Ordinal));
         }
         else
         {
@@ -4571,8 +5406,9 @@ public partial class MainWindow : Window
             UpdateViewport();
         }
 
-        _pendingCustomDimensionStartLocal = null;
-        _pendingCustomDimensionComponentId = null;
+        _pendingCustomDimensionStartAnchor = null;
+        _customDimensionPlacementState.Reset();
+        ClearCustomDimensionPreview();
         UpdateCustomDimensionUiState();
     }
     
@@ -4990,9 +5826,7 @@ public partial class MainWindow : Window
     private void Viewport_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         var position = e.GetPosition(Viewport);
-        var hits = Viewport3DHelper.FindHits(Viewport.Viewport, position)?
-            .Where(hit => !ReferenceEquals(hit.Visual, _pdfUnderlayVisual3D))
-            .ToList();
+        var hits = GetSceneHits(position);
 
         if (_pendingPlacementComponent != null)
         {
@@ -5006,67 +5840,72 @@ public partial class MainWindow : Window
 
         if (_isAddingCustomDimension)
         {
-            var selected = _viewModel.SelectedComponent;
-            if (selected == null)
+            if (hits == null || hits.Count == 0 ||
+                !TryGetSnappedCustomDimensionAnchor(position, hits, out var snappedAnchor, out var snappedMode))
             {
+                _customDimensionPlacementState.LastPreviewSnap = null;
+                ClearCustomDimensionPreview();
                 UpdateCustomDimensionUiState();
                 e.Handled = true;
                 return;
             }
 
-            var selectedHit = hits?
-                .FirstOrDefault(hit =>
-                    hit.Visual is ModelVisual3D visual &&
-                    _visualToComponentMap.TryGetValue(visual, out var component) &&
-                    string.Equals(component.Id, selected.Id, StringComparison.Ordinal));
-
-            if (selectedHit == null)
+            if (_pendingCustomDimensionStartAnchor == null)
             {
-                UpdateCustomDimensionUiState();
-                e.Handled = true;
-                return;
-            }
-
-            var transform = CreateComponentTransform(selected);
-            if (transform.Inverse == null)
-            {
-                UpdateCustomDimensionUiState();
-                e.Handled = true;
-                return;
-            }
-
-            var localHit = transform.Inverse.Transform(selectedHit.Position);
-            if (!_pendingCustomDimensionStartLocal.HasValue ||
-                !string.Equals(_pendingCustomDimensionComponentId, selected.Id, StringComparison.Ordinal))
-            {
-                _pendingCustomDimensionStartLocal = localHit;
-                _pendingCustomDimensionComponentId = selected.Id;
+                _pendingCustomDimensionStartAnchor = snappedAnchor;
+                _customDimensionPlacementState.FirstReference = _customDimensionPlacementState.LastPreviewSnap;
+                _customDimensionPlacementState.SecondReference = null;
+                ClearCustomDimensionPreview();
+                var componentName = string.IsNullOrEmpty(snappedAnchor.ComponentId)
+                    ? "(world)"
+                    : _viewModel.Components.FirstOrDefault(c => string.Equals(c.Id, snappedAnchor.ComponentId, StringComparison.Ordinal))?.Name ?? "(unknown)";
                 ActionLogService.Instance.Log(LogCategory.Edit, "Custom dimension first point",
-                    $"Component: {selected.Name}, Point: ({localHit.X:F2}, {localHit.Y:F2}, {localHit.Z:F2})");
+                    $"Snap: {snappedMode}, Component: {componentName}, Point: ({snappedAnchor.WorldPoint.X:F2}, {snappedAnchor.WorldPoint.Y:F2}, {snappedAnchor.WorldPoint.Z:F2})");
+                UpdateCustomDimensionUiState();
+                e.Handled = true;
+                return;
             }
-            else
+
+            if (!TryResolveCustomDimensionAnchorWorldPoint(_pendingCustomDimensionStartAnchor, out var startWorld))
             {
-                var startLocal = _pendingCustomDimensionStartLocal.Value;
-                var endLocal = localHit;
-                var localDelta = endLocal - startLocal;
-                if (localDelta.Length >= InViewDimensionMinSpan)
+                _pendingCustomDimensionStartAnchor = null;
+                _customDimensionPlacementState.Reset();
+                ClearCustomDimensionPreview();
+                UpdateCustomDimensionUiState();
+                e.Handled = true;
+                return;
+            }
+
+            if (!CanDimensionPair(_pendingCustomDimensionStartAnchor, snappedAnchor))
+            {
+                ActionLogService.Instance.Log(LogCategory.Edit, "Custom dimension pair rejected",
+                    $"Reason: duplicate/unstable pair, Snap: {snappedMode}");
+                e.Handled = true;
+                return;
+            }
+
+            if (TryResolveCustomDimensionAnchorWorldPoint(snappedAnchor, out var endWorld))
+            {
+                var worldDelta = endWorld - startWorld;
+                if (worldDelta.Length >= InViewDimensionMinSpan)
                 {
-                    var axis = GetDominantAxis(localDelta);
+                    var axis = GetDominantAxis(worldDelta);
                     _customDimensionAnnotations.Add(new CustomDimensionAnnotation
                     {
-                        ComponentId = selected.Id,
-                        StartLocal = startLocal,
-                        EndLocal = endLocal,
+                        Start = _pendingCustomDimensionStartAnchor,
+                        End = snappedAnchor,
                         Axis = axis
                     });
+                    _customDimensionPlacementState.SecondReference = _customDimensionPlacementState.LastPreviewSnap;
                     ActionLogService.Instance.Log(LogCategory.Edit, "Custom dimension added",
-                        $"Component: {selected.Name}, Axis: {axis}, Length: {localDelta.Length:F3}");
+                        $"Snap: {snappedMode}, Axis: {axis}, Length: {worldDelta.Length:F3}");
                     UpdateViewport();
                 }
-
-                _pendingCustomDimensionStartLocal = null;
             }
 
+            _pendingCustomDimensionStartAnchor = null;
+            _customDimensionPlacementState.Reset();
+            ClearCustomDimensionPreview();
             UpdateCustomDimensionUiState();
             e.Handled = true;
             return;
@@ -5118,8 +5957,17 @@ public partial class MainWindow : Window
                 var hitPoint = ClampWorldToPlanBounds(rayHit.Position);
                 var offset = hitPoint - _viewModel.SelectedComponent.Position;
                 var localPoint = new Point3D(offset.X, offset.Y, offset.Z);
-                
+
                 conduit.BendPoints.Add(localPoint);
+                if (!TryValidateConduitMinimumSegmentSpacing(conduit, out var minimumSpacingFeet, out var shortestSegmentFeet, out var shortestSegmentIndex))
+                {
+                    conduit.BendPoints.RemoveAt(conduit.BendPoints.Count - 1);
+                    ActionLogService.Instance.Log(LogCategory.Edit, "Bend point rejected (minimum spacing)",
+                        $"Conduit: {conduit.Name}, SegmentIndex: {shortestSegmentIndex}, Shortest: {shortestSegmentFeet:F3} ft, Minimum: {minimumSpacingFeet:F3} ft");
+                    e.Handled = true;
+                    return;
+                }
+
                 ConstrainConduitPathToPlanBounds(conduit);
                 ActionLogService.Instance.Log(LogCategory.Edit, "Bend point added",
                     $"Conduit: {conduit.Name}, Point: ({localPoint.X:F2}, {localPoint.Y:F2}, {localPoint.Z:F2}), Total: {conduit.BendPoints.Count}");
@@ -5175,6 +6023,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (_isAddingCustomDimension)
+        {
+            UpdateCustomDimensionPreview(e.GetPosition(Viewport));
+            return;
+        }
+
         if (_draggedHandle == null || _viewModel.SelectedComponent is not ConduitComponent conduit)
             return;
         
@@ -5185,10 +6039,7 @@ public partial class MainWindow : Window
         {
             if (handleIndex < conduit.BendPoints.Count)
             {
-                var hits = Viewport3DHelper.FindHits(Viewport.Viewport, position);
-                var filteredHits = hits?
-                    .Where(hit => !ReferenceEquals(hit.Visual, _pdfUnderlayVisual3D))
-                    .ToList();
+                var filteredHits = GetSceneHits(position);
                 if (filteredHits != null && filteredHits.Any())
                 {
                     var hitPoint = ClampWorldToPlanBounds(filteredHits.First().Position);
@@ -5202,7 +6053,15 @@ public partial class MainWindow : Window
                         newPoint.Z = Math.Round(newPoint.Z / _viewModel.GridSize) * _viewModel.GridSize;
                     }
                     
+                    var originalPoint = conduit.BendPoints[handleIndex];
                     conduit.BendPoints[handleIndex] = newPoint;
+
+                    if (!TryValidateConduitMinimumSegmentSpacing(conduit, out _, out _, out _))
+                    {
+                        conduit.BendPoints[handleIndex] = originalPoint;
+                        return;
+                    }
+
                     ConstrainConduitPathToPlanBounds(conduit);
                     UpdateViewport();
                     Update2DCanvas();
@@ -5238,6 +6097,7 @@ public partial class MainWindow : Window
                 conduit.BendPoints.Clear();
                 if (conduit.Length <= 0)
                     conduit.Length = 10.0;
+                ApplyImperialDefaultsToConduit(conduit);
                 UpdateViewport();
                 UpdatePropertiesPanel();
                 
@@ -5302,6 +6162,10 @@ public partial class MainWindow : Window
             component.Parameters.Manufacturer = ManufacturerTextBox.Text;
             component.Parameters.PartNumber = PartNumberTextBox.Text;
             component.Parameters.ReferenceUrl = ReferenceUrlTextBox.Text;
+
+            if (component is ConduitComponent conduitComponent)
+                ApplyImperialDefaultsToConduit(conduitComponent);
+
             var catalogDataCleared = ClearCatalogMetadataIfDimensionsChanged(component);
             
             // Update layer assignment
@@ -5528,6 +6392,89 @@ public partial class MainWindow : Window
             }
         }
     }
+
+    private void RunRevitIntrospection_Click(object sender, RoutedEventArgs e)
+    {
+        ActionLogService.Instance.Log(LogCategory.FileOperation, "Revit introspection requested");
+
+        if (!_revitIntrospectionOptions.IsEnabled)
+        {
+            var disabledMessage = $"Revit introspection is disabled. Set {RevitIntrospectionOptions.EnableEnvVar}=true to enable.";
+            ActionLogService.Instance.Log(LogCategory.FileOperation, "Revit introspection blocked", disabledMessage);
+            MessageBox.Show(disabledMessage, "Revit Introspection", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            Mouse.OverrideCursor = Cursors.Wait;
+            var result = _revitIntrospectionService.RunScan(_revitIntrospectionOptions.InstallPathOverride);
+            Mouse.OverrideCursor = null;
+
+            if (!result.Success && result.RequiresInstallPathSelection)
+            {
+                var promptMessage = "Unable to locate a Revit install path automatically.\n\n" +
+                                    "Do you want to browse to a Revit binary (for example RevitDB.dll)?";
+                if (MessageBox.Show(promptMessage, "Revit Introspection", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+                {
+                    var selectedPath = PromptForRevitInstallPath();
+                    if (!string.IsNullOrWhiteSpace(selectedPath))
+                    {
+                        Mouse.OverrideCursor = Cursors.Wait;
+                        result = _revitIntrospectionService.RunScan(selectedPath);
+                        Mouse.OverrideCursor = null;
+                    }
+                }
+            }
+
+            if (!result.Success)
+            {
+                ActionLogService.Instance.Log(LogCategory.FileOperation, "Revit introspection failed", result.UserMessage);
+                MessageBox.Show(result.UserMessage, "Revit Introspection", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var output = result.Output!;
+            var scannedPath = result.Report?.ScannedPath ?? "(unknown)";
+            ActionLogService.Instance.Log(LogCategory.FileOperation, "Revit introspection completed",
+                $"ScannedPath: {scannedPath}, JSON: {output.JsonReportPath}, Summary: {output.SummaryReportPath}");
+
+            MessageBox.Show(
+                "Revit introspection completed.\n\n" +
+                $"Scanned path:\n{scannedPath}\n\n" +
+                $"JSON report:\n{output.JsonReportPath}\n\n" +
+                $"Summary report:\n{output.SummaryReportPath}",
+                "Revit Introspection",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            ActionLogService.Instance.LogError(LogCategory.FileOperation, "Revit introspection crashed", ex);
+            MessageBox.Show($"Revit introspection failed: {ex.Message}", "Revit Introspection", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            Mouse.OverrideCursor = null;
+        }
+    }
+
+    private static string? PromptForRevitInstallPath()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Select a Revit managed binary",
+            Filter = "RevitDB.dll|RevitDB.dll|DLL Files (*.dll)|*.dll|All Files (*.*)|*.*",
+            CheckFileExists = true,
+            CheckPathExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog() != true)
+            return null;
+
+        return System.IO.Path.GetDirectoryName(dialog.FileName);
+    }
     
     private void Exit_Click(object sender, RoutedEventArgs e)
     {
@@ -5610,6 +6557,12 @@ public partial class MainWindow : Window
                 else if (_pendingPlacementComponent != null)
                 {
                     CancelPendingPlacement();
+                    e.Handled = true;
+                }
+                else if (_isAddingCustomDimension)
+                {
+                    CancelCustomDimensionMode();
+                    UpdateCustomDimensionUiState();
                     e.Handled = true;
                 }
             }
