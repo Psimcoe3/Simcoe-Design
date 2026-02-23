@@ -8,6 +8,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using System.Windows.Shapes;
 using System.Diagnostics;
+using System.Globalization;
 using Microsoft.Win32;
 using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.ViewModels;
@@ -27,6 +28,13 @@ public partial class MainWindow : Window
     private readonly Dictionary<ModelVisual3D, ElectricalComponent> _visualToComponentMap = new();
     private bool _isEditingConduitPath = false;
     private readonly List<ModelVisual3D> _bendPointHandles = new();
+    private readonly List<Visual3D> _selectionDimensionVisuals = new();
+    private readonly Dictionary<Visual3D, char> _dimensionVisualAxisMap = new();
+    private readonly Dictionary<string, DimensionAxisOffsets> _dimensionOffsetsByComponentId = new(StringComparer.Ordinal);
+    private bool _isDraggingDimensionAnnotation = false;
+    private char _draggingDimensionAxis = '\0';
+    private Point _dimensionDragStartMousePosition;
+    private double _dimensionDragStartOffsetFeet = 0.0;
     private ModelVisual3D? _draggedHandle = null;
     private Point _lastMousePosition;
     private BitmapSource? _cachedPdfBitmap;
@@ -111,15 +119,35 @@ public partial class MainWindow : Window
     private const double CanvasWorldOrigin = 1000.0;
     private const double CanvasWorldScale = 20.0;
     private const double DefaultPlanCanvasSize = 2000.0;
+    private const int DefaultDimensionInchFractionDenominator = 16;
+    private const double InViewDimensionMinSpan = 1e-4;
+    private const int MaxInViewDimensionsPerAxis = 6;
+
+    private DimensionDisplayMode _dimensionDisplayMode = DimensionDisplayMode.FeetInches;
+    private int _dimensionInchFractionDenominator = DefaultDimensionInchFractionDenominator;
 
     private readonly record struct PlanWorldBounds(double MinX, double MaxX, double MinZ, double MaxZ);
     private readonly record struct UnderlayCanvasFrame(PdfUnderlay Underlay, double ScaledWidth, double ScaledHeight, Point[] Corners);
+    private readonly record struct DimensionEntry(string Label, double FeetValue);
+    private readonly record struct AxisDimensionSpan(char Axis, double ValueFeet, double MinCoordinate, double MaxCoordinate);
+    private sealed class DimensionAxisOffsets
+    {
+        public double X;
+        public double Y;
+        public double Z;
+    }
 
     private enum MobilePane
     {
         Canvas,
         Library,
         Properties
+    }
+
+    private enum DimensionDisplayMode
+    {
+        FeetInches,
+        DecimalFeet
     }
 
     private enum MobileTheme
@@ -140,6 +168,7 @@ public partial class MainWindow : Window
         _interactionQualityRestoreTimer.Tick += InteractionQualityRestoreTimer_Tick;
         _viewModel = new MainViewModel();
         DataContext = _viewModel;
+        InitializeDimensionDisplayDefaults();
         ApplyDesktopPaneLayout();
         
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
@@ -272,6 +301,522 @@ public partial class MainWindow : Window
     {
         return !layerVisibilityById.TryGetValue(layerId, out var visible) || visible;
     }
+
+    private void InitializeDimensionDisplayDefaults()
+    {
+        _dimensionDisplayMode = GetSelectedDimensionDisplayMode();
+        _dimensionInchFractionDenominator = GetSelectedDimensionIncrementDenominator();
+    }
+
+    private DimensionDisplayMode GetSelectedDimensionDisplayMode()
+    {
+        if (DimensionDisplayFormatCombo?.SelectedItem is ComboBoxItem item)
+        {
+            var selected = item.Content?.ToString();
+            if (string.Equals(selected, "Decimal Feet", StringComparison.OrdinalIgnoreCase))
+                return DimensionDisplayMode.DecimalFeet;
+        }
+
+        return DimensionDisplayMode.FeetInches;
+    }
+
+    private int GetSelectedDimensionIncrementDenominator()
+    {
+        if (DimensionIncrementCombo?.SelectedItem is ComboBoxItem item &&
+            int.TryParse(item.Tag?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var denominator) &&
+            denominator > 0)
+        {
+            return denominator;
+        }
+
+        return DefaultDimensionInchFractionDenominator;
+    }
+
+    private static bool IsFinitePositiveLength(double value)
+    {
+        return !double.IsNaN(value) && !double.IsInfinity(value) && value > 0.0;
+    }
+
+    private DimensionAxisOffsets GetDimensionAxisOffsets(ElectricalComponent component)
+    {
+        if (!_dimensionOffsetsByComponentId.TryGetValue(component.Id, out var offsets))
+        {
+            offsets = new DimensionAxisOffsets();
+            _dimensionOffsetsByComponentId[component.Id] = offsets;
+        }
+
+        return offsets;
+    }
+
+    private double GetDimensionAxisOffset(ElectricalComponent component, char axis)
+    {
+        var offsets = GetDimensionAxisOffsets(component);
+        return axis switch
+        {
+            'X' => offsets.X,
+            'Y' => offsets.Y,
+            'Z' => offsets.Z,
+            _ => 0.0
+        };
+    }
+
+    private void SetDimensionAxisOffset(ElectricalComponent component, char axis, double offsetFeet)
+    {
+        var offsets = GetDimensionAxisOffsets(component);
+        var sanitized = Math.Max(0.0, offsetFeet);
+        switch (axis)
+        {
+            case 'X':
+                offsets.X = sanitized;
+                break;
+            case 'Y':
+                offsets.Y = sanitized;
+                break;
+            case 'Z':
+                offsets.Z = sanitized;
+                break;
+        }
+    }
+
+    private double GetDisplayIncrementFeet()
+    {
+        var denominator = Math.Max(1, _dimensionInchFractionDenominator);
+        return 1.0 / (UnitConversionService.InchesPerFoot * denominator);
+    }
+
+    private double RoundLengthToDisplayIncrement(double value)
+    {
+        var incrementFeet = GetDisplayIncrementFeet();
+        return Math.Round(value / incrementFeet, MidpointRounding.AwayFromZero) * incrementFeet;
+    }
+
+    private string FormatLengthForInput(double value)
+    {
+        if (_dimensionDisplayMode == DimensionDisplayMode.FeetInches)
+            return UnitConversionService.FormatFeetInches(value, _dimensionInchFractionDenominator);
+
+        var rounded = RoundLengthToDisplayIncrement(value);
+        return rounded.ToString("0.#####", CultureInfo.InvariantCulture);
+    }
+
+    private string FormatLengthForDisplay(double value)
+    {
+        if (_dimensionDisplayMode == DimensionDisplayMode.FeetInches)
+            return UnitConversionService.FormatFeetInches(value, _dimensionInchFractionDenominator);
+
+        var rounded = RoundLengthToDisplayIncrement(value);
+        return $"{rounded.ToString("0.#####", CultureInfo.InvariantCulture)} ft";
+    }
+
+    private static string BuildDimensionLabel(IReadOnlyCollection<string> labels)
+    {
+        if (labels.Count == 0)
+            return "Dimension";
+        if (labels.Count == 1)
+            return labels.First();
+
+        return string.Join("/", labels);
+    }
+
+    private List<DimensionEntry> BuildDimensionEntries(ElectricalComponent component)
+    {
+        var entries = new List<DimensionEntry>();
+
+        void Add(string label, double value)
+        {
+            if (IsFinitePositiveLength(value))
+                entries.Add(new DimensionEntry(label, value));
+        }
+
+        Add("Width", component.Parameters.Width);
+        Add("Height", component.Parameters.Height);
+        Add("Depth", component.Parameters.Depth);
+
+        switch (component)
+        {
+            case ConduitComponent conduit:
+                Add("Diameter", conduit.Diameter);
+                Add("Length", conduit.Length);
+                Add("Bend Radius", conduit.BendRadius);
+                break;
+
+            case CableTrayComponent tray:
+                Add("Tray Width", tray.TrayWidth);
+                Add("Tray Depth", tray.TrayDepth);
+                Add("Length", tray.Length);
+                break;
+
+            case HangerComponent hanger:
+                Add("Rod Diameter", hanger.RodDiameter);
+                Add("Rod Length", hanger.RodLength);
+                break;
+        }
+
+        return entries;
+    }
+
+    private void UpdateSelectedDimensionsDisplay(ElectricalComponent? component)
+    {
+        if (SelectedDimensionsListBox == null)
+            return;
+
+        if (component == null)
+        {
+            SelectedDimensionsListBox.ItemsSource = null;
+            SelectedDimensionsListBox.Items.Clear();
+            return;
+        }
+
+        var entries = BuildDimensionEntries(component);
+        if (entries.Count == 0)
+        {
+            SelectedDimensionsListBox.ItemsSource = new[] { "No dimensions available." };
+            return;
+        }
+
+        var incrementFeet = GetDisplayIncrementFeet();
+        var uniqueRows = entries
+            .GroupBy(entry => (long)Math.Round(entry.FeetValue / incrementFeet, MidpointRounding.AwayFromZero))
+            .Select(group =>
+            {
+                var quantizedFeet = group.Key * incrementFeet;
+                var labels = group.Select(g => g.Label).Distinct(StringComparer.Ordinal).ToList();
+                return $"{BuildDimensionLabel(labels)}: {FormatLengthForDisplay(quantizedFeet)}";
+            })
+            .OrderBy(text => text, StringComparer.Ordinal)
+            .ToList();
+
+        SelectedDimensionsListBox.ItemsSource = uniqueRows;
+    }
+
+    private double ParseLengthInput(string input, string fieldName)
+    {
+        if (UnitConversionService.TryParseLength(input, out var value))
+            return value;
+
+        throw new FormatException($"Invalid {fieldName} value. Use feet-inches (example: 1'-3 1/2\") or decimal feet.");
+    }
+
+    private static Point3D[] BuildBoundsCorners(Rect3D bounds)
+    {
+        var minX = bounds.X;
+        var minY = bounds.Y;
+        var minZ = bounds.Z;
+        var maxX = bounds.X + bounds.SizeX;
+        var maxY = bounds.Y + bounds.SizeY;
+        var maxZ = bounds.Z + bounds.SizeZ;
+
+        return
+        [
+            new Point3D(minX, minY, minZ),
+            new Point3D(minX, minY, maxZ),
+            new Point3D(minX, maxY, minZ),
+            new Point3D(minX, maxY, maxZ),
+            new Point3D(maxX, minY, minZ),
+            new Point3D(maxX, minY, maxZ),
+            new Point3D(maxX, maxY, minZ),
+            new Point3D(maxX, maxY, maxZ)
+        ];
+    }
+
+    private static Rect3D CreateBoundsFromPoints(IReadOnlyList<Point3D> points)
+    {
+        if (points.Count == 0)
+            return Rect3D.Empty;
+
+        var minX = points.Min(p => p.X);
+        var minY = points.Min(p => p.Y);
+        var minZ = points.Min(p => p.Z);
+        var maxX = points.Max(p => p.X);
+        var maxY = points.Max(p => p.Y);
+        var maxZ = points.Max(p => p.Z);
+        return new Rect3D(minX, minY, minZ, maxX - minX, maxY - minY, maxZ - minZ);
+    }
+
+    private static bool IsValidBounds(Rect3D bounds)
+    {
+        return !bounds.IsEmpty &&
+               !double.IsNaN(bounds.SizeX) &&
+               !double.IsNaN(bounds.SizeY) &&
+               !double.IsNaN(bounds.SizeZ) &&
+               !double.IsInfinity(bounds.SizeX) &&
+               !double.IsInfinity(bounds.SizeY) &&
+               !double.IsInfinity(bounds.SizeZ);
+    }
+
+    private bool TryGetComponentWorldBounds(ElectricalComponent component, out Rect3D worldBounds)
+    {
+        var geometry = CreateComponentGeometry(component);
+        if (geometry == null)
+        {
+            worldBounds = Rect3D.Empty;
+            return false;
+        }
+
+        var transform = CreateComponentTransform(component);
+        worldBounds = transform.TransformBounds(geometry.Bounds);
+        return IsValidBounds(worldBounds);
+    }
+
+    private bool TryGetSelectedComponentWorldBounds(out Rect3D worldBounds)
+    {
+        var selected = _viewModel.SelectedComponent;
+        if (selected == null)
+        {
+            worldBounds = Rect3D.Empty;
+            return false;
+        }
+
+        return TryGetComponentWorldBounds(selected, out worldBounds);
+    }
+
+    private double EstimateWorldUnitsPerPixel(Point3D referencePoint)
+    {
+        if (Viewport.Camera is PerspectiveCamera perspective)
+        {
+            var distance = (perspective.Position - referencePoint).Length;
+            var fovRadians = perspective.FieldOfView * Math.PI / 180.0;
+            var worldHeight = 2.0 * Math.Max(0.001, distance) * Math.Tan(fovRadians / 2.0);
+            var viewportHeight = Math.Max(1.0, Viewport.ActualHeight);
+            return worldHeight / viewportHeight;
+        }
+
+        if (Viewport.Camera is OrthographicCamera orthographic)
+        {
+            var viewportHeight = Math.Max(1.0, Viewport.ActualHeight);
+            return Math.Max(0.0001, orthographic.Width / viewportHeight);
+        }
+
+        return 0.01;
+    }
+
+    private List<Point3D> GetComponentDimensionReferencePoints(ElectricalComponent component, Transform3D transform, Rect3D worldBounds)
+    {
+        switch (component)
+        {
+            case ConduitComponent conduit:
+                return conduit.GetPathPoints()
+                    .Select(transform.Transform)
+                    .ToList();
+
+            case CableTrayComponent tray:
+                return tray.GetPathPoints()
+                    .Select(transform.Transform)
+                    .ToList();
+
+            default:
+                return BuildBoundsCorners(worldBounds).ToList();
+        }
+    }
+
+    private List<AxisDimensionSpan> BuildUniqueAxisDimensionSpans(IReadOnlyList<Point3D> points)
+    {
+        var incrementFeet = Math.Max(InViewDimensionMinSpan, GetDisplayIncrementFeet());
+        var uniqueByAxisAndValue = new Dictionary<(char Axis, long Quantized), AxisDimensionSpan>();
+
+        void AddSpan(char axis, double value, double min, double max)
+        {
+            if (value < InViewDimensionMinSpan)
+                return;
+
+            var quantized = (long)Math.Round(value / incrementFeet, MidpointRounding.AwayFromZero);
+            var key = (axis, quantized);
+            if (uniqueByAxisAndValue.ContainsKey(key))
+                return;
+
+            uniqueByAxisAndValue[key] = new AxisDimensionSpan(axis, value, min, max);
+        }
+
+        for (var i = 0; i < points.Count - 1; i++)
+        {
+            for (var j = i + 1; j < points.Count; j++)
+            {
+                var a = points[i];
+                var b = points[j];
+                AddSpan('X', Math.Abs(a.X - b.X), Math.Min(a.X, b.X), Math.Max(a.X, b.X));
+                AddSpan('Y', Math.Abs(a.Y - b.Y), Math.Min(a.Y, b.Y), Math.Max(a.Y, b.Y));
+                AddSpan('Z', Math.Abs(a.Z - b.Z), Math.Min(a.Z, b.Z), Math.Max(a.Z, b.Z));
+            }
+        }
+
+        return uniqueByAxisAndValue.Values
+            .GroupBy(span => span.Axis)
+            .SelectMany(group => group
+                .OrderBy(span => span.ValueFeet)
+                .Take(MaxInViewDimensionsPerAxis))
+            .OrderBy(span => span.Axis)
+            .ThenBy(span => span.ValueFeet)
+            .ToList();
+    }
+
+    private void AddDimensionLineVisual(Point3D start, Point3D end, char axis)
+    {
+        var line = new LinesVisual3D
+        {
+            Color = Colors.Black,
+            Thickness = 1.8
+        };
+        line.Points.Add(start);
+        line.Points.Add(end);
+        Viewport.Children.Add(line);
+        _selectionDimensionVisuals.Add(line);
+        _dimensionVisualAxisMap[line] = axis;
+    }
+
+    private void AddDimensionTextVisual(Point3D position, string text, char axis)
+    {
+        var label = new BillboardTextVisual3D
+        {
+            Position = position,
+            Text = text,
+            Foreground = Brushes.Black,
+            Background = Brushes.White,
+            BorderBrush = Brushes.Black,
+            BorderThickness = new Thickness(0.8),
+            FontSize = 14,
+            Padding = new Thickness(4, 2, 4, 2)
+        };
+        Viewport.Children.Add(label);
+        _selectionDimensionVisuals.Add(label);
+        _dimensionVisualAxisMap[label] = axis;
+    }
+
+    private void DrawXAxisDimensions(Rect3D bounds, IReadOnlyList<AxisDimensionSpan> spans, double axisOffset)
+    {
+        if (spans.Count == 0)
+            return;
+
+        var effectiveOffset = Math.Max(0.0, axisOffset);
+        var stackOffset = Math.Max(0.24, Math.Max(bounds.SizeX, bounds.SizeZ) * 0.06);
+        var textOffset = Math.Max(0.1, stackOffset * 0.45);
+        var frontZ = bounds.Z + bounds.SizeZ + effectiveOffset;
+        var baseY = bounds.Y - effectiveOffset;
+        var anchorZ = bounds.Z + bounds.SizeZ;
+        var anchorY = bounds.Y;
+
+        for (var index = 0; index < spans.Count; index++)
+        {
+            var span = spans[index];
+            var y = baseY - index * stackOffset;
+            var x1 = span.MinCoordinate;
+            var x2 = span.MaxCoordinate;
+            var start = new Point3D(x1, y, frontZ);
+            var end = new Point3D(x2, y, frontZ);
+            AddDimensionLineVisual(start, end, 'X');
+            AddDimensionLineVisual(new Point3D(x1, anchorY, anchorZ), start, 'X');
+            AddDimensionLineVisual(new Point3D(x2, anchorY, anchorZ), end, 'X');
+
+            var labelPos = new Point3D((x1 + x2) / 2.0, y - textOffset, frontZ);
+            AddDimensionTextVisual(labelPos, $"X: {FormatLengthForDisplay(span.ValueFeet)}", 'X');
+        }
+    }
+
+    private void DrawYAxisDimensions(Rect3D bounds, IReadOnlyList<AxisDimensionSpan> spans, double axisOffset)
+    {
+        if (spans.Count == 0)
+            return;
+
+        var effectiveOffset = Math.Max(0.0, axisOffset);
+        var stackOffset = Math.Max(0.24, Math.Max(bounds.SizeX, bounds.SizeZ) * 0.06);
+        var textOffset = Math.Max(0.1, stackOffset * 0.45);
+        var frontZ = bounds.Z + bounds.SizeZ + effectiveOffset;
+        var anchorX = bounds.X + bounds.SizeX;
+        var baseX = anchorX + effectiveOffset;
+        var anchorZ = bounds.Z + bounds.SizeZ;
+
+        for (var index = 0; index < spans.Count; index++)
+        {
+            var span = spans[index];
+            var x = baseX + index * stackOffset;
+            var y1 = span.MinCoordinate;
+            var y2 = span.MaxCoordinate;
+            var start = new Point3D(x, y1, frontZ);
+            var end = new Point3D(x, y2, frontZ);
+            AddDimensionLineVisual(start, end, 'Y');
+            AddDimensionLineVisual(new Point3D(anchorX, y1, anchorZ), start, 'Y');
+            AddDimensionLineVisual(new Point3D(anchorX, y2, anchorZ), end, 'Y');
+
+            var labelPos = new Point3D(x + textOffset, (y1 + y2) / 2.0, frontZ);
+            AddDimensionTextVisual(labelPos, $"Y: {FormatLengthForDisplay(span.ValueFeet)}", 'Y');
+        }
+    }
+
+    private void DrawZAxisDimensions(Rect3D bounds, IReadOnlyList<AxisDimensionSpan> spans, double axisOffset)
+    {
+        if (spans.Count == 0)
+            return;
+
+        var effectiveOffset = Math.Max(0.0, axisOffset);
+        var stackOffset = Math.Max(0.24, Math.Max(bounds.SizeX, bounds.SizeZ) * 0.06);
+        var textOffset = Math.Max(0.1, stackOffset * 0.45);
+        var baseX = bounds.X - effectiveOffset;
+        var baseY = bounds.Y - effectiveOffset;
+        var anchorX = bounds.X;
+        var anchorY = bounds.Y;
+
+        for (var index = 0; index < spans.Count; index++)
+        {
+            var span = spans[index];
+            var x = baseX - index * stackOffset;
+            var z1 = span.MinCoordinate;
+            var z2 = span.MaxCoordinate;
+            var start = new Point3D(x, baseY, z1);
+            var end = new Point3D(x, baseY, z2);
+            AddDimensionLineVisual(start, end, 'Z');
+            AddDimensionLineVisual(new Point3D(anchorX, anchorY, z1), start, 'Z');
+            AddDimensionLineVisual(new Point3D(anchorX, anchorY, z2), end, 'Z');
+
+            var labelPos = new Point3D(x, baseY - textOffset, (z1 + z2) / 2.0);
+            AddDimensionTextVisual(labelPos, $"Z: {FormatLengthForDisplay(span.ValueFeet)}", 'Z');
+        }
+    }
+
+    private void ClearSelectionDimensionVisuals()
+    {
+        foreach (var visual in _selectionDimensionVisuals)
+            Viewport.Children.Remove(visual);
+        _selectionDimensionVisuals.Clear();
+        _dimensionVisualAxisMap.Clear();
+    }
+
+    private void AddSelectionDimensionAnnotations(IReadOnlyDictionary<string, bool> layerVisibilityById)
+    {
+        ClearSelectionDimensionVisuals();
+
+        var selected = _viewModel.SelectedComponent;
+        if (selected == null)
+            return;
+        if (!IsLayerVisible(layerVisibilityById, selected.LayerId))
+            return;
+
+        if (!TryGetComponentWorldBounds(selected, out var worldBounds))
+            return;
+
+        var transform = CreateComponentTransform(selected);
+        var referencePoints = GetComponentDimensionReferencePoints(selected, transform, worldBounds);
+        if (referencePoints.Count < 2)
+            referencePoints = BuildBoundsCorners(worldBounds).ToList();
+
+        if (referencePoints.Count < 2)
+            return;
+
+        var referenceBounds = CreateBoundsFromPoints(referencePoints);
+        if (!IsValidBounds(referenceBounds))
+            referenceBounds = worldBounds;
+
+        var spans = BuildUniqueAxisDimensionSpans(referencePoints);
+        if (spans.Count == 0)
+            return;
+
+        var xSpans = spans.Where(span => span.Axis == 'X').ToList();
+        var ySpans = spans.Where(span => span.Axis == 'Y').ToList();
+        var zSpans = spans.Where(span => span.Axis == 'Z').ToList();
+
+        var offsets = GetDimensionAxisOffsets(selected);
+        DrawXAxisDimensions(referenceBounds, xSpans, offsets.X);
+        DrawYAxisDimensions(referenceBounds, ySpans, offsets.Y);
+        DrawZAxisDimensions(referenceBounds, zSpans, offsets.Z);
+    }
     
     private void UpdatePropertiesPanel()
     {
@@ -285,23 +830,24 @@ public partial class MainWindow : Window
         NameTextBox.Text = component.Name;
         TypeTextBox.Text = component.Type.ToString();
         
-        PositionXTextBox.Text = component.Position.X.ToString("F2");
-        PositionYTextBox.Text = component.Position.Y.ToString("F2");
-        PositionZTextBox.Text = component.Position.Z.ToString("F2");
+        PositionXTextBox.Text = FormatLengthForInput(component.Position.X);
+        PositionYTextBox.Text = FormatLengthForInput(component.Position.Y);
+        PositionZTextBox.Text = FormatLengthForInput(component.Position.Z);
         
         RotationXTextBox.Text = component.Rotation.X.ToString("F2");
         RotationYTextBox.Text = component.Rotation.Y.ToString("F2");
         RotationZTextBox.Text = component.Rotation.Z.ToString("F2");
         
-        WidthTextBox.Text = FormatDimension(component.Parameters.Width);
-        HeightTextBox.Text = FormatDimension(component.Parameters.Height);
-        DepthTextBox.Text = FormatDimension(component.Parameters.Depth);
+        WidthTextBox.Text = FormatLengthForInput(component.Parameters.Width);
+        HeightTextBox.Text = FormatLengthForInput(component.Parameters.Height);
+        DepthTextBox.Text = FormatLengthForInput(component.Parameters.Depth);
         MaterialTextBox.Text = component.Parameters.Material;
-        ElevationTextBox.Text = component.Parameters.Elevation.ToString("F2");
+        ElevationTextBox.Text = FormatLengthForInput(component.Parameters.Elevation);
         ColorTextBox.Text = component.Parameters.Color;
         ManufacturerTextBox.Text = component.Parameters.Manufacturer;
         PartNumberTextBox.Text = component.Parameters.PartNumber;
         ReferenceUrlTextBox.Text = component.Parameters.ReferenceUrl;
+        UpdateSelectedDimensionsDisplay(component);
         
         // Set layer combo
         var layer = _viewModel.Layers.FirstOrDefault(l => l.Id == component.LayerId);
@@ -339,12 +885,13 @@ public partial class MainWindow : Window
         ManufacturerTextBox.Text = string.Empty;
         PartNumberTextBox.Text = string.Empty;
         ReferenceUrlTextBox.Text = string.Empty;
+        UpdateSelectedDimensionsDisplay(null);
     }
-
-    private static string FormatDimension(double value) => value.ToString("0.#####");
     
     private void UpdateViewport()
     {
+        ClearSelectionDimensionVisuals();
+
         // Clear existing models and mapping
         for (int i = Viewport.Children.Count - 1; i >= 0; i--)
         {
@@ -369,7 +916,19 @@ public partial class MainWindow : Window
         }
 
         UpdateConduitRuns3D();
+        AddSelectionDimensionAnnotations(layerVisibilityById);
         RefreshConduitActionUiState();
+    }
+
+    private static Transform3DGroup CreateComponentTransform(ElectricalComponent component)
+    {
+        var transformGroup = new Transform3DGroup();
+        transformGroup.Children.Add(new TranslateTransform3D(component.Position.X, component.Position.Y, component.Position.Z));
+        transformGroup.Children.Add(new RotateTransform3D(new AxisAngleRotation3D(new Vector3D(1, 0, 0), component.Rotation.X)));
+        transformGroup.Children.Add(new RotateTransform3D(new AxisAngleRotation3D(new Vector3D(0, 1, 0), component.Rotation.Y)));
+        transformGroup.Children.Add(new RotateTransform3D(new AxisAngleRotation3D(new Vector3D(0, 0, 1), component.Rotation.Z)));
+        transformGroup.Children.Add(new ScaleTransform3D(component.Scale.X, component.Scale.Y, component.Scale.Z));
+        return transformGroup;
     }
     
     private void AddComponentToViewport(ElectricalComponent component)
@@ -396,13 +955,7 @@ public partial class MainWindow : Window
         var model = new GeometryModel3D(geometry, appliedMaterial);
         
         // Apply transformations
-        var transformGroup = new Transform3DGroup();
-        transformGroup.Children.Add(new TranslateTransform3D(component.Position.X, component.Position.Y, component.Position.Z));
-        transformGroup.Children.Add(new RotateTransform3D(new AxisAngleRotation3D(new Vector3D(1, 0, 0), component.Rotation.X)));
-        transformGroup.Children.Add(new RotateTransform3D(new AxisAngleRotation3D(new Vector3D(0, 1, 0), component.Rotation.Y)));
-        transformGroup.Children.Add(new RotateTransform3D(new AxisAngleRotation3D(new Vector3D(0, 0, 1), component.Rotation.Z)));
-        transformGroup.Children.Add(new ScaleTransform3D(component.Scale.X, component.Scale.Y, component.Scale.Z));
-        
+        var transformGroup = CreateComponentTransform(component);
         model.Transform = transformGroup;
         visual.Content = model;
         
@@ -3519,7 +4072,30 @@ public partial class MainWindow : Window
             var system = item.Content?.ToString() ?? "Imperial";
             ActionLogService.Instance.Log(LogCategory.View, "Unit system changed", $"System: {system}");
             _viewModel.UnitSystemName = system;
+            UpdatePropertiesPanel();
         }
+    }
+
+    private void DimensionDisplayFormat_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        _dimensionDisplayMode = GetSelectedDimensionDisplayMode();
+        if (DataContext is not MainViewModel)
+            return;
+
+        ActionLogService.Instance.Log(LogCategory.View, "Dimension display format changed",
+            $"Mode: {_dimensionDisplayMode}");
+        UpdatePropertiesPanel();
+    }
+
+    private void DimensionIncrement_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        _dimensionInchFractionDenominator = GetSelectedDimensionIncrementDenominator();
+        if (DataContext is not MainViewModel)
+            return;
+
+        ActionLogService.Instance.Log(LogCategory.View, "Dimension display increment changed",
+            $"Increment: 1/{_dimensionInchFractionDenominator}\"");
+        UpdatePropertiesPanel();
     }
     
     // ===== View Switching =====
@@ -3949,6 +4525,26 @@ public partial class MainWindow : Window
                 return;
             }
         }
+
+        if (!_isEditingConduitPath && _viewModel.SelectedComponent != null)
+        {
+            var draggedAxisVisual = hits?
+                .Select(hit => hit.Visual)
+                .OfType<Visual3D>()
+                .FirstOrDefault(v => _dimensionVisualAxisMap.ContainsKey(v));
+            if (draggedAxisVisual != null)
+            {
+                _isDraggingDimensionAnnotation = true;
+                _draggingDimensionAxis = _dimensionVisualAxisMap[draggedAxisVisual];
+                _dimensionDragStartMousePosition = position;
+                _dimensionDragStartOffsetFeet = GetDimensionAxisOffset(_viewModel.SelectedComponent, _draggingDimensionAxis);
+                Mouse.Capture(Viewport);
+                Viewport.MouseMove += Viewport_MouseMove;
+                Viewport.MouseLeftButtonUp += Viewport_MouseLeftButtonUp;
+                e.Handled = true;
+                return;
+            }
+        }
         
         if (_isEditingConduitPath && _viewModel.SelectedComponent is ConduitComponent conduit)
         {
@@ -4012,6 +4608,27 @@ public partial class MainWindow : Window
     
     private void Viewport_MouseMove(object sender, MouseEventArgs e)
     {
+        if (_isDraggingDimensionAnnotation)
+        {
+            var selected = _viewModel.SelectedComponent;
+            if (selected != null && TryGetSelectedComponentWorldBounds(out var selectedBounds))
+            {
+                var currentPosition = e.GetPosition(Viewport);
+                var delta = currentPosition - _dimensionDragStartMousePosition;
+                var referencePoint = new Point3D(
+                    selectedBounds.X + selectedBounds.SizeX / 2.0,
+                    selectedBounds.Y + selectedBounds.SizeY / 2.0,
+                    selectedBounds.Z + selectedBounds.SizeZ / 2.0);
+                var worldPerPixel = EstimateWorldUnitsPerPixel(referencePoint);
+                var updatedOffset = _dimensionDragStartOffsetFeet + (-delta.Y * worldPerPixel);
+                SetDimensionAxisOffset(selected, _draggingDimensionAxis, updatedOffset);
+                UpdateViewport();
+                e.Handled = true;
+            }
+
+            return;
+        }
+
         if (_draggedHandle == null || _viewModel.SelectedComponent is not ConduitComponent conduit)
             return;
         
@@ -4054,6 +4671,9 @@ public partial class MainWindow : Window
     
     private void Viewport_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        _isDraggingDimensionAnnotation = false;
+        _draggingDimensionAxis = '\0';
+        _dimensionDragStartOffsetFeet = 0.0;
         _draggedHandle = null;
         Mouse.Capture(null);
         Viewport.MouseMove -= Viewport_MouseMove;
@@ -4118,20 +4738,20 @@ public partial class MainWindow : Window
             component.Name = NameTextBox.Text;
             
             component.Position = new Point3D(
-                double.Parse(PositionXTextBox.Text),
-                double.Parse(PositionYTextBox.Text),
-                double.Parse(PositionZTextBox.Text));
+                ParseLengthInput(PositionXTextBox.Text, "Position X"),
+                ParseLengthInput(PositionYTextBox.Text, "Position Y"),
+                ParseLengthInput(PositionZTextBox.Text, "Position Z"));
             
             component.Rotation = new Vector3D(
                 double.Parse(RotationXTextBox.Text),
                 double.Parse(RotationYTextBox.Text),
                 double.Parse(RotationZTextBox.Text));
             
-            component.Parameters.Width = double.Parse(WidthTextBox.Text);
-            component.Parameters.Height = double.Parse(HeightTextBox.Text);
-            component.Parameters.Depth = double.Parse(DepthTextBox.Text);
+            component.Parameters.Width = ParseLengthInput(WidthTextBox.Text, "Width");
+            component.Parameters.Height = ParseLengthInput(HeightTextBox.Text, "Height");
+            component.Parameters.Depth = ParseLengthInput(DepthTextBox.Text, "Depth");
             component.Parameters.Material = MaterialTextBox.Text;
-            component.Parameters.Elevation = double.Parse(ElevationTextBox.Text);
+            component.Parameters.Elevation = ParseLengthInput(ElevationTextBox.Text, "Elevation");
             component.Parameters.Color = ColorTextBox.Text;
             component.Parameters.Manufacturer = ManufacturerTextBox.Text;
             component.Parameters.PartNumber = PartNumberTextBox.Text;

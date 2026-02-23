@@ -418,6 +418,30 @@
                                 
                                 <TextBlock Text="Depth:"/>
                                 <TextBox x:Name="DepthTextBox"/>
+
+                                <TextBlock Text="Selected Dimensions (Unique)" FontWeight="Bold" Margin="0,10,0,0"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Display:" VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="DimensionDisplayFormatCombo" Width="120" Margin="5,0,0,0"
+                                              SelectionChanged="DimensionDisplayFormat_Changed">
+                                        <ComboBoxItem Content="Feet-Inches" IsSelected="True"/>
+                                        <ComboBoxItem Content="Decimal Feet"/>
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Increment:" VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="DimensionIncrementCombo" Width="120" Margin="5,0,0,0"
+                                              SelectionChanged="DimensionIncrement_Changed">
+                                        <ComboBoxItem Tag="64" Content="1/64&quot;"/>
+                                        <ComboBoxItem Tag="32" Content="1/32&quot;"/>
+                                        <ComboBoxItem Tag="16" Content="1/16&quot;" IsSelected="True"/>
+                                        <ComboBoxItem Tag="8" Content="1/8&quot;"/>
+                                        <ComboBoxItem Tag="4" Content="1/4&quot;"/>
+                                        <ComboBoxItem Tag="2" Content="1/2&quot;"/>
+                                        <ComboBoxItem Tag="1" Content="1&quot;"/>
+                                    </ComboBox>
+                                </StackPanel>
+                                <ListBox x:Name="SelectedDimensionsListBox" Height="100" Margin="0,2,0,6" IsHitTestVisible="False"/>
                                 
                                 <TextBlock Text="Material:"/>
                                 <TextBox x:Name="MaterialTextBox"/>
