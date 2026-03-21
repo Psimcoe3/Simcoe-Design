@@ -11,6 +11,9 @@ public class SnapService
     // ── Snap radius (screen pixels) ──────────────────────────────────────────
     public double SnapRadius { get; set; } = 10.0;
 
+    // ── Master on/off (F3) ────────────────────────────────────────────────────
+    public bool IsEnabled { get; set; } = true;
+
     // ── Toggle flags: basic modes ─────────────────────────────────────────────
     public bool SnapToEndpoints    { get; set; } = true;
     public bool SnapToMidpoints    { get; set; } = true;

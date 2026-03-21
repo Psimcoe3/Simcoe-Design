@@ -48,6 +48,12 @@ public class MainViewModel : INotifyPropertyChanged
     /// <summary>Dispatch-based markup renderer; used by the canvas paint loop</summary>
     public MarkupRenderService MarkupRenderer { get; } = new();
 
+    /// <summary>Drives the markup annotation toolbar and punch-list filtering</summary>
+    public MarkupToolViewModel MarkupTool { get; }
+
+    /// <summary>Drives the layer manager DataGrid</summary>
+    public LayerManagerViewModel LayerManager { get; }
+
     /// <summary>Shadow hit-test tree for SkiaSharp canvas geometry</summary>
     public ShadowGeometryTree ShadowTree { get; } = new();
 
@@ -205,6 +211,8 @@ public class MainViewModel : INotifyPropertyChanged
     {
         InitializeLibrary();
         InitializeLayers();
+        MarkupTool = new MarkupToolViewModel(Markups);
+        LayerManager = new LayerManagerViewModel(Layers);
     }
     
     private void InitializeLibrary()

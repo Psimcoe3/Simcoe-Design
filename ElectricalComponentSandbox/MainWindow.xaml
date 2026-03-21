@@ -68,6 +68,8 @@
                 <Separator/>
                 <MenuItem Header="Export JSON..." Click="ExportJson_Click" InputGestureText="Ctrl+E"/>
                 <MenuItem Header="Export BOM CSV..." Click="ExportBomCsv_Click"/>
+                <MenuItem Header="Export IFC..." Click="ExportIfc_Click"/>
+                <MenuItem Header="Export Schedule (Excel)..." Click="ExportSchedule_Click"/>
                 <MenuItem Header="Run Revit Introspection..." Click="RunRevitIntrospection_Click"/>
                 <Separator/>
                 <MenuItem Header="Exit" Click="Exit_Click"/>
@@ -88,6 +90,14 @@
                 <Separator/>
                 <MenuItem Header="2D Plan View" Click="Show2DView_Click"/>
                 <MenuItem Header="3D Viewport" Click="Show3DView_Click"/>
+                <Separator/>
+                <MenuItem Header="Visual Style">
+                    <MenuItem x:Name="VisualStyleRealisticMenuItem" Header="Realistic" Click="VisualStyleRealistic_Click" IsCheckable="True" IsChecked="True"/>
+                    <MenuItem x:Name="VisualStyleShadedMenuItem" Header="Shaded" Click="VisualStyleShaded_Click" IsCheckable="True"/>
+                    <MenuItem x:Name="VisualStyleWireframeMenuItem" Header="Wireframe" Click="VisualStyleWireframe_Click" IsCheckable="True"/>
+                    <MenuItem x:Name="VisualStyleHiddenLineMenuItem" Header="Hidden Line" Click="VisualStyleHiddenLine_Click" IsCheckable="True"/>
+                </MenuItem>
+                <MenuItem x:Name="BillboardLabelsMenuItem" Header="Component Labels (3D)" IsCheckable="True" IsChecked="False" Click="BillboardLabels_Click"/>
             </MenuItem>
             <MenuItem Header="Tools">
                 <MenuItem Header="Conduit" Click="AddConduit_Click"/>
@@ -169,6 +179,45 @@
             <ComboBox x:Name="UnitSystemCombo" Width="80" SelectionChanged="UnitSystem_Changed">
                 <ComboBoxItem Content="Imperial" IsSelected="True"/>
                 <ComboBoxItem Content="Metric"/>
+            </ComboBox>
+        </ToolBar>
+
+        <!-- OSNAP / Tracking status bar -->
+        <ToolBar x:Name="OsnapToolBar" DockPanel.Dock="Top" Height="26">
+            <ToggleButton x:Name="OsnapAllToggle" Content="OSNAP" ToolTip="F3 — Toggle all object snaps"
+                          Click="OsnapAll_Click" Width="56" FontSize="10"/>
+            <Separator/>
+            <ToggleButton x:Name="SnapEndpointToggle" Content="END" ToolTip="Endpoint snap"
+                          Click="SnapMode_Click" Tag="Endpoint" FontSize="10"/>
+            <ToggleButton x:Name="SnapMidpointToggle" Content="MID" ToolTip="Midpoint snap"
+                          Click="SnapMode_Click" Tag="Midpoint" FontSize="10"/>
+            <ToggleButton x:Name="SnapCenterToggle" Content="CEN" ToolTip="Center snap"
+                          Click="SnapMode_Click" Tag="Center" FontSize="10"/>
+            <ToggleButton x:Name="SnapIntersectToggle" Content="INT" ToolTip="Intersection snap"
+                          Click="SnapMode_Click" Tag="Intersection" FontSize="10"/>
+            <ToggleButton x:Name="SnapPerpendicularToggle" Content="PER" ToolTip="Perpendicular snap"
+                          Click="SnapMode_Click" Tag="Perpendicular" FontSize="10"/>
+            <ToggleButton x:Name="SnapNearestToggle" Content="NEA" ToolTip="Nearest snap"
+                          Click="SnapMode_Click" Tag="Nearest" FontSize="10"/>
+            <ToggleButton x:Name="SnapQuadrantToggle" Content="QUA" ToolTip="Quadrant snap"
+                          Click="SnapMode_Click" Tag="Quadrant" FontSize="10"/>
+            <ToggleButton x:Name="SnapTangentToggle" Content="TAN" ToolTip="Tangent snap"
+                          Click="SnapMode_Click" Tag="Tangent" FontSize="10"/>
+            <Separator/>
+            <ToggleButton x:Name="OrthoToggle" Content="ORTHO F8" ToolTip="F8 — Ortho mode (constrain to 0°/90°)"
+                          Click="OrthoToggle_Click" FontSize="10"/>
+            <ToggleButton x:Name="PolarToggle" Content="POLAR F10" ToolTip="F10 — Polar tracking"
+                          Click="PolarToggle_Click" FontSize="10"/>
+            <ComboBox x:Name="PolarAngleCombo" Width="55" ToolTip="Polar tracking increment angle"
+                      SelectionChanged="PolarAngle_Changed" FontSize="10">
+                <ComboBoxItem Content="5°"/>
+                <ComboBoxItem Content="10°"/>
+                <ComboBoxItem Content="15°"/>
+                <ComboBoxItem Content="18°"/>
+                <ComboBoxItem Content="22.5°"/>
+                <ComboBoxItem Content="30°" IsSelected="True"/>
+                <ComboBoxItem Content="45°"/>
+                <ComboBoxItem Content="90°"/>
             </ComboBox>
         </ToolBar>
 
@@ -287,8 +336,30 @@
                     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="5">
                         <Button Content="Add" Click="AddLayer_Click" Padding="5,2" Margin="2"/>
                         <Button Content="Remove" Click="RemoveLayer_Click" Padding="5,2" Margin="2"/>
+                        <Button Content="Export" Click="ExportLayers_Click" Padding="5,2" Margin="2" ToolTip="Export layer list to XML"/>
                     </StackPanel>
+                    <DataGrid x:Name="LayerDataGrid"
+                              DockPanel.Dock="Top"
+                              ItemsSource="{Binding LayerManager.Rows}"
+                              AutoGenerateColumns="False"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              SelectionMode="Single"
+                              RowHeight="22"
+                              FontSize="11"
+                              Height="160"
+                              SelectionChanged="LayerDataGrid_SelectionChanged">
+                        <DataGrid.Columns>
+                            <DataGridCheckBoxColumn Header="V" Binding="{Binding IsVisible, UpdateSourceTrigger=PropertyChanged}" Width="24"/>
+                            <DataGridCheckBoxColumn Header="L" Binding="{Binding IsLocked, UpdateSourceTrigger=PropertyChanged}" Width="24"/>
+                            <DataGridCheckBoxColumn Header="F" Binding="{Binding IsFrozen, UpdateSourceTrigger=PropertyChanged}" Width="24"/>
+                            <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Color" Binding="{Binding Color}" Width="50" IsReadOnly="True"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <!-- Legacy list (hidden) kept for code-behind layer-assignment combobox population -->
                     <ListBox x:Name="LayerListBox"
+                           Visibility="Collapsed"
                            ItemsSource="{Binding Layers}"
                            DisplayMemberPath="Name"
                            SelectionChanged="LayerListBox_SelectionChanged"/>
@@ -353,6 +424,43 @@
                                                 Checked="PdfLock_Changed" Unchecked="PdfLock_Changed"/>
                                         <Button Content="Calibrate Scale" Click="CalibrateScale_Click" Padding="5,2" Margin="2"/>
                                     </StackPanel>
+
+                                    <!-- 2D drawing primitives toolbar -->
+                                    <ToolBar x:Name="Drawing2DToolBar" DockPanel.Dock="Top" Height="26">
+                                        <RadioButton GroupName="DrawTool2D" x:Name="Draw2DSelectRadio" Content="Select" IsChecked="True"
+                                                     VerticalAlignment="Center" Margin="3,0" ToolTip="Select / Move (Esc)"
+                                                     Checked="DrawTool2D_Changed" Tag="None" FontSize="10"/>
+                                        <Separator/>
+                                        <RadioButton GroupName="DrawTool2D" x:Name="Draw2DLineRadio" Content="Line"
+                                                     VerticalAlignment="Center" Margin="3,0" ToolTip="Sketch Line"
+                                                     Checked="DrawTool2D_Changed" Tag="Line" FontSize="10"/>
+                                        <RadioButton GroupName="DrawTool2D" x:Name="Draw2DArcRadio" Content="Arc"
+                                                     VerticalAlignment="Center" Margin="3,0" ToolTip="Arc annotation"
+                                                     Checked="DrawTool2D_Changed" Tag="Arc" FontSize="10"/>
+                                        <RadioButton GroupName="DrawTool2D" x:Name="Draw2DCircleRadio" Content="Circle"
+                                                     VerticalAlignment="Center" Margin="3,0" ToolTip="Circle annotation"
+                                                     Checked="DrawTool2D_Changed" Tag="Circle" FontSize="10"/>
+                                        <RadioButton GroupName="DrawTool2D" x:Name="Draw2DPolylineRadio" Content="Polyline"
+                                                     VerticalAlignment="Center" Margin="3,0" ToolTip="Polyline annotation"
+                                                     Checked="DrawTool2D_Changed" Tag="Polyline" FontSize="10"/>
+                                        <RadioButton GroupName="DrawTool2D" x:Name="Draw2DRectRadio" Content="Rect"
+                                                     VerticalAlignment="Center" Margin="3,0" ToolTip="Rectangle annotation"
+                                                     Checked="DrawTool2D_Changed" Tag="Rectangle" FontSize="10"/>
+                                        <RadioButton GroupName="DrawTool2D" x:Name="Draw2DHatchRadio" Content="Hatch"
+                                                     VerticalAlignment="Center" Margin="3,0" ToolTip="Hatch fill annotation"
+                                                     Checked="DrawTool2D_Changed" Tag="Hatch" FontSize="10"/>
+                                        <Separator/>
+                                        <RadioButton GroupName="DrawTool2D" x:Name="Draw2DCalloutRadio" Content="Callout"
+                                                     VerticalAlignment="Center" Margin="3,0" ToolTip="Callout annotation"
+                                                     Checked="DrawTool2D_Changed" Tag="Callout" FontSize="10"/>
+                                        <RadioButton GroupName="DrawTool2D" x:Name="Draw2DRevCloudRadio" Content="Rev Cloud"
+                                                     VerticalAlignment="Center" Margin="3,0" ToolTip="Revision cloud"
+                                                     Checked="DrawTool2D_Changed" Tag="RevisionCloud" FontSize="10"/>
+                                        <Separator/>
+                                        <RadioButton GroupName="DrawTool2D" x:Name="Draw2DDimensionRadio" Content="Dimension"
+                                                     VerticalAlignment="Center" Margin="3,0" ToolTip="Place dimension annotation"
+                                                     Checked="DrawTool2D_Changed" Tag="Dimension" FontSize="10"/>
+                                    </ToolBar>
                                     
                                     <!-- 2D Canvas with pan/zoom -->
                                     <ScrollViewer x:Name="PlanScrollViewer" 
@@ -387,13 +495,17 @@
             
             <!-- Properties Panel -->
             <Border x:Name="PropertiesPanelContainer" Grid.Column="2" BorderBrush="Gray" BorderThickness="0">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="Properties" 
-                             FontWeight="Bold" FontSize="14" 
-                             Padding="10" Background="LightGray"/>
+                <TabControl x:Name="RightPanelTabs">
+
+                    <!-- Properties tab (existing content) -->
+                    <TabItem Header="Properties">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Text="Properties" 
+                                     FontWeight="Bold" FontSize="14" 
+                                     Padding="10" Background="LightGray"/>
                     
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel x:Name="PropertiesPanel" Margin="10">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel x:Name="PropertiesPanel" Margin="10">
                             <TextBlock Text="Select a component to view properties" 
                                      FontStyle="Italic" Foreground="Gray"
                                      Visibility="{Binding SelectedComponent, 
@@ -536,7 +648,52 @@
                             </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
-                </DockPanel>
+                        </DockPanel>
+                    </TabItem>
+
+                    <!-- Markups tab -->
+                    <TabItem Header="Markups">
+                        <DockPanel>
+                            <!-- Filter bar -->
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4,4,4,0">
+                                <TextBlock Text="Status:" VerticalAlignment="Center" FontSize="11"/>
+                                <ComboBox x:Name="MarkupStatusFilterCombo" Width="80" FontSize="11" Margin="3,0,6,0"
+                                          SelectedValuePath="Content"
+                                          SelectionChanged="MarkupStatusFilter_Changed">
+                                    <ComboBoxItem Content="All" IsSelected="True"/>
+                                    <ComboBoxItem Content="Open"/>
+                                    <ComboBoxItem Content="InProgress"/>
+                                    <ComboBoxItem Content="Resolved"/>
+                                    <ComboBoxItem Content="Closed"/>
+                                </ComboBox>
+                                <TextBox x:Name="MarkupSearchBox" Width="100" FontSize="11"
+                                         ToolTip="Search markup labels"
+                                         TextChanged="MarkupSearch_Changed"/>
+                            </StackPanel>
+                            <!-- Counts -->
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4,2">
+                                <TextBlock FontSize="10" Foreground="Gray"
+                                           Text="{Binding MarkupTool.TotalCount, StringFormat='Total: {0}'}"/>
+                                <TextBlock FontSize="10" Foreground="OrangeRed" Margin="8,0,0,0"
+                                           Text="{Binding MarkupTool.OpenCount, StringFormat='Open: {0}'}"/>
+                            </StackPanel>
+                            <!-- List -->
+                            <ListView x:Name="MarkupListView"
+                                      ItemsSource="{Binding MarkupTool.FilteredMarkups}"
+                                      SelectedItem="{Binding MarkupTool.SelectedMarkup}"
+                                      FontSize="11">
+                                <ListView.View>
+                                    <GridView>
+                                        <GridViewColumn Header="Type" DisplayMemberBinding="{Binding Type}" Width="80"/>
+                                        <GridViewColumn Header="Label" DisplayMemberBinding="{Binding Metadata.Label}" Width="100"/>
+                                        <GridViewColumn Header="Status" DisplayMemberBinding="{Binding Status}" Width="70"/>
+                                    </GridView>
+                                </ListView.View>
+                            </ListView>
+                        </DockPanel>
+                    </TabItem>
+
+                </TabControl>
             </Border>
 
             <GridSplitter x:Name="PropertiesGridSplitter"

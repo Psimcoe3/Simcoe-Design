@@ -141,6 +141,18 @@ public partial class MainWindow : Window
     private DimensionDisplayMode _dimensionDisplayMode = DimensionDisplayMode.FeetInches;
     private int _dimensionInchFractionDenominator = DefaultDimensionInchFractionDenominator;
     private VisualStyle3D _activeVisualStyle3D = VisualStyle3D.Realistic;
+    private bool _showComponentLabels = false;
+
+    // Window / crossing selection state
+    private bool _isWindowSelecting = false;
+    private Point _windowSelectStart;
+    private Rectangle? _windowSelectOverlay;
+
+    // Grip editing state
+    private bool _isGripDragging = false;
+    private int _gripDragVertexIndex = -1;
+    private ConduitComponent? _gripDragConduit = null;
+    private readonly Dictionary<FrameworkElement, int> _canvasToGripIndexMap = new();
 
     private readonly record struct PlanWorldBounds(double MinX, double MaxX, double MinZ, double MaxZ);
     private readonly record struct UnderlayCanvasFrame(PdfUnderlay Underlay, double ScaledWidth, double ScaledHeight, Point[] Corners);
@@ -2197,6 +2209,36 @@ public partial class MainWindow : Window
             new SolidColorBrush(Color.FromArgb(90, c.R, c.G, c.B)));
     }
 
+    // ── 3D billboard component labels ─────────────────────────────────────────
+
+    private readonly List<Visual3D> _billboardLabelVisuals = new();
+
+    private void AddComponentBillboardLabels(IReadOnlyDictionary<string, bool> layerVisibility)
+    {
+        // Remove any existing labels from previous render
+        foreach (var v in _billboardLabelVisuals)
+            Viewport.Children.Remove(v);
+        _billboardLabelVisuals.Clear();
+
+        foreach (var comp in _viewModel.Components)
+        {
+            if (!IsLayerVisible(layerVisibility, comp.LayerId)) continue;
+
+            var label = new BillboardTextVisual3D
+            {
+                Position = new Point3D(comp.Position.X, comp.Position.Y + 0.5, comp.Position.Z),
+                Text = comp.Name,
+                Foreground = Brushes.White,
+                Background = new SolidColorBrush(Color.FromArgb(180, 0, 0, 0)),
+                FontSize = 13,
+                Padding = new Thickness(3, 1, 3, 1)
+            };
+
+            Viewport.Children.Add(label);
+            _billboardLabelVisuals.Add(label);
+        }
+    }
+
     private void UpdateViewport()
     {
         PruneCustomDimensions();
@@ -2231,6 +2273,9 @@ public partial class MainWindow : Window
         AddCustomDimensionAnnotations(layerVisibilityById);
         RefreshConduitActionUiState();
         UpdateCustomDimensionUiState();
+
+        if (_showComponentLabels)
+            AddComponentBillboardLabels(layerVisibilityById);
     }
 
     private static Transform3DGroup CreateComponentTransform(ElectricalComponent component)
@@ -2815,6 +2860,9 @@ public partial class MainWindow : Window
 
         if (_isSketchRectangleMode && _isSketchRectangleDragging)
             DrawSketchRectangleDraft();
+
+        DrawGripHandles();
+        DrawSnapGlyphs();
     }
 
     private void RebuildSnapGeometryCache(IReadOnlyDictionary<string, bool> layerVisibilityById)
@@ -2851,8 +2899,369 @@ public partial class MainWindow : Window
         }
     }
 
+    // ── Snap glyphs ───────────────────────────────────────────────────────────
+
+    /// <summary>Draws type-specific snap indicator glyphs at each cached snap endpoint.</summary>
+    private void DrawSnapGlyphs()
+    {
+        if (!_viewModel.SnapService.IsEnabled) return;
+
+        foreach (var pt in _snapEndpointsCache)
+        {
+            // Square = endpoint
+            var sq = new Rectangle
+            {
+                Width = 8,
+                Height = 8,
+                Fill = Brushes.Transparent,
+                Stroke = Brushes.DodgerBlue,
+                StrokeThickness = 1.5,
+                IsHitTestVisible = false
+            };
+            Panel.SetZIndex(sq, 200);
+            Canvas.SetLeft(sq, pt.X - 4);
+            Canvas.SetTop(sq, pt.Y - 4);
+            PlanCanvas.Children.Add(sq);
+        }
+    }
+
+    // ── Grip handles ──────────────────────────────────────────────────────────
+
+    private const double GripHandleSize = 7.0;
+
     /// <summary>
-    /// Computes and sets PdfUnderlay.Scale so the image fills the canvas (2000×2000) with a 5 % margin.
+    /// Draws vertex grip handles on the selected conduit component.
+    /// Handles are registered in _canvasToGripIndexMap for hit detection.
+    /// </summary>
+    private void DrawGripHandles()
+    {
+        _canvasToGripIndexMap.Clear();
+
+        if (_viewModel.SelectedComponent is not ConduitComponent conduit) return;
+        if (!_isEditingConduitPath) return;
+
+        double cx = 1000 + conduit.Position.X * 20;
+        double cy = 1000 - conduit.Position.Z * 20;
+
+        var pathPts = conduit.GetPathPoints();
+        for (int i = 0; i < pathPts.Count; i++)
+        {
+            double px = cx + pathPts[i].X * 20;
+            double py = cy - pathPts[i].Z * 20;
+
+            var grip = new Rectangle
+            {
+                Width = GripHandleSize,
+                Height = GripHandleSize,
+                Fill = new SolidColorBrush(Color.FromRgb(0, 80, 200)),
+                Stroke = Brushes.White,
+                StrokeThickness = 1.0,
+                Cursor = System.Windows.Input.Cursors.Hand,
+                IsHitTestVisible = true
+            };
+            Panel.SetZIndex(grip, 300);
+            Canvas.SetLeft(grip, px - GripHandleSize / 2);
+            Canvas.SetTop(grip, py - GripHandleSize / 2);
+            PlanCanvas.Children.Add(grip);
+            _canvasToGripIndexMap[grip] = i;
+        }
+    }
+
+    // ── Window / crossing selection ───────────────────────────────────────────
+
+    private void UpdateWindowSelectOverlay(Point current)
+    {
+        var left   = Math.Min(_windowSelectStart.X, current.X);
+        var top    = Math.Min(_windowSelectStart.Y, current.Y);
+        var width  = Math.Abs(current.X - _windowSelectStart.X);
+        var height = Math.Abs(current.Y - _windowSelectStart.Y);
+
+        bool isCrossing = current.X < _windowSelectStart.X; // right-to-left → crossing
+
+        if (_windowSelectOverlay == null)
+        {
+            _windowSelectOverlay = new Rectangle { IsHitTestVisible = false };
+            Panel.SetZIndex(_windowSelectOverlay, 500);
+            PlanCanvas.Children.Add(_windowSelectOverlay);
+        }
+
+        _windowSelectOverlay.Width  = Math.Max(1, width);
+        _windowSelectOverlay.Height = Math.Max(1, height);
+
+        if (isCrossing)
+        {
+            _windowSelectOverlay.Fill   = new SolidColorBrush(Color.FromArgb(30, 255, 165, 0));
+            _windowSelectOverlay.Stroke = Brushes.Orange;
+            _windowSelectOverlay.StrokeThickness = 1;
+            _windowSelectOverlay.StrokeDashArray  = new DoubleCollection { 4, 2 };
+        }
+        else
+        {
+            _windowSelectOverlay.Fill   = new SolidColorBrush(Color.FromArgb(30, 0, 120, 255));
+            _windowSelectOverlay.Stroke = Brushes.DodgerBlue;
+            _windowSelectOverlay.StrokeThickness = 1;
+            _windowSelectOverlay.StrokeDashArray  = null;
+        }
+
+        Canvas.SetLeft(_windowSelectOverlay, left);
+        Canvas.SetTop(_windowSelectOverlay, top);
+    }
+
+    private void RemoveWindowSelectOverlay()
+    {
+        if (_windowSelectOverlay != null)
+        {
+            PlanCanvas.Children.Remove(_windowSelectOverlay);
+            _windowSelectOverlay = null;
+        }
+    }
+
+    /// <summary>
+    /// Selects components that fall inside (window) or overlap (crossing) the drag rect.
+    /// Left-to-right = window (fully inside); right-to-left = crossing (any overlap).
+    /// </summary>
+    private void FinalizeWindowSelection(Point start, Point end)
+    {
+        if (Math.Abs(end.X - start.X) < 4 && Math.Abs(end.Y - start.Y) < 4) return;
+
+        bool isCrossing = end.X < start.X;
+        var selRect = new Rect(
+            Math.Min(start.X, end.X),
+            Math.Min(start.Y, end.Y),
+            Math.Abs(end.X - start.X),
+            Math.Abs(end.Y - start.Y));
+
+        ElectricalComponent? firstHit = null;
+        _viewModel.SelectedComponentIds.Clear();
+
+        foreach (var comp in _viewModel.Components)
+        {
+            double cx = 1000 + comp.Position.X * 20;
+            double cy = 1000 - comp.Position.Z * 20;
+            var compRect = new Rect(cx - 10, cy - 10, 20, 20);
+
+            bool hit = isCrossing
+                ? selRect.IntersectsWith(compRect)
+                : selRect.Contains(compRect);
+
+            if (hit)
+            {
+                _viewModel.SelectedComponentIds.Add(comp.Id);
+                firstHit ??= comp;
+            }
+        }
+
+        if (firstHit != null)
+            _viewModel.SelectedComponent = firstHit;
+
+        Update2DCanvas();
+    }
+
+    // ── OSNAP toolbar sync ────────────────────────────────────────────────────
+
+    private void SyncOsnapToolbarState()
+    {
+        var snap = _viewModel.SnapService;
+        OsnapAllToggle.IsChecked      = snap.IsEnabled;
+        SnapEndpointToggle.IsChecked  = snap.SnapToEndpoints;
+        SnapMidpointToggle.IsChecked  = snap.SnapToMidpoints;
+        SnapCenterToggle.IsChecked    = snap.SnapToCenter;
+        SnapIntersectToggle.IsChecked = snap.SnapToIntersections;
+        SnapPerpendicularToggle.IsChecked = snap.SnapToPerpendicular;
+        SnapNearestToggle.IsChecked   = snap.SnapToNearest;
+        SnapQuadrantToggle.IsChecked  = snap.SnapToQuadrant;
+        SnapTangentToggle.IsChecked   = snap.SnapToTangent;
+        OrthoToggle.IsChecked         = _viewModel.IsOrthoActive;
+        PolarToggle.IsChecked         = _viewModel.IsPolarActive;
+    }
+
+    private void OsnapAll_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.SnapService.IsEnabled = OsnapAllToggle.IsChecked == true;
+    }
+
+    private void SnapMode_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ToggleButton btn || btn.Tag is not string tag) return;
+        bool on = btn.IsChecked == true;
+        var snap = _viewModel.SnapService;
+        switch (tag)
+        {
+            case "Endpoint":     snap.SnapToEndpoints     = on; break;
+            case "Midpoint":     snap.SnapToMidpoints     = on; break;
+            case "Center":       snap.SnapToCenter        = on; break;
+            case "Intersection": snap.SnapToIntersections = on; break;
+            case "Perpendicular":snap.SnapToPerpendicular = on; break;
+            case "Nearest":      snap.SnapToNearest       = on; break;
+            case "Quadrant":     snap.SnapToQuadrant      = on; break;
+            case "Tangent":      snap.SnapToTangent       = on; break;
+        }
+    }
+
+    private void OrthoToggle_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.IsOrthoActive = OrthoToggle.IsChecked == true;
+        if (_viewModel.IsOrthoActive) _viewModel.IsPolarActive = false;
+        SyncOsnapToolbarState();
+    }
+
+    private void PolarToggle_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.IsPolarActive = PolarToggle.IsChecked == true;
+        if (_viewModel.IsPolarActive) _viewModel.IsOrthoActive = false;
+        SyncOsnapToolbarState();
+    }
+
+    private void PolarAngle_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (PolarAngleCombo.SelectedItem is not ComboBoxItem item) return;
+        var text = item.Content?.ToString()?.TrimEnd('°');
+        if (double.TryParse(text, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out double deg))
+        {
+            _viewModel.PolarIncrementDeg = deg;
+        }
+    }
+
+    // ── 2D drawing tool toolbar ───────────────────────────────────────────────
+
+    private void DrawTool2D_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is not RadioButton rb || rb.Tag is not string tag) return;
+        if (!Enum.TryParse<MarkupToolMode>(tag, out var mode)) return;
+        _viewModel.MarkupTool.ActiveMode = mode;
+
+        // Exit conflicting drawing modes when returning to Select
+        if (mode == MarkupToolMode.None)
+        {
+            if (_isSketchLineMode || _isSketchRectangleMode)
+            {
+                ExitSketchModes();
+                Update2DCanvas();
+            }
+        }
+    }
+
+    // ── Visual style menu handlers ────────────────────────────────────────────
+
+    private void VisualStyleRealistic_Click(object sender, RoutedEventArgs e)
+    {
+        SetVisualStyle3D(VisualStyle3D.Realistic);
+        UpdateVisualStyleMenuChecks(VisualStyleRealisticMenuItem);
+    }
+
+    private void VisualStyleShaded_Click(object sender, RoutedEventArgs e)
+    {
+        SetVisualStyle3D(VisualStyle3D.Conceptual);
+        UpdateVisualStyleMenuChecks(VisualStyleShadedMenuItem);
+    }
+
+    private void VisualStyleWireframe_Click(object sender, RoutedEventArgs e)
+    {
+        SetVisualStyle3D(VisualStyle3D.Wireframe);
+        UpdateVisualStyleMenuChecks(VisualStyleWireframeMenuItem);
+    }
+
+    private void VisualStyleHiddenLine_Click(object sender, RoutedEventArgs e)
+    {
+        SetVisualStyle3D(VisualStyle3D.XRay);
+        UpdateVisualStyleMenuChecks(VisualStyleHiddenLineMenuItem);
+    }
+
+    private void UpdateVisualStyleMenuChecks(MenuItem active)
+    {
+        VisualStyleRealisticMenuItem.IsChecked  = ReferenceEquals(active, VisualStyleRealisticMenuItem);
+        VisualStyleShadedMenuItem.IsChecked     = ReferenceEquals(active, VisualStyleShadedMenuItem);
+        VisualStyleWireframeMenuItem.IsChecked  = ReferenceEquals(active, VisualStyleWireframeMenuItem);
+        VisualStyleHiddenLineMenuItem.IsChecked = ReferenceEquals(active, VisualStyleHiddenLineMenuItem);
+    }
+
+    // ── Billboard labels toggle ───────────────────────────────────────────────
+
+    private void BillboardLabels_Click(object sender, RoutedEventArgs e)
+    {
+        _showComponentLabels = BillboardLabelsMenuItem.IsChecked;
+        UpdateViewport();
+    }
+
+    // ── Markup filter handlers ────────────────────────────────────────────────
+
+    private void MarkupStatusFilter_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (MarkupStatusFilterCombo.SelectedItem is not ComboBoxItem item) return;
+        var text = item.Content?.ToString() ?? "All";
+        _viewModel.MarkupTool.StatusFilter = text;
+    }
+
+    private void MarkupSearch_Changed(object sender, TextChangedEventArgs e)
+    {
+        _viewModel.MarkupTool.LabelSearch = MarkupSearchBox.Text;
+    }
+
+    // ── Layer DataGrid handler ────────────────────────────────────────────────
+
+    private void LayerDataGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (LayerDataGrid.SelectedItem is LayerRowViewModel row)
+            _viewModel.ActiveLayer = row.Layer;
+    }
+
+    private void ExportLayers_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Filter = "XML Files (*.xml)|*.xml",
+            FileName = "layers.xml"
+        };
+        if (dlg.ShowDialog() != true) return;
+        System.IO.File.WriteAllText(dlg.FileName, _viewModel.LayerManager.ExportXml());
+    }
+
+    // ── Export IFC / Schedule ─────────────────────────────────────────────────
+
+    private void ExportIfc_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Filter = "IFC Files (*.ifc)|*.ifc",
+            FileName = "export.ifc"
+        };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            var svc = new Services.Export.IfcExportService();
+            svc.ExportToIfc(_viewModel.Components, dlg.FileName);
+            System.Windows.MessageBox.Show("IFC export complete.", "Export IFC",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show($"IFC export failed:\n{ex.Message}", "Export IFC",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void ExportSchedule_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Filter = "Excel Files (*.xlsx)|*.xlsx",
+            FileName = "schedule.xlsx"
+        };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            var exp = new Services.Export.ScheduleExcelExporter();
+            exp.ExportSchedule(_viewModel.Components, dlg.FileName);
+            System.Windows.MessageBox.Show("Schedule export complete.", "Export Schedule",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show($"Schedule export failed:\n{ex.Message}", "Export Schedule",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
     /// Also resets the canvas zoom (PlanCanvasScale) to 1 so the full drawing is visible.
     /// </summary>
     private void AutoFitPdfScale(PdfUnderlay underlay, string filePath)
@@ -4249,6 +4658,11 @@ public partial class MainWindow : Window
         }
         
         PlanCanvas.CaptureMouse();
+
+        // Nothing hit — begin window/crossing selection box
+        _isWindowSelecting = true;
+        _windowSelectStart = pos;
+        _windowSelectOverlay = null;
     }
     
     private void PlanCanvas_MouseMove(object sender, MouseEventArgs e)
@@ -4365,6 +4779,12 @@ public partial class MainWindow : Window
             _lastMousePosition = pos;
             QueueSceneRefresh(update2D: true);
         }
+
+        // --- Window / crossing selection drag ---
+        if (_isWindowSelecting)
+        {
+            UpdateWindowSelectOverlay(pos);
+        }
     }
     
     private void PlanCanvas_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -4411,6 +4831,15 @@ public partial class MainWindow : Window
         _draggedElement2D = null;
         _mobileSelectionCandidate = false;
         PlanCanvas.ReleaseMouseCapture();
+
+        // Finalize window / crossing selection
+        if (_isWindowSelecting)
+        {
+            _isWindowSelecting = false;
+            var pos2 = e.GetPosition(PlanCanvas);
+            FinalizeWindowSelection(_windowSelectStart, pos2);
+            RemoveWindowSelectOverlay();
+        }
     }
     
     private void PlanCanvas_MouseWheel(object sender, MouseWheelEventArgs e)
@@ -6594,6 +7023,26 @@ public partial class MainWindow : Window
             if (e.Key == Key.Delete)
             {
                 DeleteComponent_Click(sender, e);
+                e.Handled = true;
+            }
+            else if (e.Key == Key.F3)
+            {
+                _viewModel.SnapService.IsEnabled = !_viewModel.SnapService.IsEnabled;
+                SyncOsnapToolbarState();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.F8)
+            {
+                _viewModel.IsOrthoActive = !_viewModel.IsOrthoActive;
+                if (_viewModel.IsOrthoActive) _viewModel.IsPolarActive = false;
+                SyncOsnapToolbarState();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.F10)
+            {
+                _viewModel.IsPolarActive = !_viewModel.IsPolarActive;
+                if (_viewModel.IsPolarActive) _viewModel.IsOrthoActive = false;
+                SyncOsnapToolbarState();
                 e.Handled = true;
             }
             else if (e.Key == Key.Escape)
