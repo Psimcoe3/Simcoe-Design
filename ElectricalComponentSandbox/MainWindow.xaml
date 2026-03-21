@@ -89,6 +89,31 @@
                 <MenuItem Header="2D Plan View" Click="Show2DView_Click"/>
                 <MenuItem Header="3D Viewport" Click="Show3DView_Click"/>
             </MenuItem>
+            <MenuItem Header="Tools">
+                <MenuItem Header="Conduit" Click="AddConduit_Click"/>
+                <MenuItem Header="Box" Click="AddBox_Click"/>
+                <MenuItem Header="Panel" Click="AddPanel_Click"/>
+                <MenuItem Header="Support" Click="AddSupport_Click"/>
+                <MenuItem Header="Cable Tray" Click="AddCableTray_Click"/>
+                <MenuItem Header="Hanger" Click="AddHanger_Click"/>
+                <Separator/>
+                <MenuItem Header="Draw Conduit" Click="DrawConduit_Click"/>
+                <MenuItem Header="Edit Conduit Path" Click="ToggleEditConduitPath_Click"/>
+                <MenuItem Header="Sketch Line" Click="SketchLine_Click"/>
+                <MenuItem Header="Sketch Rectangle" Click="SketchRectangle_Click"/>
+                <MenuItem Header="Convert Sketch" Click="ConvertSketch_Click"/>
+                <MenuItem Header="Freehand Conduit" Click="FreehandConduit_Click"/>
+                <MenuItem Header="Auto-Route" Click="AutoRoute_Click"/>
+                <Separator/>
+                <MenuItem Header="Export Runs CSV" Click="ExportRunSchedule_Click"/>
+                <MenuItem Header="Export Conduit JSON" Click="ExportConduitJson_Click"/>
+            </MenuItem>
+            <MenuItem Header="Sketch Rectangle" Click="SketchRectangle_Click"/>
+            <MenuItem Header="Convert Sketch" Click="ConvertSketch_Click"/>
+            <MenuItem Header="Freehand Conduit" Click="FreehandConduit_Click"/>
+            <MenuItem Header="Auto-Route" Click="AutoRoute_Click"/>
+            <MenuItem Header="Export Runs CSV" Click="ExportRunSchedule_Click"/>
+            <MenuItem Header="Export Conduit JSON" Click="ExportConduitJson_Click"/>
         </Menu>
         
         <!-- Toolbar -->
@@ -98,25 +123,27 @@
             <Separator/>
             <Button x:Name="MobileViewButton" Content="Mobile View" Click="MobileViewButton_Click" ToolTip="Switch to Mobile (iPhone) View"/>
             <Separator/>
-            <Button Content="Conduit" Click="AddConduit_Click"/>
-            <Button Content="Box" Click="AddBox_Click"/>
-            <Button Content="Panel" Click="AddPanel_Click"/>
-            <Button Content="Support" Click="AddSupport_Click"/>
-            <Button Content="Cable Tray" Click="AddCableTray_Click"/>
-            <Button Content="Hanger" Click="AddHanger_Click"/>
+            <Button Content="Conduit" Click="AddConduit_Click" AutomationProperties.AutomationId="AddConduitButton"/>
+            <Button Content="Box" Click="AddBox_Click" AutomationProperties.AutomationId="AddBoxButton"/>
+            <Button Content="Panel" Click="AddPanel_Click" AutomationProperties.AutomationId="AddPanelButton"/>
+            <Button Content="Support" Click="AddSupport_Click" AutomationProperties.AutomationId="AddSupportButton"/>
+            <Button Content="Cable Tray" Click="AddCableTray_Click" AutomationProperties.AutomationId="AddCableTrayButton"/>
+            <Button Content="Hanger" Click="AddHanger_Click" AutomationProperties.AutomationId="AddHangerButton"/>
             <Separator/>
-            <Button x:Name="DrawConduitButton" Content="Draw Conduit" Click="DrawConduit_Click" ToolTip="Click to place conduit vertices. Shift constrains to 0°/45°/90°. Double-click to finish."/>
-            <Button x:Name="EditConduitPathButton" Content="Edit Conduit Path" Click="ToggleEditConduitPath_Click"/>
-            <Button x:Name="SketchLineButton" Content="Sketch Line" Click="SketchLine_Click" ToolTip="Draw a straight or multi-segment sketch line."/>
-            <Button x:Name="SketchRectangleButton" Content="Sketch Rectangle" Click="SketchRectangle_Click" ToolTip="Draw a sketch rectangle for box/panel conversion."/>
-            <Button x:Name="ConvertSketchButton" Content="Convert Sketch" Click="ConvertSketch_Click" ToolTip="Convert selected sketch into components."/>
+            <Button x:Name="DrawConduitButton" Content="Draw Conduit" Click="DrawConduit_Click" ToolTip="Click to place conduit vertices. Shift constrains to 0°/45°/90°. Double-click to finish." AutomationProperties.AutomationId="DrawConduitButton"/>
+            <Button x:Name="EditConduitPathButton" Content="Edit Conduit Path" Click="ToggleEditConduitPath_Click" AutomationProperties.AutomationId="EditConduitPathButton"/>
+            <Button x:Name="SketchLineButton" Content="Sketch Line" Click="SketchLine_Click" ToolTip="Draw a straight or multi-segment sketch line." AutomationProperties.AutomationId="SketchLineButton"/>
+            <Button x:Name="SketchRectangleButton" Content="Sketch Rectangle" Click="SketchRectangle_Click" ToolTip="Draw a sketch rectangle for box/panel conversion." AutomationProperties.AutomationId="SketchRectangleButton"/>
+            <Button x:Name="ConvertSketchButton" Content="Convert Sketch" Click="ConvertSketch_Click" ToolTip="Convert selected sketch into components." AutomationProperties.AutomationId="ConvertSketchButton"/>
             <Separator/>
-            <Button x:Name="FreehandConduitButton" Content="Freehand Conduit" Click="FreehandConduit_Click" ToolTip="Freehand sketch conduit path."/>
+            <Button x:Name="FreehandConduitButton" Content="Freehand Conduit" Click="FreehandConduit_Click" ToolTip="Freehand sketch conduit path." AutomationProperties.AutomationId="FreehandConduitButton"/>
             <Separator/>
-            <Button x:Name="AutoRouteButton" Content="Auto-Route" Click="AutoRoute_Click" ToolTip="Generate a conduit run from the selected path or a default route."/>
+            <Button x:Name="AutoRouteButton" Content="Auto-Route" Click="AutoRoute_Click" ToolTip="Generate a conduit run from the selected path or a default route." AutomationProperties.AutomationId="AutoRouteButton"/>
             <Button x:Name="ExportRunsCsvButton" Content="Export Runs CSV" Click="ExportRunSchedule_Click" IsEnabled="False"
+                    AutomationProperties.AutomationId="ExportRunsCsvButton"
                     ToolTip="Disabled until at least one conduit run exists. Use Auto-Route or Freehand Conduit first."/>
             <Button x:Name="ExportConduitJsonButton" Content="Export Conduit JSON" Click="ExportConduitJson_Click" IsEnabled="False"
+                    AutomationProperties.AutomationId="ExportConduitJsonButton"
                     ToolTip="Disabled until at least one conduit run exists. Use Auto-Route or Freehand Conduit first."/>
             <Separator/>
             <TextBlock Text="Detail:" VerticalAlignment="Center" Margin="5,0,2,0"/>
@@ -329,12 +356,14 @@
                                     
                                     <!-- 2D Canvas with pan/zoom -->
                                     <ScrollViewer x:Name="PlanScrollViewer" 
+                                                AutomationProperties.AutomationId="PlanScrollViewer"
                                                 HorizontalScrollBarVisibility="Auto"
                                                 VerticalScrollBarVisibility="Auto"
                                                 PanningMode="Both"
                                                 PanningDeceleration="0.001"
                                                 PanningRatio="1">
                                         <Canvas x:Name="PlanCanvas" 
+                                              AutomationProperties.AutomationId="PlanCanvas"
                                               Width="2000" Height="2000"
                                               Background="White"
                                               IsManipulationEnabled="True"

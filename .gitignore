@@ -102,3 +102,5 @@ publish/
 
 # Reference documents (large binary files)
 References/
+
+.fake

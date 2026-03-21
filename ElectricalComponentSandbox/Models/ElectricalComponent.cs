@@ -52,4 +52,15 @@ public class ComponentParameters
     public string Manufacturer { get; set; } = string.Empty;
     public string PartNumber { get; set; } = string.Empty;
     public string ReferenceUrl { get; set; } = string.Empty;
+
+    // ── Per-object CAD property overrides (null = inherit from layer) ──────────
+
+    /// <summary>Override line weight in points.  Null = inherit from layer.</summary>
+    public double? LineWeightOverride { get; set; }
+
+    /// <summary>Override line type.  Null = inherit from layer.</summary>
+    public LineType? LineTypeOverride { get; set; }
+
+    /// <summary>Override display color (hex).  Null = inherit from layer.</summary>
+    public string? ColorOverride { get; set; }
 }

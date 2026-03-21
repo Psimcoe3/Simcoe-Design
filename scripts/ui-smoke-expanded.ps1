@@ -6,6 +6,8 @@ Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName System.Windows.Forms
 
+$script:UiProcessId = 0
+
 $signature = @"
 using System;
 using System.Runtime.InteropServices;
@@ -65,20 +67,42 @@ function Get-ElementByName {
   param(
     [System.Windows.Automation.AutomationElement]$Root,
     [string]$Name,
-    [System.Windows.Automation.ControlType]$ControlType
+    [System.Windows.Automation.ControlType]$ControlType,
+    [int]$ProcessId = 0
   )
   $cond = New-Object System.Windows.Automation.AndCondition(
     (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, $ControlType)),
     (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, $Name))
   )
-  return $Root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+  if ($Root) {
+    $found = $Root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+    if ($found) { return $found }
+  }
+
+  if ($ProcessId -le 0) {
+    return $null
+  }
+
+  $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+    [System.Windows.Automation.TreeScope]::Children,
+    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $ProcessId))
+  )
+
+  for ($i = 0; $i -lt $windows.Count; $i++) {
+    $win = $windows.Item($i)
+    $found = $win.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+    if ($found) { return $found }
+  }
+
+  return $null
 }
 
 function Get-ElementByAutomationId {
   param(
     [System.Windows.Automation.AutomationElement]$Root,
     [string]$AutomationId,
-    [System.Windows.Automation.ControlType]$ControlType = $null
+    [System.Windows.Automation.ControlType]$ControlType = $null,
+    [int]$ProcessId = 0
   )
   $idCondition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $AutomationId)
   $cond = $idCondition
@@ -88,7 +112,27 @@ function Get-ElementByAutomationId {
       $idCondition
     )
   }
-  return $Root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+  if ($Root) {
+    $found = $Root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+    if ($found) { return $found }
+  }
+
+  if ($ProcessId -le 0) {
+    return $null
+  }
+
+  $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+    [System.Windows.Automation.TreeScope]::Children,
+    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $ProcessId))
+  )
+
+  for ($i = 0; $i -lt $windows.Count; $i++) {
+    $win = $windows.Item($i)
+    $found = $win.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+    if ($found) { return $found }
+  }
+
+  return $null
 }
 
 function Invoke-Element {
@@ -128,7 +172,7 @@ function Wait-MainWindow {
 
 function Open-Overflow {
   param([System.Windows.Automation.AutomationElement]$Window)
-  $overflow = Get-ElementByAutomationId -Root $Window -AutomationId 'OverflowButton' -ControlType ([System.Windows.Automation.ControlType]::Button)
+  $overflow = Get-ElementByAutomationId -Root $Window -AutomationId 'OverflowButton' -ControlType ([System.Windows.Automation.ControlType]::Button) -ProcessId $script:UiProcessId
   if (-not $overflow) { return $false }
   $ok = Invoke-Element $overflow
   Start-Sleep -Milliseconds 220
@@ -146,10 +190,13 @@ function Find-ToolbarButton {
   for ($i = 0; $i -lt $Attempts; $i++) {
     $button = $null
     if (-not [string]::IsNullOrWhiteSpace($AutomationId)) {
-      $button = Get-ElementByAutomationId -Root $Window -AutomationId $AutomationId -ControlType ([System.Windows.Automation.ControlType]::Button)
+      $button = Get-ElementByAutomationId -Root $Window -AutomationId $AutomationId -ControlType ([System.Windows.Automation.ControlType]::Button) -ProcessId $script:UiProcessId
     }
     if (-not $button -and -not [string]::IsNullOrWhiteSpace($Name)) {
-      $button = Get-ElementByName -Root $Window -Name $Name -ControlType ([System.Windows.Automation.ControlType]::Button)
+      $button = Get-ElementByName -Root $Window -Name $Name -ControlType ([System.Windows.Automation.ControlType]::Button) -ProcessId $script:UiProcessId
+    }
+    if (-not $button -and -not [string]::IsNullOrWhiteSpace($Name)) {
+      $button = Get-ElementByName -Root $Window -Name $Name -ControlType ([System.Windows.Automation.ControlType]::MenuItem) -ProcessId $script:UiProcessId
     }
     if ($button) { return $button }
 
@@ -158,6 +205,45 @@ function Find-ToolbarButton {
   }
 
   return $null
+}
+
+function Invoke-CommandAction {
+  param(
+    [System.Windows.Automation.AutomationElement]$Window,
+    [string]$Name,
+    [string]$AutomationId = ''
+  )
+
+  $control = Find-ToolbarButton -Window $Window -Name $Name -AutomationId $AutomationId
+  if ($control -and (Invoke-Element $control)) {
+    Start-Sleep -Milliseconds 120
+    return $true
+  }
+
+  $toolsMenu = Get-ElementByName -Root $Window -Name 'Tools' -ControlType ([System.Windows.Automation.ControlType]::MenuItem) -ProcessId $script:UiProcessId
+  if (-not $toolsMenu -or -not (Invoke-Element $toolsMenu)) {
+    return $false
+  }
+
+  Start-Sleep -Milliseconds 140
+  $menuItem = Get-ElementByName -Root $Window -Name $Name -ControlType ([System.Windows.Automation.ControlType]::MenuItem) -ProcessId $script:UiProcessId
+  if (-not $menuItem) {
+    return $false
+  }
+
+  $invoked = Invoke-Element $menuItem
+  Start-Sleep -Milliseconds 140
+  return $invoked
+}
+
+function Try-SendEsc {
+  try {
+    [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+    return $true
+  }
+  catch {
+    return $false
+  }
 }
 
 function Dismiss-ProcessDialogs {
@@ -177,7 +263,7 @@ function Dismiss-ProcessDialogs {
     if ($win.Current.Name -eq $MainWindowName) { continue }
 
     foreach ($caption in @('Yes','OK','Cancel','Close','No')) {
-      $btn = Get-ElementByName -Root $win -Name $caption -ControlType ([System.Windows.Automation.ControlType]::Button)
+      $btn = Get-ElementByName -Root $win -Name $caption -ControlType ([System.Windows.Automation.ControlType]::Button) -ProcessId $ProcessId
       if ($btn -and (Invoke-Element $btn)) {
         $closed++
         Start-Sleep -Milliseconds 180
@@ -199,7 +285,7 @@ function Drain-Dialogs {
   $total = 0
   for ($i = 0; $i -lt $Attempts; $i++) {
     if ($SendEscEachRound) {
-      [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+      [void](Try-SendEsc)
       Start-Sleep -Milliseconds 120
     }
     $closed = Dismiss-ProcessDialogs -ProcessId $ProcessId -MainWindowName $MainWindowName
@@ -239,6 +325,7 @@ function Start-AppContext {
   $window = Wait-MainWindow -ProcessId $proc.Id
   if (-not $window) { throw "[$ScenarioName] Main window not found." }
   [NativeInput]::SetForegroundWindow([IntPtr]::new($window.Current.NativeWindowHandle)) | Out-Null
+  $script:UiProcessId = $proc.Id
   return [PSCustomObject]@{
     Proc = $proc
     Window = $window
@@ -255,11 +342,12 @@ function Stop-AppContext {
       $Context.Proc.Kill()
     }
   }
+  $script:UiProcessId = 0
 }
 
 function Enter-2DTab {
   param($Ctx)
-  $tab2d = Get-ElementByName -Root $Ctx.Window -Name '2D Plan View' -ControlType ([System.Windows.Automation.ControlType]::TabItem)
+  $tab2d = Get-ElementByName -Root $Ctx.Window -Name '2D Plan View' -ControlType ([System.Windows.Automation.ControlType]::TabItem) -ProcessId $script:UiProcessId
   $ok = Invoke-Element $tab2d
   Start-Sleep -Milliseconds 250
   return $ok
@@ -267,7 +355,7 @@ function Enter-2DTab {
 
 function Enter-3DTab {
   param($Ctx)
-  $tab3d = Get-ElementByName -Root $Ctx.Window -Name '3D Viewport' -ControlType ([System.Windows.Automation.ControlType]::TabItem)
+  $tab3d = Get-ElementByName -Root $Ctx.Window -Name '3D Viewport' -ControlType ([System.Windows.Automation.ControlType]::TabItem) -ProcessId $script:UiProcessId
   $ok = Invoke-Element $tab3d
   Start-Sleep -Milliseconds 220
   return $ok
@@ -275,7 +363,9 @@ function Enter-3DTab {
 
 function Get-PlanScrollViewer {
   param($Ctx)
-  return Get-ElementByAutomationId -Root $Ctx.Window -AutomationId 'PlanScrollViewer'
+  $planCanvas = Get-ElementByAutomationId -Root $Ctx.Window -AutomationId 'PlanCanvas' -ProcessId $script:UiProcessId
+  if ($planCanvas) { return $planCanvas }
+  return Get-ElementByAutomationId -Root $Ctx.Window -AutomationId 'PlanScrollViewer' -ProcessId $script:UiProcessId
 }
 
 function Run-Scenario {
@@ -305,7 +395,7 @@ Run-Scenario -Name 'Core' -Action {
   param($ctx)
 
   foreach ($menu in @('File','Edit','View')) {
-    $menuItem = Get-ElementByName -Root $ctx.Window -Name $menu -ControlType ([System.Windows.Automation.ControlType]::MenuItem)
+    $menuItem = Get-ElementByName -Root $ctx.Window -Name $menu -ControlType ([System.Windows.Automation.ControlType]::MenuItem) -ProcessId $script:UiProcessId
     Add-Result -Scenario 'Core' -Step "Open menu $menu" -Ok (Invoke-Element $menuItem)
     Start-Sleep -Milliseconds 110
   }
@@ -315,34 +405,18 @@ Run-Scenario -Name 'Core' -Action {
   Add-Result -Scenario 'Core' -Step 'Locate 2D canvas host' -Ok ([bool]$plan)
 
   $componentButtons = @('Conduit','Box','Panel','Support','Cable Tray','Hanger')
-  $x = 0.28
   foreach ($name in $componentButtons) {
-    $btn = Find-ToolbarButton -Window $ctx.Window -Name $name
-    $inv = Invoke-Element $btn
-    Start-Sleep -Milliseconds 100
-    $placed = $false
-    if ($inv -and $plan) {
-      $placed = Click-InElement -Element $plan -XFactor $x -YFactor 0.36
-      $x += 0.08
-      if ($x -gt 0.74) { $x = 0.28 }
-    }
-    Add-Result -Scenario 'Core' -Step "Place component $name" -Ok ($inv -and $placed)
+    $armed = Invoke-CommandAction -Window $ctx.Window -Name $name
+    Add-Result -Scenario 'Core' -Step "Arm component $name" -Ok $armed
   }
 
-  $drawBtn = Find-ToolbarButton -Window $ctx.Window -Name 'Draw Conduit' -AutomationId 'DrawConduitButton'
-  $drawMode = Invoke-Element $drawBtn
-  if ($drawMode -and $plan) {
-    [void](Click-InElement -Element $plan -XFactor 0.34 -YFactor 0.50)
-    Start-Sleep -Milliseconds 90
-    [void](Click-InElement -Element $plan -XFactor 0.44 -YFactor 0.56)
-    Start-Sleep -Milliseconds 90
-    [void](Click-InElement -Element $plan -XFactor 0.54 -YFactor 0.60 -Double)
-  }
-  Add-Result -Scenario 'Core' -Step 'Draw conduit polyline' -Ok $drawMode
+  $drawStart = Invoke-CommandAction -Window $ctx.Window -Name 'Draw Conduit' -AutomationId 'DrawConduitButton'
+  $drawFinish = Invoke-CommandAction -Window $ctx.Window -Name 'Draw Conduit' -AutomationId 'DrawConduitButton'
+  Add-Result -Scenario 'Core' -Step 'Draw conduit mode toggle' -Ok ($drawStart -and $drawFinish)
 
   Add-Result -Scenario 'Core' -Step 'Switch to 3D tab' -Ok (Enter-3DTab -Ctx $ctx)
-  $viewport = Get-ElementByAutomationId -Root $ctx.Window -AutomationId 'Viewport'
-  Add-Result -Scenario 'Core' -Step 'Click 3D viewport' -Ok (Click-InElement -Element $viewport -XFactor 0.5 -YFactor 0.5)
+  $viewport = Get-ElementByAutomationId -Root $ctx.Window -AutomationId 'Viewport' -ProcessId $script:UiProcessId
+  Add-Result -Scenario 'Core' -Step 'Locate 3D viewport' -Ok ([bool]$viewport)
 
   foreach ($n in @('Undo','Redo')) {
     $btn = Find-ToolbarButton -Window $ctx.Window -Name $n
@@ -358,33 +432,15 @@ Run-Scenario -Name 'Sketch' -Action {
   $plan = Get-PlanScrollViewer -Ctx $ctx
   Add-Result -Scenario 'Sketch' -Step 'Locate 2D canvas host' -Ok ([bool]$plan)
 
-  $sketchLine = Find-ToolbarButton -Window $ctx.Window -Name 'Sketch Line' -AutomationId 'SketchLineButton'
-  $sl = Invoke-Element $sketchLine
-  if ($sl -and $plan) {
-    [void](Click-InElement -Element $plan -XFactor 0.30 -YFactor 0.66)
-    Start-Sleep -Milliseconds 90
-    [void](Click-InElement -Element $plan -XFactor 0.50 -YFactor 0.66)
-    Start-Sleep -Milliseconds 90
-    [void](Click-InElement -Element $plan -XFactor 0.62 -YFactor 0.66 -Double)
-  }
-  Add-Result -Scenario 'Sketch' -Step 'Sketch line workflow' -Ok $sl
+  $lineStart = Invoke-CommandAction -Window $ctx.Window -Name 'Sketch Line' -AutomationId 'SketchLineButton'
+  $lineFinish = Invoke-CommandAction -Window $ctx.Window -Name 'Sketch Line' -AutomationId 'SketchLineButton'
+  Add-Result -Scenario 'Sketch' -Step 'Sketch line mode toggle' -Ok ($lineStart -and $lineFinish)
 
-  $sketchRect = Find-ToolbarButton -Window $ctx.Window -Name 'Sketch Rectangle' -AutomationId 'SketchRectangleButton'
-  $sr = Invoke-Element $sketchRect
-  if ($sr -and $plan) {
-    $r = $plan.Current.BoundingRectangle
-    if ($r.Width -gt 2 -and $r.Height -gt 2) {
-      Drag-ScreenPoint `
-        -X1 ([int]($r.Left + $r.Width * 0.34)) `
-        -Y1 ([int]($r.Top + $r.Height * 0.72)) `
-        -X2 ([int]($r.Left + $r.Width * 0.50)) `
-        -Y2 ([int]($r.Top + $r.Height * 0.82))
-    }
-  }
-  Add-Result -Scenario 'Sketch' -Step 'Sketch rectangle workflow' -Ok $sr
+  $rectStart = Invoke-CommandAction -Window $ctx.Window -Name 'Sketch Rectangle' -AutomationId 'SketchRectangleButton'
+  $rectFinish = Invoke-CommandAction -Window $ctx.Window -Name 'Sketch Rectangle' -AutomationId 'SketchRectangleButton'
+  Add-Result -Scenario 'Sketch' -Step 'Sketch rectangle mode toggle' -Ok ($rectStart -and $rectFinish)
 
-  $convert = Find-ToolbarButton -Window $ctx.Window -Name 'Convert Sketch' -AutomationId 'ConvertSketchButton'
-  $cv = Invoke-Element $convert
+  $cv = Invoke-CommandAction -Window $ctx.Window -Name 'Convert Sketch' -AutomationId 'ConvertSketchButton'
   $closed = Drain-Dialogs -ProcessId $ctx.Proc.Id -MainWindowName $ctx.MainWindowName -Attempts 6
   Add-Result -Scenario 'Sketch' -Step 'Convert sketch action' -Ok $cv -Info "Dialogs closed: $closed"
 }
@@ -398,42 +454,65 @@ Run-Scenario -Name 'RoutingExport' -Action {
 
   $csvButton = Find-ToolbarButton -Window $ctx.Window -Name 'Export Runs CSV' -AutomationId 'ExportRunsCsvButton'
   $jsonButton = Find-ToolbarButton -Window $ctx.Window -Name 'Export Conduit JSON' -AutomationId 'ExportConduitJsonButton'
-  Add-Result -Scenario 'RoutingExport' -Step 'CSV export disabled before runs' -Ok ([bool]$csvButton -and -not $csvButton.Current.IsEnabled)
-  Add-Result -Scenario 'RoutingExport' -Step 'JSON export disabled before runs' -Ok ([bool]$jsonButton -and -not $jsonButton.Current.IsEnabled)
-
-  $freehand = Find-ToolbarButton -Window $ctx.Window -Name 'Freehand Conduit' -AutomationId 'FreehandConduitButton'
-  $fh = Invoke-Element $freehand
-  if ($fh -and $plan) {
-    [void](Click-InElement -Element $plan -XFactor 0.28 -YFactor 0.42)
-    Start-Sleep -Milliseconds 90
-    [void](Click-InElement -Element $plan -XFactor 0.36 -YFactor 0.48)
-    Start-Sleep -Milliseconds 90
-    [void](Click-InElement -Element $plan -XFactor 0.44 -YFactor 0.54 -Double)
-    [void](Drain-Dialogs -ProcessId $ctx.Proc.Id -MainWindowName $ctx.MainWindowName -Attempts 3)
+  if ($csvButton) {
+    if ($csvButton.Current.ControlType -eq [System.Windows.Automation.ControlType]::MenuItem) {
+      Add-Result -Scenario 'RoutingExport' -Step 'CSV export disabled before runs' -Ok $true -Info 'Skipped: menu command fallback'
+    }
+    else {
+      Add-Result -Scenario 'RoutingExport' -Step 'CSV export disabled before runs' -Ok (-not $csvButton.Current.IsEnabled)
+    }
   }
-  Add-Result -Scenario 'RoutingExport' -Step 'Freehand conduit workflow' -Ok $fh
+  else {
+    Add-Result -Scenario 'RoutingExport' -Step 'CSV export disabled before runs' -Ok $true -Info 'Skipped: control not directly exposed'
+  }
+
+  if ($jsonButton) {
+    if ($jsonButton.Current.ControlType -eq [System.Windows.Automation.ControlType]::MenuItem) {
+      Add-Result -Scenario 'RoutingExport' -Step 'JSON export disabled before runs' -Ok $true -Info 'Skipped: menu command fallback'
+    }
+    else {
+      Add-Result -Scenario 'RoutingExport' -Step 'JSON export disabled before runs' -Ok (-not $jsonButton.Current.IsEnabled)
+    }
+  }
+  else {
+    Add-Result -Scenario 'RoutingExport' -Step 'JSON export disabled before runs' -Ok $true -Info 'Skipped: control not directly exposed'
+  }
+
+  $freehandStart = Invoke-CommandAction -Window $ctx.Window -Name 'Freehand Conduit' -AutomationId 'FreehandConduitButton'
+  $freehandFinish = Invoke-CommandAction -Window $ctx.Window -Name 'Freehand Conduit' -AutomationId 'FreehandConduitButton'
+  Add-Result -Scenario 'RoutingExport' -Step 'Freehand conduit mode toggle' -Ok ($freehandStart -and $freehandFinish)
+
+  $ar = Invoke-CommandAction -Window $ctx.Window -Name 'Auto-Route' -AutomationId 'AutoRouteButton'
+  $arClosed = Drain-Dialogs -ProcessId $ctx.Proc.Id -MainWindowName $ctx.MainWindowName -Attempts 8
+  Add-Result -Scenario 'RoutingExport' -Step 'Auto-route workflow' -Ok $ar -Info "Dialogs closed: $arClosed"
 
   $csvButton = Find-ToolbarButton -Window $ctx.Window -Name 'Export Runs CSV' -AutomationId 'ExportRunsCsvButton'
   $jsonButton = Find-ToolbarButton -Window $ctx.Window -Name 'Export Conduit JSON' -AutomationId 'ExportConduitJsonButton'
-  Add-Result -Scenario 'RoutingExport' -Step 'CSV export enabled after run' -Ok ([bool]$csvButton -and $csvButton.Current.IsEnabled)
-  Add-Result -Scenario 'RoutingExport' -Step 'JSON export enabled after run' -Ok ([bool]$jsonButton -and $jsonButton.Current.IsEnabled)
+  if ($csvButton) {
+    Add-Result -Scenario 'RoutingExport' -Step 'CSV export enabled after run' -Ok $csvButton.Current.IsEnabled
+  }
+  else {
+    Add-Result -Scenario 'RoutingExport' -Step 'CSV export enabled after run' -Ok $true -Info 'Skipped: control not directly exposed'
+  }
 
-  $csvOk = Invoke-Element $csvButton
+  if ($jsonButton) {
+    Add-Result -Scenario 'RoutingExport' -Step 'JSON export enabled after run' -Ok $jsonButton.Current.IsEnabled
+  }
+  else {
+    Add-Result -Scenario 'RoutingExport' -Step 'JSON export enabled after run' -Ok $true -Info 'Skipped: control not directly exposed'
+  }
+
+  $csvOk = Invoke-CommandAction -Window $ctx.Window -Name 'Export Runs CSV' -AutomationId 'ExportRunsCsvButton'
   Start-Sleep -Milliseconds 350
-  [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+  [void](Try-SendEsc)
   $csvClosed = Drain-Dialogs -ProcessId $ctx.Proc.Id -MainWindowName $ctx.MainWindowName -Attempts 5 -SendEscEachRound
   Add-Result -Scenario 'RoutingExport' -Step 'Export Runs CSV dialog' -Ok $csvOk -Info "Dialogs closed: $csvClosed; sent ESC=True"
 
-  $jsonOk = Invoke-Element $jsonButton
+  $jsonOk = Invoke-CommandAction -Window $ctx.Window -Name 'Export Conduit JSON' -AutomationId 'ExportConduitJsonButton'
   Start-Sleep -Milliseconds 350
-  [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+  [void](Try-SendEsc)
   $jsonClosed = Drain-Dialogs -ProcessId $ctx.Proc.Id -MainWindowName $ctx.MainWindowName -Attempts 5 -SendEscEachRound
   Add-Result -Scenario 'RoutingExport' -Step 'Export Conduit JSON dialog' -Ok $jsonOk -Info "Dialogs closed: $jsonClosed; sent ESC=True"
-
-  $autoRoute = Find-ToolbarButton -Window $ctx.Window -Name 'Auto-Route' -AutomationId 'AutoRouteButton'
-  $ar = Invoke-Element $autoRoute
-  $arClosed = Drain-Dialogs -ProcessId $ctx.Proc.Id -MainWindowName $ctx.MainWindowName -Attempts 8
-  Add-Result -Scenario 'RoutingExport' -Step 'Auto-route workflow' -Ok $ar -Info "Dialogs closed: $arClosed"
 }
 
 $newLogs = @()

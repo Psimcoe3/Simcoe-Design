@@ -2,8 +2,11 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Media.Media3D;
+using ElectricalComponentSandbox.Markup.Models;
 using ElectricalComponentSandbox.Models;
+using ElectricalComponentSandbox.Rendering;
 using ElectricalComponentSandbox.Services;
+using ElectricalComponentSandbox.Services.Dimensioning;
 
 namespace ElectricalComponentSandbox.ViewModels;
 
@@ -16,11 +19,24 @@ public class MainViewModel : INotifyPropertyChanged
     private Layer? _activeLayer;
     private string _unitSystem = "Imperial";
     private PdfUnderlay? _pdfUnderlay;
-    
+    private bool _isOrthoActive = false;
+    private bool _isPolarActive = false;
+    private double _polarIncrementDeg = 45.0;
+
     public ObservableCollection<ElectricalComponent> Components { get; } = new();
     public ObservableCollection<ElectricalComponent> LibraryComponents { get; } = new();
     public ObservableCollection<Layer> Layers { get; } = new();
-    
+
+    // ── Markup / 2D annotation ────────────────────────────────────────────────
+
+    /// <summary>All markup annotations for the active drawing sheet</summary>
+    public ObservableCollection<MarkupRecord> Markups { get; } = new();
+
+    /// <summary>IDs of all currently selected components (multi-select)</summary>
+    public HashSet<string> SelectedComponentIds { get; } = new();
+
+    // ── Services ──────────────────────────────────────────────────────────────
+
     public ComponentFileService FileService { get; } = new();
     public ProjectFileService ProjectFileService { get; } = new();
     public UndoRedoService UndoRedo { get; } = new();
@@ -28,6 +44,15 @@ public class MainViewModel : INotifyPropertyChanged
     public BomExportService BomExport { get; } = new();
     public SnapService SnapService { get; } = new();
     public PdfCalibrationService CalibrationService { get; } = new();
+
+    /// <summary>Dispatch-based markup renderer; used by the canvas paint loop</summary>
+    public MarkupRenderService MarkupRenderer { get; } = new();
+
+    /// <summary>Shadow hit-test tree for SkiaSharp canvas geometry</summary>
+    public ShadowGeometryTree ShadowTree { get; } = new();
+
+    /// <summary>Factory for 2D dimension markup records</summary>
+    public Dimension2DService DimensionService { get; } = new();
     
     public ElectricalComponent? SelectedComponent
     {
@@ -101,7 +126,81 @@ public class MainViewModel : INotifyPropertyChanged
             OnPropertyChanged();
         }
     }
-    
+
+    // ── Drawing mode props ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Ortho mode (F8): constrains cursor movement to horizontal or vertical.
+    /// </summary>
+    public bool IsOrthoActive
+    {
+        get => _isOrthoActive;
+        set
+        {
+            _isOrthoActive = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Polar tracking mode (F10): snaps movement to multiples of <see cref="PolarIncrementDeg"/>.
+    /// Mutually exclusive with IsOrthoActive — enabling one disables the other.
+    /// </summary>
+    public bool IsPolarActive
+    {
+        get => _isPolarActive;
+        set
+        {
+            _isPolarActive = value;
+            if (value) _isOrthoActive = false;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsOrthoActive));
+        }
+    }
+
+    /// <summary>Polar tracking increment in degrees (default 45°)</summary>
+    public double PolarIncrementDeg
+    {
+        get => _polarIncrementDeg;
+        set
+        {
+            _polarIncrementDeg = value > 0 ? value : 45.0;
+            OnPropertyChanged();
+        }
+    }
+
+    // ── Markup helpers ────────────────────────────────────────────────────────
+
+    /// <summary>Adds a markup and syncs the shadow tree</summary>
+    public void AddMarkup(MarkupRecord markup)
+    {
+        markup.UpdateBoundingRect();
+        Markups.Add(markup);
+        ShadowTree.AddOrUpdate(markup);
+    }
+
+    /// <summary>Removes a markup by id and syncs the shadow tree</summary>
+    public bool RemoveMarkup(string markupId)
+    {
+        var rec = Markups.FirstOrDefault(m => m.Id == markupId);
+        if (rec is null) return false;
+        Markups.Remove(rec);
+        ShadowTree.Remove(markupId);
+        return true;
+    }
+
+    /// <summary>Replaces (updates) an existing markup record and resyncs shadows</summary>
+    public void UpdateMarkup(MarkupRecord markup)
+    {
+        var idx = Markups.IndexOf(Markups.FirstOrDefault(m => m.Id == markup.Id)!);
+        if (idx >= 0)
+        {
+            markup.UpdateBoundingRect();
+            Markups[idx] = markup;
+        }
+        ShadowTree.AddOrUpdate(markup);
+    }
+
     public MainViewModel()
     {
         InitializeLibrary();
@@ -263,11 +362,12 @@ public class MainViewModel : INotifyPropertyChanged
     public ProjectModel ToProjectModel()
     {
         ActionLogService.Instance.Log(LogCategory.FileOperation, "Creating project model",
-            $"Components: {Components.Count}, Layers: {Layers.Count}");
+            $"Components: {Components.Count}, Layers: {Layers.Count}, Markups: {Markups.Count}");
         return new ProjectModel
         {
             Components = Components.ToList(),
             Layers = Layers.ToList(),
+            Markups = Markups.ToList(),
             PdfUnderlay = PdfUnderlay,
             UnitSystem = UnitSystemName,
             GridSize = GridSize,
@@ -275,7 +375,7 @@ public class MainViewModel : INotifyPropertyChanged
             SnapToGrid = SnapToGrid
         };
     }
-    
+
     /// <summary>
     /// Loads state from a ProjectModel
     /// </summary>
@@ -286,23 +386,29 @@ public class MainViewModel : INotifyPropertyChanged
         Components.Clear();
         foreach (var comp in project.Components)
             Components.Add(comp);
-        
+
         Layers.Clear();
         foreach (var layer in project.Layers)
             Layers.Add(layer);
-        
+
         if (Layers.Count == 0)
-        {
             InitializeLayers();
+
+        Markups.Clear();
+        ShadowTree.Clear();
+        foreach (var markup in project.Markups)
+        {
+            Markups.Add(markup);
+            ShadowTree.AddOrUpdate(markup);
         }
-        
+
         ActiveLayer = Layers.FirstOrDefault(l => l.Id == "default") ?? Layers.FirstOrDefault();
         PdfUnderlay = project.PdfUnderlay;
         UnitSystemName = project.UnitSystem;
         GridSize = project.GridSize;
         ShowGrid = project.ShowGrid;
         SnapToGrid = project.SnapToGrid;
-        
+
         UndoRedo.Clear();
         SelectedComponent = null;
     }

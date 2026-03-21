@@ -7,15 +7,41 @@ namespace ElectricalComponentSandbox.Markup.Models;
 /// </summary>
 public enum MarkupType
 {
+    // ── Basic drawing primitives ──────────────────────────────────────────────
     Polyline,
     Polygon,
     Rectangle,
     Circle,
+    Arc,
     Text,
+    // ── Electrical plan overlays ──────────────────────────────────────────────
     Box,
     Panel,
     ConduitRun,
-    Dimension
+    Dimension,
+    // ── Extended annotation types (Bluebeam / Autodesk parity) ──────────────
+    Callout,        // Note callout with leader line
+    RevisionCloud,  // Revision cloud around changed area
+    LeaderNote,     // Leader with text note
+    Stamp,          // Approval / status stamp
+    Hatch,          // Filled hatch region
+    Measurement,    // Point-to-point measurement (read-only, not stored as dim)
+    Hyperlink       // Clickable region linking to URL or page
+}
+
+/// <summary>
+/// Lifecycle status for punch-list / review workflows (Bluebeam-style).
+/// </summary>
+public enum MarkupStatus
+{
+    /// <summary>New markup, not yet assigned</summary>
+    Open,
+    /// <summary>Assigned and work has begun</summary>
+    InProgress,
+    /// <summary>Work completed and verified</summary>
+    Approved,
+    /// <summary>Cancelled / no longer applicable</summary>
+    Void
 }
 
 /// <summary>
@@ -29,6 +55,10 @@ public class MarkupAppearance
     public double Opacity { get; set; } = 1.0;
     public string FontFamily { get; set; } = "Arial";
     public double FontSize { get; set; } = 12.0;
+    /// <summary>Hatch pattern for Hatch/Polygon fill.  Empty = solid fill.</summary>
+    public string HatchPattern { get; set; } = string.Empty;
+    /// <summary>Dash array for line types (CSV of lengths, e.g., &quot;5,3&quot;).  Empty = solid.</summary>
+    public string DashArray { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -58,50 +88,64 @@ public class MarkupRecord
     /// Ordered vertices in Document coordinates (PDF points).
     /// For polyline/polygon: the vertex list.
     /// For rectangle: two corners (top-left, bottom-right).
-    /// For circle: one point (center).
-    /// For text: one point (anchor).
+    /// For circle/arc: one point (center).
+    /// For text/stamp/callout: one point (anchor / leader-tail).
+    /// For dimension/leader: [start, end, text-anchor].
     /// </summary>
     public List<Point> Vertices { get; set; } = new();
 
-    /// <summary>
-    /// Bounding rectangle in Document coordinates
-    /// </summary>
+    /// <summary>Bounding rectangle in Document coordinates</summary>
     public Rect BoundingRect { get; set; }
 
-    /// <summary>
-    /// Radius for circle markups (in Document units)
-    /// </summary>
+    /// <summary>Radius for circle / arc markups (Document units)</summary>
     public double Radius { get; set; }
 
-    /// <summary>
-    /// Rotation angle in degrees (for select/move/rotate)
-    /// </summary>
+    /// <summary>Start angle in degrees (for Arc markups)</summary>
+    public double ArcStartDeg { get; set; }
+
+    /// <summary>Sweep angle in degrees (for Arc markups, positive = counter-clockwise)</summary>
+    public double ArcSweepDeg { get; set; } = 90.0;
+
+    /// <summary>Rotation angle in degrees (for select/move/rotate)</summary>
     public double RotationDegrees { get; set; }
 
-    /// <summary>
-    /// Text content for Text markups
-    /// </summary>
+    /// <summary>Text content for Text / Callout / Stamp markups</summary>
     public string TextContent { get; set; } = string.Empty;
 
     /// <summary>
-    /// Layer this markup belongs to
+    /// Optional hyperlink URL.  Used directly by Hyperlink markups; also
+    /// lets any annotation be clickable (e.g. a stamp that links to a spec sheet).
     /// </summary>
+    public string? HyperlinkUrl { get; set; }
+
+    // ── Punch-list / review workflow ──────────────────────────────────────────
+
+    /// <summary>Review status for punch-list workflows</summary>
+    public MarkupStatus Status { get; set; } = MarkupStatus.Open;
+
+    /// <summary>
+    /// Optional response / reply text (used in review workflows).
+    /// e.g. "Fixed in Rev B"
+    /// </summary>
+    public string? StatusNote { get; set; }
+
+    // ── Layer + style ─────────────────────────────────────────────────────────
+
+    /// <summary>Layer this markup belongs to</summary>
     public string LayerId { get; set; } = "markup-default";
 
     public MarkupAppearance Appearance { get; set; } = new();
     public MarkupMetadata Metadata { get; set; } = new();
 
-    /// <summary>
-    /// For cutout calculations: IDs of inner polygon markups subtracted from this polygon
-    /// </summary>
+    /// <summary>For cutout calculations: IDs of inner polygon markups subtracted from this polygon</summary>
     public List<string> CutoutIds { get; set; } = new();
 
-    /// <summary>
-    /// Recalculates the bounding rect from current vertices and radius
-    /// </summary>
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// <summary>Recalculates the bounding rect from current vertices and radius</summary>
     public void UpdateBoundingRect()
     {
-        if (Type == MarkupType.Circle && Vertices.Count >= 1)
+        if ((Type == MarkupType.Circle || Type == MarkupType.Arc) && Vertices.Count >= 1)
         {
             var c = Vertices[0];
             BoundingRect = new Rect(c.X - Radius, c.Y - Radius, Radius * 2, Radius * 2);

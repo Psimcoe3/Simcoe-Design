@@ -140,6 +140,7 @@ public partial class MainWindow : Window
 
     private DimensionDisplayMode _dimensionDisplayMode = DimensionDisplayMode.FeetInches;
     private int _dimensionInchFractionDenominator = DefaultDimensionInchFractionDenominator;
+    private VisualStyle3D _activeVisualStyle3D = VisualStyle3D.Realistic;
 
     private readonly record struct PlanWorldBounds(double MinX, double MaxX, double MinZ, double MaxZ);
     private readonly record struct UnderlayCanvasFrame(PdfUnderlay Underlay, double ScaledWidth, double ScaledHeight, Point[] Corners);
@@ -203,6 +204,19 @@ public partial class MainWindow : Window
     {
         IOS,
         AndroidMaterial
+    }
+
+    /// <summary>3D viewport visual style — mirrors the four modes in AutoCAD / Revit.</summary>
+    private enum VisualStyle3D
+    {
+        /// <summary>Phong-shaded materials as authored (default).</summary>
+        Realistic,
+        /// <summary>Flat, desaturated shading — good for conceptual reviews.</summary>
+        Conceptual,
+        /// <summary>Near-transparent body with emissive edge colour.</summary>
+        Wireframe,
+        /// <summary>Semi-transparent surfaces so hidden geometry is visible.</summary>
+        XRay
     }
 
     private abstract record SketchPrimitive(string Id);
@@ -2119,6 +2133,70 @@ public partial class MainWindow : Window
         UpdateCustomDimensionUiState();
     }
     
+    /// <summary>
+    /// Changes the active 3D visual style and redraws the viewport.
+    /// Exposed so XAML code-behind buttons can call it directly, e.g.:
+    ///   SetVisualStyle3D(VisualStyle3D.Wireframe);
+    /// </summary>
+    private void SetVisualStyle3D(VisualStyle3D style)
+    {
+        _activeVisualStyle3D = style;
+        UpdateViewport();
+    }
+
+    /// <summary>Builds the WPF 3D material for a component according to the active visual style.</summary>
+    private Material Build3DMaterial(Color baseColor, bool isSelected)
+    {
+        Material built = _activeVisualStyle3D switch
+        {
+            VisualStyle3D.Conceptual => BuildConceptualMaterial(baseColor),
+            VisualStyle3D.Wireframe  => BuildWireframeMaterial(baseColor),
+            VisualStyle3D.XRay      => BuildXRayMaterial(baseColor),
+            _                       => new DiffuseMaterial(new SolidColorBrush(baseColor))
+        };
+
+        if (!isSelected) return built;
+
+        var group = new MaterialGroup();
+        group.Children.Add(built);
+        group.Children.Add(new EmissiveMaterial(new SolidColorBrush(Color.FromArgb(80, 255, 165, 0))));
+        return group;
+    }
+
+    private static Material BuildConceptualMaterial(Color c)
+    {
+        // Desaturate toward a mid-gray and boost brightness for flat, drawing-like look.
+        byte gray = (byte)((c.R * 0.299 + c.G * 0.587 + c.B * 0.114));
+        byte r = (byte)Math.Min(255, (c.R * 0.4 + gray * 0.6) * 1.15);
+        byte g = (byte)Math.Min(255, (c.G * 0.4 + gray * 0.6) * 1.15);
+        byte b = (byte)Math.Min(255, (c.B * 0.4 + gray * 0.6) * 1.15);
+        var flat = Color.FromRgb(r, g, b);
+
+        var group = new MaterialGroup();
+        group.Children.Add(new DiffuseMaterial(new SolidColorBrush(flat)));
+        // Minimal ambient to flatten shading even further
+        group.Children.Add(new EmissiveMaterial(new SolidColorBrush(Color.FromArgb(40, r, g, b))));
+        return group;
+    }
+
+    private static Material BuildWireframeMaterial(Color c)
+    {
+        // Near-transparent body so only edges (emissive glow) are visible.
+        var group = new MaterialGroup();
+        group.Children.Add(new DiffuseMaterial(
+            new SolidColorBrush(Color.FromArgb(12, c.R, c.G, c.B))));
+        group.Children.Add(new EmissiveMaterial(
+            new SolidColorBrush(Color.FromArgb(220, c.R, c.G, c.B))));
+        return group;
+    }
+
+    private static Material BuildXRayMaterial(Color c)
+    {
+        // 35 % opacity — reveals geometry behind the surface.
+        return new DiffuseMaterial(
+            new SolidColorBrush(Color.FromArgb(90, c.R, c.G, c.B)));
+    }
+
     private void UpdateViewport()
     {
         PruneCustomDimensions();
@@ -2172,20 +2250,7 @@ public partial class MainWindow : Window
         var geometry = CreateComponentGeometry(component);
         
         var color = ResolveComponentColor(component, Colors.SlateGray);
-        var material = new DiffuseMaterial(new SolidColorBrush(color));
-        
-        Material appliedMaterial;
-        if (component == _viewModel.SelectedComponent)
-        {
-            var materialGroup = new MaterialGroup();
-            materialGroup.Children.Add(material);
-            materialGroup.Children.Add(new EmissiveMaterial(new SolidColorBrush(Color.FromArgb(80, 255, 165, 0))));
-            appliedMaterial = materialGroup;
-        }
-        else
-        {
-            appliedMaterial = material;
-        }
+        var appliedMaterial = Build3DMaterial(color, component == _viewModel.SelectedComponent);
         
         var model = new GeometryModel3D(geometry, appliedMaterial);
         
