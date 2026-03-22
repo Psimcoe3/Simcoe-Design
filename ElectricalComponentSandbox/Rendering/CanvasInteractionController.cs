@@ -55,6 +55,8 @@ public sealed class CanvasInteractionController
     // Current constrained cursor in Document space
     public Point CursorDocPoint { get; private set; }
 
+    public bool IsRubberBanding => _isRubberBanding;
+
     // ── Events ────────────────────────────────────────────────────────────────
 
     /// <summary>Fired when selection should be updated with a new set of IDs</summary>
@@ -181,8 +183,15 @@ public sealed class CanvasInteractionController
 
     public void OnMouseWheel(Point screenPos, double delta)
     {
-        double factor = delta > 0 ? 1.15 : 1.0 / 1.15;
+        double factor = delta > 0 ? 1.1 : 1.0 / 1.1;
         _drawCtx.ZoomAbout(screenPos, factor);
+        CursorMoved?.Invoke();
+    }
+
+    public void ClearPreview()
+    {
+        LastSnap = null;
+        CursorDocPoint = default;
         CursorMoved?.Invoke();
     }
 
@@ -205,7 +214,12 @@ public sealed class CanvasInteractionController
                 break;
 
             case Key.F3:
-                _snapService.SnapToEndpoints = !_snapService.SnapToEndpoints;
+                _snapService.IsEnabled = !_snapService.IsEnabled;
+                if (!_snapService.IsEnabled)
+                {
+                    LastSnap = null;
+                    CursorDocPoint = default;
+                }
                 break;
         }
     }

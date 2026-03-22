@@ -18,7 +18,6 @@ public sealed class SkiaCanvasHost : System.Windows.FrameworkElement
     private SkiaCanvas2DRenderer? _renderer;
     private readonly DirtyRectTracker _dirtyTracker = new();
     private readonly TileCacheService _tileCache = new();
-    private Action<ICanvas2DRenderer>? _drawCallback;
 
     public DrawingContext2D DrawingContext { get; } = new();
 

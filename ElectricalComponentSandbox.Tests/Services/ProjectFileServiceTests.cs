@@ -142,8 +142,10 @@ public class ProjectFileServiceTests : IDisposable
         Assert.Equal(100, loaded.NamedViews[0].PanX);
         Assert.Equal(200, loaded.NamedViews[0].PanY);
         Assert.Equal(1.5, loaded.NamedViews[0].Zoom);
-        Assert.Single(loaded.NamedViews[0].VisibleLayerIds);
-        Assert.Equal("layer-1", loaded.NamedViews[0].VisibleLayerIds[0]);
+        var visibleLayerIds = loaded.NamedViews[0].VisibleLayerIds;
+        Assert.NotNull(visibleLayerIds);
+        Assert.Single(visibleLayerIds);
+        Assert.Equal("layer-1", visibleLayerIds[0]);
         Assert.Equal("Detail A", loaded.NamedViews[1].Name);
         Assert.Equal(3.0, loaded.NamedViews[1].Zoom);
     }

@@ -82,6 +82,20 @@ public sealed class ShadowGeometryTree
         Register(node);
     }
 
+    public void AddOrUpdateNode(string id, ShadowNodeKind kind, Rect boundingRect, IReadOnlyList<Point>? pathPoints = null, object? source = null)
+    {
+        var node = new ShadowNode
+        {
+            Id = id,
+            Kind = kind,
+            BoundingRect = boundingRect,
+            PathPoints = pathPoints,
+            Source = source
+        };
+
+        Register(node);
+    }
+
     public void Remove(string id)
     {
         if (_index.TryGetValue(id, out var node))

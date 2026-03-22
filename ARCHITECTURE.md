@@ -14,6 +14,7 @@ The Electrical Component Sandbox is a WPF desktop application built using the MV
 ### Third-Party Libraries
 - **HelixToolkit.Wpf 2.25.0**: 3D graphics rendering and viewport controls
 - **Newtonsoft.Json 13.0.3**: JSON serialization and deserialization
+- **SkiaSharp.Views.WPF**: High-frequency 2D rendering for background and overlay surfaces
 
 ## Architecture
 
@@ -169,6 +170,27 @@ Components support standard 3D transformations:
 3. Scaling (uniform or non-uniform)
 
 Applied via `Transform3DGroup` in order.
+
+## 2D Rendering
+
+### Hybrid Rendering Model
+
+The 2D plan surface currently uses a deliberate hybrid split:
+
+- **WPF Canvas (`PlanCanvas`)** owns interactive UI elements, selection affordances, and legacy editing flows.
+- **Skia background host (`SkiaCanvasHost`)** owns the background layer and other redraw-heavy primitives where WPF brush-based rendering is costly.
+- **`DrawingContext2D`** provides screen/document transforms shared by 2D rendering logic.
+- **`ShadowGeometryTree`** provides hit-test/query support for 2D interaction without relying on the WPF visual tree.
+- **`CanvasInteractionController`** is the extraction target for 2D mouse/keyboard interaction logic and should absorb new interaction behavior before more code is added to `MainWindow.xaml.cs`.
+
+### Tactical Skia Scope
+
+Skia is currently a tactical optimization layer, not a full replacement for the WPF editing surface.
+
+- Move background grid rendering, dirty-rect-friendly overlays, and other high-frequency draw passes to Skia first.
+- Keep direct manipulation workflows on `PlanCanvas` until their event/state handling is extracted behind controller boundaries.
+- Avoid duplicating ownership of the same visual concern in both WPF and Skia.
+- Any broader migration of 2D editing primitives to Skia should be treated as a separate architectural step, with dedicated tests and controller integration.
 
 ## UI Components
 

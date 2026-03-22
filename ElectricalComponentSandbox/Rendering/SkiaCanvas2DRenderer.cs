@@ -54,7 +54,7 @@ public sealed class SkiaCanvas2DRenderer : ICanvas2DRenderer
             mx = mx.PostConcat(SKMatrix.CreateRotationDegrees((float)rotateDeg));
         if (scale != 1.0)
             mx = mx.PostConcat(SKMatrix.CreateScale((float)scale, (float)scale));
-        _canvas.Concat(ref mx);
+        _canvas.Concat(mx);
     }
 
     public void PopTransform()
@@ -182,29 +182,19 @@ public sealed class SkiaCanvas2DRenderer : ICanvas2DRenderer
     public void DrawText(Point anchor, string text, RenderStyle style, TextAlign align = TextAlign.Left)
     {
         using var paint = BuildTextPaint(style);
+        using var font = BuildTextFont(style);
         var sc = ToScreen(anchor);
-
-        float x = sc.X;
-        if (align == TextAlign.Center)
-        {
-            float w = paint.MeasureText(text);
-            x -= w / 2;
-        }
-        else if (align == TextAlign.Right)
-        {
-            float w = paint.MeasureText(text);
-            x -= w;
-        }
-
-        _canvas.DrawText(text, x, sc.Y, paint);
+        _canvas.DrawText(text, sc.X, sc.Y, ToSkTextAlign(align), font, paint);
     }
 
     public void DrawTextBox(Point anchor, string text, RenderStyle textStyle,
                             string boxFill = "#CCFFFFFF", double padding = 3.0)
     {
         using var textPaint = BuildTextPaint(textStyle);
-        float w = textPaint.MeasureText(text);
-        float h = (float)textStyle.FontSize;
+        using var font = BuildTextFont(textStyle);
+        float w = font.MeasureText(text, textPaint);
+        var metrics = font.Metrics;
+        float h = metrics.Descent - metrics.Ascent;
         var sc = ToScreen(anchor);
         float pad = (float)padding;
 
@@ -215,7 +205,7 @@ public sealed class SkiaCanvas2DRenderer : ICanvas2DRenderer
 
         _canvas.DrawRoundRect(boxRect, 3, 3, boxPaint);
         _canvas.DrawRoundRect(boxRect, 3, 3, borderPaint);
-        _canvas.DrawText(text, sc.X, sc.Y, textPaint);
+        _canvas.DrawText(text, sc.X, sc.Y, SKTextAlign.Left, font, textPaint);
     }
 
     // ── CAD overlays ──────────────────────────────────────────────────────────
@@ -255,6 +245,12 @@ public sealed class SkiaCanvas2DRenderer : ICanvas2DRenderer
             FontFamily = dimStyle.FontFamily,
             FontSize = dimStyle.TextHeight * 72
         });
+        using var textFont = BuildTextFont(new RenderStyle
+        {
+            StrokeColor = dimStyle.TextColor,
+            FontFamily = dimStyle.FontFamily,
+            FontSize = dimStyle.TextHeight * 72
+        });
 
         // Extension lines
         float extDirX1 = (float)(nx * extOff), extDirY1 = (float)(ny * extOff);
@@ -272,8 +268,7 @@ public sealed class SkiaCanvas2DRenderer : ICanvas2DRenderer
 
         // Value text at midpoint
         float mx = (d1.X + d2.X) / 2, my = (d1.Y + d2.Y) / 2;
-        float tw = textPaint.MeasureText(valueText);
-        _canvas.DrawText(valueText, mx - tw / 2, my - 4, textPaint);
+        _canvas.DrawText(valueText, mx, my - 4, SKTextAlign.Center, textFont, textPaint);
     }
 
     public void DrawSnapGlyph(Point docPos, SnapGlyphType glyphType)
@@ -497,11 +492,26 @@ public sealed class SkiaCanvas2DRenderer : ICanvas2DRenderer
         return new SKPaint
         {
             Color = ParseColor(style.StrokeColor),
-            TextSize = (float)style.FontSize,
-            IsAntialias = true,
-            Typeface = style.Bold
-                ? SKTypeface.FromFamilyName(style.FontFamily, SKFontStyle.Bold)
-                : SKTypeface.FromFamilyName(style.FontFamily)
+            IsAntialias = true
+        };
+    }
+
+    private static SKFont BuildTextFont(RenderStyle style)
+    {
+        var typeface = style.Bold
+            ? SKTypeface.FromFamilyName(style.FontFamily, SKFontStyle.Bold)
+            : SKTypeface.FromFamilyName(style.FontFamily);
+
+        return new SKFont(typeface, (float)style.FontSize);
+    }
+
+    private static SKTextAlign ToSkTextAlign(TextAlign align)
+    {
+        return align switch
+        {
+            TextAlign.Center => SKTextAlign.Center,
+            TextAlign.Right => SKTextAlign.Right,
+            _ => SKTextAlign.Left
         };
     }
 

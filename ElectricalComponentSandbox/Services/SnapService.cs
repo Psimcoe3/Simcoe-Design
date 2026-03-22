@@ -69,8 +69,12 @@ public class SnapService
         Point? lastPoint = null,
         IEnumerable<(Point Center, double Radius)>? circles = null)
     {
+        if (!IsEnabled)
+            return new SnapResult { SnappedPoint = cursor, Type = SnapType.None, Snapped = false };
+
         var result = new SnapResult { SnappedPoint = cursor, Type = SnapType.None, Snapped = false };
         double bestDist = SnapRadius;
+        var bestPriority = GetPriority(result.Type);
         var segList = segments.ToList();
         var circleList = circles?.ToList() ?? new List<(Point, double)>();
 
@@ -80,9 +84,10 @@ public class SnapService
             foreach (var ep in endpoints)
             {
                 double dist = Distance(cursor, ep);
-                if (dist < bestDist)
+                if (IsBetterCandidate(dist, SnapType.Endpoint, bestDist, bestPriority))
                 {
                     bestDist = dist;
+                    bestPriority = GetPriority(SnapType.Endpoint);
                     result = new SnapResult { SnappedPoint = ep, Type = SnapType.Endpoint, Snapped = true };
                 }
             }
@@ -95,9 +100,10 @@ public class SnapService
             {
                 var mid = new Point((seg.A.X + seg.B.X) / 2, (seg.A.Y + seg.B.Y) / 2);
                 double dist = Distance(cursor, mid);
-                if (dist < bestDist)
+                if (IsBetterCandidate(dist, SnapType.Midpoint, bestDist, bestPriority))
                 {
                     bestDist = dist;
+                    bestPriority = GetPriority(SnapType.Midpoint);
                     result = new SnapResult { SnappedPoint = mid, Type = SnapType.Midpoint, Snapped = true };
                 }
             }
@@ -113,9 +119,10 @@ public class SnapService
                     if (TryGetIntersection(segList[i].A, segList[i].B, segList[j].A, segList[j].B, out var intersection))
                     {
                         double dist = Distance(cursor, intersection);
-                        if (dist < bestDist)
+                        if (IsBetterCandidate(dist, SnapType.Intersection, bestDist, bestPriority))
                         {
                             bestDist = dist;
+                            bestPriority = GetPriority(SnapType.Intersection);
                             result = new SnapResult { SnappedPoint = intersection, Type = SnapType.Intersection, Snapped = true };
                         }
                     }
@@ -127,9 +134,11 @@ public class SnapService
         if (SnapToNearest)
         {
             var nearResult = FindNearestOnPath(cursor, segList);
-            if (nearResult.Snapped && Distance(cursor, nearResult.SnappedPoint) < bestDist)
+            var nearDist = Distance(cursor, nearResult.SnappedPoint);
+            if (nearResult.Snapped && IsBetterCandidate(nearDist, nearResult.Type, bestDist, bestPriority))
             {
-                bestDist = Distance(cursor, nearResult.SnappedPoint);
+                bestDist = nearDist;
+                bestPriority = GetPriority(nearResult.Type);
                 result = nearResult;
             }
         }
@@ -138,9 +147,11 @@ public class SnapService
         if (SnapToCenter && circleList.Count > 0)
         {
             var centerResult = FindCenter(cursor, circleList);
-            if (centerResult.Snapped && Distance(cursor, centerResult.SnappedPoint) < bestDist)
+            var centerDist = Distance(cursor, centerResult.SnappedPoint);
+            if (centerResult.Snapped && IsBetterCandidate(centerDist, centerResult.Type, bestDist, bestPriority))
             {
-                bestDist = Distance(cursor, centerResult.SnappedPoint);
+                bestDist = centerDist;
+                bestPriority = GetPriority(centerResult.Type);
                 result = centerResult;
             }
         }
@@ -160,9 +171,10 @@ public class SnapService
                 foreach (var q in quadrants)
                 {
                     double dist = Distance(cursor, q);
-                    if (dist < bestDist)
+                    if (IsBetterCandidate(dist, SnapType.Quadrant, bestDist, bestPriority))
                     {
                         bestDist = dist;
+                        bestPriority = GetPriority(SnapType.Quadrant);
                         result = new SnapResult { SnappedPoint = q, Type = SnapType.Quadrant, Snapped = true };
                     }
                 }
@@ -173,9 +185,11 @@ public class SnapService
         if (SnapToPerpendicular && lastPoint.HasValue && segList.Count > 0)
         {
             var perpResult = FindPerpendicular(cursor, lastPoint.Value, segList);
-            if (perpResult.Snapped && Distance(cursor, perpResult.SnappedPoint) < bestDist)
+            var perpDist = Distance(cursor, perpResult.SnappedPoint);
+            if (perpResult.Snapped && IsBetterCandidate(perpDist, perpResult.Type, bestDist, bestPriority))
             {
-                bestDist = Distance(cursor, perpResult.SnappedPoint);
+                bestDist = perpDist;
+                bestPriority = GetPriority(perpResult.Type);
                 result = perpResult;
             }
         }
@@ -184,8 +198,10 @@ public class SnapService
         if (SnapToTangent && lastPoint.HasValue && circleList.Count > 0)
         {
             var tangentResult = FindTangent(cursor, lastPoint.Value, circleList);
-            if (tangentResult.Snapped && Distance(cursor, tangentResult.SnappedPoint) < bestDist)
+            var tangentDist = Distance(cursor, tangentResult.SnappedPoint);
+            if (tangentResult.Snapped && IsBetterCandidate(tangentDist, tangentResult.Type, bestDist, bestPriority))
             {
+                bestPriority = GetPriority(tangentResult.Type);
                 result = tangentResult;
             }
         }
@@ -359,5 +375,33 @@ public class SnapService
     {
         double dx = a.X - b.X, dy = a.Y - b.Y;
         return Math.Sqrt(dx * dx + dy * dy);
+    }
+
+    private static bool IsBetterCandidate(double candidateDistance, SnapType candidateType, double bestDistance, int bestPriority)
+    {
+        if (candidateDistance > bestDistance)
+            return false;
+
+        if (candidateDistance < bestDistance)
+            return true;
+
+        return GetPriority(candidateType) > bestPriority;
+    }
+
+    private static int GetPriority(SnapType type)
+    {
+        return type switch
+        {
+            SnapType.Endpoint => 100,
+            SnapType.Intersection => 90,
+            SnapType.Midpoint => 80,
+            SnapType.Center => 70,
+            SnapType.Quadrant => 60,
+            SnapType.Perpendicular => 50,
+            SnapType.Tangent => 40,
+            SnapType.Nearest => 30,
+            SnapType.Grid => 20,
+            _ => 0
+        };
     }
 }
