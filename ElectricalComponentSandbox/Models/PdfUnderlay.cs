@@ -7,6 +7,7 @@ public class PdfUnderlay
 {
     public string FilePath { get; set; } = string.Empty;
     public int PageNumber { get; set; } = 1;
+    public int TotalPageCount { get; set; } = 1;
     public double Opacity { get; set; } = 0.5;
     public bool IsLocked { get; set; } = true;
     public double Scale { get; set; } = 1.0;

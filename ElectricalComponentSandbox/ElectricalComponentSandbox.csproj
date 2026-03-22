@@ -18,6 +18,7 @@
     <PackageReference Include="PDFtoImage" Version="5.2.0" />
     <PackageReference Include="SkiaSharp.Views.WPF" Version="2.88.*" />
     <PackageReference Include="ClosedXML" Version="0.102.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.*" />
   </ItemGroup>
 
   <ItemGroup>

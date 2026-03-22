@@ -19,6 +19,15 @@ public class ProjectModel
 
     public PdfUnderlay? PdfUnderlay { get; set; }
 
+    /// <summary>Saved named views (camera bookmarks)</summary>
+    public List<NamedView> NamedViews { get; set; } = new();
+
+    /// <summary>Plot style tables (CTB) associated with this project</summary>
+    public List<PlotStyleTable> PlotStyleTables { get; set; } = new();
+
+    /// <summary>Paper-space layout settings for printing</summary>
+    public PlotLayout? PlotLayout { get; set; }
+
     /// <summary>Unit system setting: "Imperial" (ft/in) or "Metric" (m/mm)</summary>
     public string UnitSystem { get; set; } = "Imperial";
 

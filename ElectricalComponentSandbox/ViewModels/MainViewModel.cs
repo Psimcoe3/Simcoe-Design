@@ -32,6 +32,9 @@ public class MainViewModel : INotifyPropertyChanged
     /// <summary>All markup annotations for the active drawing sheet</summary>
     public ObservableCollection<MarkupRecord> Markups { get; } = new();
 
+    /// <summary>Saved named views (camera bookmarks)</summary>
+    public ObservableCollection<NamedView> NamedViews { get; } = new();
+
     /// <summary>IDs of all currently selected components (multi-select)</summary>
     public HashSet<string> SelectedComponentIds { get; } = new();
 
@@ -376,6 +379,7 @@ public class MainViewModel : INotifyPropertyChanged
             Components = Components.ToList(),
             Layers = Layers.ToList(),
             Markups = Markups.ToList(),
+            NamedViews = NamedViews.ToList(),
             PdfUnderlay = PdfUnderlay,
             UnitSystem = UnitSystemName,
             GridSize = GridSize,
@@ -412,6 +416,11 @@ public class MainViewModel : INotifyPropertyChanged
 
         ActiveLayer = Layers.FirstOrDefault(l => l.Id == "default") ?? Layers.FirstOrDefault();
         PdfUnderlay = project.PdfUnderlay;
+
+        NamedViews.Clear();
+        foreach (var nv in project.NamedViews)
+            NamedViews.Add(nv);
+
         UnitSystemName = project.UnitSystem;
         GridSize = project.GridSize;
         ShowGrid = project.ShowGrid;

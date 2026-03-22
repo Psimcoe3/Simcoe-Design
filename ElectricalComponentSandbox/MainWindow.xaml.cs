@@ -15,6 +15,7 @@ using ElectricalComponentSandbox.ViewModels;
 using ElectricalComponentSandbox.Services;
 using ElectricalComponentSandbox.Services.Dimensioning;
 using ElectricalComponentSandbox.Services.RevitIntrospection;
+using ElectricalComponentSandbox.Rendering;
 using HelixToolkit.Wpf;
 using PDFtoImage;
 
@@ -48,6 +49,10 @@ public partial class MainWindow : Window
     private BitmapSource? _cachedPdfBitmap;
     private string? _cachedPdfPath;
     private int _cachedPdfPage = -1;
+    private readonly List<Models.PlotStyleTable> _plotStyleTables = new() { Models.PlotStyleTable.CreateMonochrome() };
+    private Models.PlotLayout? _activePlotLayout;
+    private bool _sectionCutActive;
+    private double _sectionCutY;
     private ModelVisual3D? _pdfUnderlayVisual3D;
     private const double PdfUnderlayPlaneY = -0.02;
     private bool _isMobileView = false;
@@ -216,19 +221,6 @@ public partial class MainWindow : Window
     {
         IOS,
         AndroidMaterial
-    }
-
-    /// <summary>3D viewport visual style — mirrors the four modes in AutoCAD / Revit.</summary>
-    private enum VisualStyle3D
-    {
-        /// <summary>Phong-shaded materials as authored (default).</summary>
-        Realistic,
-        /// <summary>Flat, desaturated shading — good for conceptual reviews.</summary>
-        Conceptual,
-        /// <summary>Near-transparent body with emissive edge colour.</summary>
-        Wireframe,
-        /// <summary>Semi-transparent surfaces so hidden geometry is visible.</summary>
-        XRay
     }
 
     private abstract record SketchPrimitive(string Id);
@@ -2158,56 +2150,7 @@ public partial class MainWindow : Window
 
     /// <summary>Builds the WPF 3D material for a component according to the active visual style.</summary>
     private Material Build3DMaterial(Color baseColor, bool isSelected)
-    {
-        Material built = _activeVisualStyle3D switch
-        {
-            VisualStyle3D.Conceptual => BuildConceptualMaterial(baseColor),
-            VisualStyle3D.Wireframe  => BuildWireframeMaterial(baseColor),
-            VisualStyle3D.XRay      => BuildXRayMaterial(baseColor),
-            _                       => new DiffuseMaterial(new SolidColorBrush(baseColor))
-        };
-
-        if (!isSelected) return built;
-
-        var group = new MaterialGroup();
-        group.Children.Add(built);
-        group.Children.Add(new EmissiveMaterial(new SolidColorBrush(Color.FromArgb(80, 255, 165, 0))));
-        return group;
-    }
-
-    private static Material BuildConceptualMaterial(Color c)
-    {
-        // Desaturate toward a mid-gray and boost brightness for flat, drawing-like look.
-        byte gray = (byte)((c.R * 0.299 + c.G * 0.587 + c.B * 0.114));
-        byte r = (byte)Math.Min(255, (c.R * 0.4 + gray * 0.6) * 1.15);
-        byte g = (byte)Math.Min(255, (c.G * 0.4 + gray * 0.6) * 1.15);
-        byte b = (byte)Math.Min(255, (c.B * 0.4 + gray * 0.6) * 1.15);
-        var flat = Color.FromRgb(r, g, b);
-
-        var group = new MaterialGroup();
-        group.Children.Add(new DiffuseMaterial(new SolidColorBrush(flat)));
-        // Minimal ambient to flatten shading even further
-        group.Children.Add(new EmissiveMaterial(new SolidColorBrush(Color.FromArgb(40, r, g, b))));
-        return group;
-    }
-
-    private static Material BuildWireframeMaterial(Color c)
-    {
-        // Near-transparent body so only edges (emissive glow) are visible.
-        var group = new MaterialGroup();
-        group.Children.Add(new DiffuseMaterial(
-            new SolidColorBrush(Color.FromArgb(12, c.R, c.G, c.B))));
-        group.Children.Add(new EmissiveMaterial(
-            new SolidColorBrush(Color.FromArgb(220, c.R, c.G, c.B))));
-        return group;
-    }
-
-    private static Material BuildXRayMaterial(Color c)
-    {
-        // 35 % opacity — reveals geometry behind the surface.
-        return new DiffuseMaterial(
-            new SolidColorBrush(Color.FromArgb(90, c.R, c.G, c.B)));
-    }
+        => Rendering.MaterialFactory.Build(_activeVisualStyle3D, baseColor, isSelected);
 
     // ── 3D billboard component labels ─────────────────────────────────────────
 
@@ -2263,6 +2206,10 @@ public partial class MainWindow : Window
         foreach (var component in _viewModel.Components)
         {
             if (!IsLayerVisible(layerVisibilityById, component.LayerId))
+                continue;
+
+            // Section cut: skip components whose Y position is above the cut plane
+            if (_sectionCutActive && component.Position.Y > _sectionCutY)
                 continue;
             
             AddComponentToViewport(component);
@@ -3176,12 +3123,146 @@ public partial class MainWindow : Window
         VisualStyleHiddenLineMenuItem.IsChecked = ReferenceEquals(active, VisualStyleHiddenLineMenuItem);
     }
 
+    // ── Section cut plane ─────────────────────────────────────────────────────
+
+    private void SectionCut_Changed(object sender, RoutedEventArgs e)
+    {
+        _sectionCutActive = SectionCutEnabled.IsChecked == true;
+        _sectionCutY = SectionCutSlider.Value;
+        SectionCutValueText.Text = $"Y={_sectionCutY:F2}";
+        UpdateViewport();
+    }
+
+    private void SectionCutSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_sectionCutActive) return;
+        _sectionCutY = e.NewValue;
+        SectionCutValueText.Text = $"Y={_sectionCutY:F2}";
+        UpdateViewport();
+    }
+
     // ── Billboard labels toggle ───────────────────────────────────────────────
 
     private void BillboardLabels_Click(object sender, RoutedEventArgs e)
     {
         _showComponentLabels = BillboardLabelsMenuItem.IsChecked;
         UpdateViewport();
+    }
+
+    // ── Named views ───────────────────────────────────────────────────────────
+
+    private void SaveNamedView_Click(object sender, RoutedEventArgs e)
+    {
+        var name = PromptInput("Save Named View", "Enter a name for this view:", "View " + (_viewModel.NamedViews.Count + 1));
+        if (string.IsNullOrWhiteSpace(name)) return;
+
+        var nv = new Models.NamedView
+        {
+            Name = name,
+            PanX = PlanScrollViewer.HorizontalOffset,
+            PanY = PlanScrollViewer.VerticalOffset,
+            Zoom = PlanCanvasScale.ScaleX,
+            VisibleLayerIds = _viewModel.Layers.Where(l => l.IsVisible).Select(l => l.Id).ToList()
+        };
+        _viewModel.NamedViews.Add(nv);
+        RebuildNamedViewMenuItems();
+    }
+
+    private void ManageNamedViews_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.NamedViews.Count == 0)
+        {
+            MessageBox.Show("No named views saved yet.", "Named Views", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        var names = string.Join("\n", _viewModel.NamedViews.Select((v, i) => $"{i + 1}. {v.Name}"));
+        var input = PromptInput("Manage Named Views",
+            $"Enter the number of the view to delete:\n\n{names}", "");
+        if (int.TryParse(input, out int idx) && idx >= 1 && idx <= _viewModel.NamedViews.Count)
+        {
+            _viewModel.NamedViews.RemoveAt(idx - 1);
+            RebuildNamedViewMenuItems();
+        }
+    }
+
+    private void RestoreNamedView(Models.NamedView view)
+    {
+        PlanCanvasScale.ScaleX = view.Zoom;
+        PlanCanvasScale.ScaleY = view.Zoom;
+
+        // Defer scroll offset application until layout has updated with the new scale
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
+        {
+            PlanScrollViewer.ScrollToHorizontalOffset(view.PanX);
+            PlanScrollViewer.ScrollToVerticalOffset(view.PanY);
+        });
+
+        if (view.VisibleLayerIds is { Count: > 0 })
+        {
+            foreach (var layer in _viewModel.Layers)
+                layer.IsVisible = view.VisibleLayerIds.Contains(layer.Id);
+        }
+    }
+
+    private void RebuildNamedViewMenuItems()
+    {
+        // Find the parent Named Views menu item
+        var namedViewMenu = NamedViewsListMenuItem.Parent as MenuItem;
+        if (namedViewMenu is null) return;
+
+        // Remove old dynamic items (everything after the Separator at index 2)
+        while (namedViewMenu.Items.Count > 3)
+            namedViewMenu.Items.RemoveAt(3);
+
+        if (_viewModel.NamedViews.Count == 0)
+        {
+            NamedViewsListMenuItem.Header = "(none saved)";
+            NamedViewsListMenuItem.IsEnabled = false;
+        }
+        else
+        {
+            NamedViewsListMenuItem.Header = "(select below)";
+            NamedViewsListMenuItem.IsEnabled = false;
+            foreach (var nv in _viewModel.NamedViews)
+            {
+                var mi = new MenuItem { Header = nv.Name, Tag = nv };
+                mi.Click += (s, _) =>
+                {
+                    if (s is MenuItem m && m.Tag is Models.NamedView v)
+                        RestoreNamedView(v);
+                };
+                namedViewMenu.Items.Add(mi);
+            }
+        }
+    }
+
+    /// <summary>Simple WPF input prompt (avoids Microsoft.VisualBasic dependency)</summary>
+    private static string? PromptInput(string title, string prompt, string defaultValue)
+    {
+        var dlg = new Window
+        {
+            Title = title,
+            Width = 380,
+            Height = 180,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ResizeMode = ResizeMode.NoResize,
+            WindowStyle = WindowStyle.ToolWindow
+        };
+        var sp = new StackPanel { Margin = new Thickness(12) };
+        sp.Children.Add(new TextBlock { Text = prompt, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) });
+        var tb = new TextBox { Text = defaultValue };
+        sp.Children.Add(tb);
+        var btnPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
+        var okBtn = new Button { Content = "OK", Width = 75, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
+        var cancelBtn = new Button { Content = "Cancel", Width = 75, IsCancel = true };
+        okBtn.Click += (_, _) => { dlg.DialogResult = true; dlg.Close(); };
+        btnPanel.Children.Add(okBtn);
+        btnPanel.Children.Add(cancelBtn);
+        sp.Children.Add(btnPanel);
+        dlg.Content = sp;
+        tb.SelectAll();
+        tb.Focus();
+        return dlg.ShowDialog() == true ? tb.Text : null;
     }
 
     // ── Markup filter handlers ────────────────────────────────────────────────
@@ -6259,12 +6340,25 @@ public partial class MainWindow : Window
                 IsLocked = PdfLockCheck.IsChecked ?? true
             };
 
+            // Detect page count for multi-page PDFs
+            try
+            {
+                var ext = System.IO.Path.GetExtension(dialog.FileName).ToLowerInvariant();
+                if (ext == ".pdf")
+                {
+                    var bytes = System.IO.File.ReadAllBytes(dialog.FileName);
+                    underlay.TotalPageCount = PDFtoImage.Conversion.GetPageCount(bytes);
+                }
+            }
+            catch { /* non-critical */ }
+
             // Auto-fit: compute scale so the PDF fills the canvas (2000×2000) with a small margin
             AutoFitPdfScale(underlay, dialog.FileName);
 
             _viewModel.PdfUnderlay = underlay;
+            UpdatePdfPageIndicator();
             ActionLogService.Instance.Log(LogCategory.FileOperation, "PDF imported",
-                $"File: {dialog.FileName}, FitScale: {underlay.Scale:F4}");
+                $"File: {dialog.FileName}, Pages: {underlay.TotalPageCount}, FitScale: {underlay.Scale:F4}");
             
             // Render the PDF/Image on the canvas
             Update2DCanvas();
@@ -6313,6 +6407,90 @@ public partial class MainWindow : Window
             "2. Enter the real-world distance between them\n\n" +
             "This feature requires picking two points on the 2D canvas.",
             "Calibrate Scale", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    // ── PDF page navigation ──────────────────────────────────────────────────
+
+    private void PdfPrevPage_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.PdfUnderlay is not { TotalPageCount: > 1 } pdf) return;
+        if (pdf.PageNumber <= 1) return;
+        pdf.PageNumber--;
+        AutoFitPdfScale(pdf, pdf.FilePath);
+        UpdatePdfPageIndicator();
+        _cachedPdfPage = -1; // force re-render
+        Update2DCanvas();
+        UpdateViewport();
+    }
+
+    private void PdfNextPage_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.PdfUnderlay is not { TotalPageCount: > 1 } pdf) return;
+        if (pdf.PageNumber >= pdf.TotalPageCount) return;
+        pdf.PageNumber++;
+        AutoFitPdfScale(pdf, pdf.FilePath);
+        UpdatePdfPageIndicator();
+        _cachedPdfPage = -1; // force re-render
+        Update2DCanvas();
+        UpdateViewport();
+    }
+
+    private void UpdatePdfPageIndicator()
+    {
+        var pdf = _viewModel.PdfUnderlay;
+        if (pdf is null)
+        {
+            PdfPageIndicator.Text = "1 / 1";
+            return;
+        }
+        PdfPageIndicator.Text = $"{pdf.PageNumber} / {pdf.TotalPageCount}";
+    }
+
+    // ── Plot styles / page setup / print preview ─────────────────────────────
+
+    private void PlotStyleManager_Click(object sender, RoutedEventArgs e)
+    {
+        // Show a simple list of available CTB tables
+        var tables = _plotStyleTables;
+        var names = tables.Count > 0
+            ? string.Join("\n", tables.Select((t, i) => $"{i + 1}. {t.Name} — {t.Description}"))
+            : "(none)";
+        MessageBox.Show($"Plot Style Tables (CTB):\n\n{names}\n\n" +
+            "Use 'Page Setup' to assign a CTB to the active layout.",
+            "Plot Style Manager", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void PageSetup_Click(object sender, RoutedEventArgs e)
+    {
+        _activePlotLayout ??= new Models.PlotLayout();
+
+        var paperNames = Enum.GetNames(typeof(Models.PaperSize));
+        var currentPaper = _activePlotLayout.PaperSize.ToString();
+        var input = PromptInput("Page Setup",
+            $"Current paper: {currentPaper}, Scale: {_activePlotLayout.PlotScale}\n" +
+            $"Available: {string.Join(", ", paperNames)}\n\nEnter paper name (or Cancel):",
+            currentPaper);
+        if (input is null) return;
+
+        if (Enum.TryParse<Models.PaperSize>(input, true, out var ps))
+        {
+            _activePlotLayout.PaperSize = ps;
+            ActionLogService.Instance.Log(LogCategory.View, "Page setup changed", $"Paper: {ps}");
+        }
+    }
+
+    private void PrintPreview_Click(object sender, RoutedEventArgs e)
+    {
+        _activePlotLayout ??= new Models.PlotLayout();
+        var (w, h) = _activePlotLayout.GetPaperInches();
+
+        MessageBox.Show(
+            $"Print Preview\n\n" +
+            $"Paper: {_activePlotLayout.PaperSize} ({w:F2}\" × {h:F2}\")\n" +
+            $"Plot Scale: {_activePlotLayout.PlotScale}\n" +
+            $"CTB: {_activePlotLayout.PlotStyleTableName}\n\n" +
+            "Full print preview rendering will be displayed here in a future update.",
+            "Print Preview", MessageBoxButton.OK, MessageBoxImage.Information);
     }
     
     // ===== 3D Viewport interaction =====

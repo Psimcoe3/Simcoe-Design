@@ -1,6 +1,10 @@
 using System.Windows;
 using System.Windows.Threading;
+using Microsoft.Extensions.DependencyInjection;
+using ElectricalComponentSandbox.Rendering;
 using ElectricalComponentSandbox.Services;
+using ElectricalComponentSandbox.Services.Dimensioning;
+using ElectricalComponentSandbox.ViewModels;
 
 namespace ElectricalComponentSandbox;
 
@@ -9,6 +13,9 @@ namespace ElectricalComponentSandbox;
 /// </summary>
 public partial class App : Application
 {
+    /// <summary>Application-wide service provider (DI container)</summary>
+    public IServiceProvider Services { get; private set; } = null!;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -19,6 +26,32 @@ public partial class App : Application
         DispatcherUnhandledException += App_DispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
         TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
+
+        // Build the DI container
+        var sc = new ServiceCollection();
+        ConfigureServices(sc);
+        Services = sc.BuildServiceProvider();
+    }
+
+    private static void ConfigureServices(IServiceCollection services)
+    {
+        // Core services (singletons — one instance for the entire app lifetime)
+        services.AddSingleton<ComponentFileService>();
+        services.AddSingleton<ProjectFileService>();
+        services.AddSingleton<UndoRedoService>();
+        services.AddSingleton<UnitConversionService>();
+        services.AddSingleton<BomExportService>();
+        services.AddSingleton<SnapService>();
+        services.AddSingleton<PdfCalibrationService>();
+        services.AddSingleton<MarkupRenderService>();
+        services.AddSingleton<Dimension2DService>();
+        services.AddSingleton<ShadowGeometryTree>();
+
+        // ViewModels
+        services.AddSingleton<MainViewModel>();
+
+        // Main window
+        services.AddTransient<MainWindow>();
     }
 
     protected override void OnExit(ExitEventArgs e)

@@ -85,6 +85,20 @@ public sealed class SkiaCanvasHost : System.Windows.FrameworkElement
         _skElement.InvalidateVisual();
     }
 
+    /// <summary>Initializes the tile grid for a given PDF underlay size</summary>
+    public void InitializeTileCache(double underlayWidth, double underlayHeight)
+        => _tileCache.Initialize(underlayWidth, underlayHeight);
+
+    /// <summary>Gets visible tiles in the current viewport; callers skip tiles where IsTileValid == true</summary>
+    public IEnumerable<(int Col, int Row, System.Windows.Rect TileRect)> GetVisibleTiles()
+        => _tileCache.GetVisibleTiles(DrawingContext.ViewportDocRect);
+
+    /// <summary>Marks a tile as rendered so it can be skipped next frame</summary>
+    public void MarkTileValid(int col, int row) => _tileCache.MarkTileValid(col, row);
+
+    /// <summary>Whether a tile has been rendered and is still valid</summary>
+    public bool IsTileValid(int col, int row) => _tileCache.IsTileValid(col, row);
+
     // ── SkiaSharp paint ───────────────────────────────────────────────────────
 
     private void OnPaintSurface(object? sender, SKPaintSurfaceEventArgs e)
@@ -106,13 +120,37 @@ public sealed class SkiaCanvasHost : System.Windows.FrameworkElement
             _renderer.UpdateCanvas(canvas, DrawingContext);
         }
 
+        // Apply dirty-rect clip region when incremental updates are available
+        var dirtyRects = _dirtyTracker.FlushDirtyRects();
+        if (dirtyRects.Count > 0)
+        {
+            canvas.Save();
+            using var clipRegion = new SKRegion();
+            foreach (var dr in dirtyRects)
+            {
+                // Convert document-space dirty rect to screen-space clip
+                var tl = DrawingContext.DocumentToScreen(dr.TopLeft);
+                var br = DrawingContext.DocumentToScreen(dr.BottomRight);
+                clipRegion.Op(
+                    SKRectI.Round(new SKRect((float)tl.X, (float)tl.Y, (float)br.X, (float)br.Y)),
+                    SKRegionOperation.Union);
+
+                // Invalidate tile cache for overlapping tiles
+                _tileCache.InvalidateRect(dr);
+            }
+            canvas.ClipRegion(clipRegion);
+        }
+
         // Clear background
         _renderer.Clear("#FF1A1A2E");
 
         // Raise draw event — callers do all geometry draw calls here
         RenderFrame?.Invoke(_renderer);
 
-        // Flush dirty rect tracking
-        _ = _dirtyTracker.FlushDirtyRects();
+        // Restore clip if we applied dirty-rect clipping
+        if (dirtyRects.Count > 0)
+        {
+            canvas.Restore();
+        }
     }
 }

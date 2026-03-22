@@ -98,6 +98,13 @@
                     <MenuItem x:Name="VisualStyleHiddenLineMenuItem" Header="Hidden Line" Click="VisualStyleHiddenLine_Click" IsCheckable="True"/>
                 </MenuItem>
                 <MenuItem x:Name="BillboardLabelsMenuItem" Header="Component Labels (3D)" IsCheckable="True" IsChecked="False" Click="BillboardLabels_Click"/>
+                <Separator/>
+                <MenuItem Header="Named Views">
+                    <MenuItem Header="Save Current View..." Click="SaveNamedView_Click"/>
+                    <MenuItem Header="Manage Views..." Click="ManageNamedViews_Click"/>
+                    <Separator/>
+                    <MenuItem x:Name="NamedViewsListMenuItem" Header="(none saved)" IsEnabled="False"/>
+                </MenuItem>
             </MenuItem>
             <MenuItem Header="Tools">
                 <MenuItem Header="Conduit" Click="AddConduit_Click"/>
@@ -117,6 +124,10 @@
                 <Separator/>
                 <MenuItem Header="Export Runs CSV" Click="ExportRunSchedule_Click"/>
                 <MenuItem Header="Export Conduit JSON" Click="ExportConduitJson_Click"/>
+                <Separator/>
+                <MenuItem Header="Plot Style (CTB)..." Click="PlotStyleManager_Click"/>
+                <MenuItem Header="Page Setup..." Click="PageSetup_Click"/>
+                <MenuItem Header="Print Preview..." Click="PrintPreview_Click"/>
             </MenuItem>
             <MenuItem Header="Sketch Rectangle" Click="SketchRectangle_Click"/>
             <MenuItem Header="Convert Sketch" Click="ConvertSketch_Click"/>
@@ -385,25 +396,43 @@
                     <TabControl x:Name="ViewTabs" DockPanel.Dock="Top">
                         <!-- 3D Viewport Tab -->
                         <TabItem Header="3D Viewport">
-                            <h:HelixViewport3D x:Name="Viewport" 
-                                             Background="White"
-                                             ShowCoordinateSystem="True"
-                                             ShowViewCube="True"
-                                             MouseLeftButtonDown="Viewport_MouseLeftButtonDown">
-                                
-                                <!-- Lighting -->
-                                <h:DefaultLights/>
-                                
-                                <!-- Grid -->
-                                <h:GridLinesVisual3D x:Name="GridLines" 
-                                                    Visible="{Binding ShowGrid}"
-                                                    Width="100"
-                                                    Length="100"
-                                                    MinorDistance="1"
-                                                    MajorDistance="10"
-                                                    Thickness="0.01"
-                                                    Fill="LightGray"/>
-                            </h:HelixViewport3D>
+                            <DockPanel>
+                                <!-- Section cut slider -->
+                                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" 
+                                           Background="#F0F0F0" Margin="0">
+                                    <TextBlock Text="Section Cut:" VerticalAlignment="Center" Margin="6,3"/>
+                                    <CheckBox x:Name="SectionCutEnabled" Content="Enable" 
+                                             VerticalAlignment="Center" Margin="4,3"
+                                             Checked="SectionCut_Changed" Unchecked="SectionCut_Changed"/>
+                                    <Slider x:Name="SectionCutSlider" Width="250" 
+                                           Minimum="-50" Maximum="50" Value="0" 
+                                           VerticalAlignment="Center" Margin="4,3"
+                                           IsEnabled="{Binding IsChecked, ElementName=SectionCutEnabled}"
+                                           ValueChanged="SectionCutSlider_Changed"
+                                           TickFrequency="5" IsSnapToTickEnabled="False"/>
+                                    <TextBlock x:Name="SectionCutValueText" Text="Y=0.00" 
+                                             VerticalAlignment="Center" Margin="4,3" Width="55"/>
+                                </StackPanel>
+                                <h:HelixViewport3D x:Name="Viewport" 
+                                                 Background="White"
+                                                 ShowCoordinateSystem="True"
+                                                 ShowViewCube="True"
+                                                 MouseLeftButtonDown="Viewport_MouseLeftButtonDown">
+                                    
+                                    <!-- Lighting -->
+                                    <h:DefaultLights/>
+                                    
+                                    <!-- Grid -->
+                                    <h:GridLinesVisual3D x:Name="GridLines" 
+                                                        Visible="{Binding ShowGrid}"
+                                                        Width="100"
+                                                        Length="100"
+                                                        MinorDistance="1"
+                                                        MajorDistance="10"
+                                                        Thickness="0.01"
+                                                        Fill="LightGray"/>
+                                </h:HelixViewport3D>
+                            </DockPanel>
                         </TabItem>
                         
                         <!-- 2D Plan View Tab -->
@@ -423,6 +452,11 @@
                                                 VerticalAlignment="Center" Margin="5" IsChecked="True"
                                                 Checked="PdfLock_Changed" Unchecked="PdfLock_Changed"/>
                                         <Button Content="Calibrate Scale" Click="CalibrateScale_Click" Padding="5,2" Margin="2"/>
+                                        <Separator Margin="5,0"/>
+                                        <TextBlock Text="Page:" VerticalAlignment="Center" Margin="5,0,2,0"/>
+                                        <Button x:Name="PdfPrevPageBtn" Content="◀" Click="PdfPrevPage_Click" Padding="4,2" Margin="1" ToolTip="Previous page"/>
+                                        <TextBlock x:Name="PdfPageIndicator" Text="1 / 1" VerticalAlignment="Center" Margin="4,0"/>
+                                        <Button x:Name="PdfNextPageBtn" Content="▶" Click="PdfNextPage_Click" Padding="4,2" Margin="1" ToolTip="Next page"/>
                                     </StackPanel>
 
                                     <!-- 2D drawing primitives toolbar -->
