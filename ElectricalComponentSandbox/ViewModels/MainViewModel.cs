@@ -40,16 +40,16 @@ public class MainViewModel : INotifyPropertyChanged
 
     // ── Services ──────────────────────────────────────────────────────────────
 
-    public ComponentFileService FileService { get; } = new();
-    public ProjectFileService ProjectFileService { get; } = new();
-    public UndoRedoService UndoRedo { get; } = new();
-    public UnitConversionService UnitConverter { get; } = new();
-    public BomExportService BomExport { get; } = new();
-    public SnapService SnapService { get; } = new();
-    public PdfCalibrationService CalibrationService { get; } = new();
+    public ComponentFileService FileService { get; }
+    public ProjectFileService ProjectFileService { get; }
+    public UndoRedoService UndoRedo { get; }
+    public UnitConversionService UnitConverter { get; }
+    public BomExportService BomExport { get; }
+    public SnapService SnapService { get; }
+    public PdfCalibrationService CalibrationService { get; }
 
     /// <summary>Dispatch-based markup renderer; used by the canvas paint loop</summary>
-    public MarkupRenderService MarkupRenderer { get; } = new();
+    public MarkupRenderService MarkupRenderer { get; }
 
     /// <summary>Drives the markup annotation toolbar and punch-list filtering</summary>
     public MarkupToolViewModel MarkupTool { get; }
@@ -58,10 +58,10 @@ public class MainViewModel : INotifyPropertyChanged
     public LayerManagerViewModel LayerManager { get; }
 
     /// <summary>Shadow hit-test tree for SkiaSharp canvas geometry</summary>
-    public ShadowGeometryTree ShadowTree { get; } = new();
+    public ShadowGeometryTree ShadowTree { get; }
 
     /// <summary>Factory for 2D dimension markup records</summary>
-    public Dimension2DService DimensionService { get; } = new();
+    public Dimension2DService DimensionService { get; }
     
     public ElectricalComponent? SelectedComponent
     {
@@ -211,7 +211,43 @@ public class MainViewModel : INotifyPropertyChanged
     }
 
     public MainViewModel()
+        : this(
+            new ComponentFileService(),
+            new ProjectFileService(),
+            new UndoRedoService(),
+            new UnitConversionService(),
+            new BomExportService(),
+            new SnapService(),
+            new PdfCalibrationService(),
+            new MarkupRenderService(),
+            new Dimension2DService(),
+            new ShadowGeometryTree())
     {
+    }
+
+    public MainViewModel(
+        ComponentFileService fileService,
+        ProjectFileService projectFileService,
+        UndoRedoService undoRedo,
+        UnitConversionService unitConverter,
+        BomExportService bomExport,
+        SnapService snapService,
+        PdfCalibrationService calibrationService,
+        MarkupRenderService markupRenderer,
+        Dimension2DService dimensionService,
+        ShadowGeometryTree shadowTree)
+    {
+        FileService = fileService;
+        ProjectFileService = projectFileService;
+        UndoRedo = undoRedo;
+        UnitConverter = unitConverter;
+        BomExport = bomExport;
+        SnapService = snapService;
+        CalibrationService = calibrationService;
+        MarkupRenderer = markupRenderer;
+        DimensionService = dimensionService;
+        ShadowTree = shadowTree;
+
         InitializeLibrary();
         InitializeLayers();
         MarkupTool = new MarkupToolViewModel(Markups);

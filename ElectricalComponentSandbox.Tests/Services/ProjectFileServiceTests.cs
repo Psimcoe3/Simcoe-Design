@@ -124,4 +124,64 @@ public class ProjectFileServiceTests : IDisposable
 
         Assert.Contains("*.ecproj", filter);
     }
+
+    [Fact]
+    public async Task SaveAndLoad_NamedViews_RoundTrips()
+    {
+        var project = new ProjectModel();
+        project.NamedViews.Add(new NamedView { Name = "Plan View", PanX = 100, PanY = 200, Zoom = 1.5, VisibleLayerIds = new List<string> { "layer-1" } });
+        project.NamedViews.Add(new NamedView { Name = "Detail A", PanX = 50, PanY = 75, Zoom = 3.0 });
+        var filePath = Path.Combine(_tempDir, "namedviews.ecproj");
+
+        await _service.SaveProjectAsync(project, filePath);
+        var loaded = await _service.LoadProjectAsync(filePath);
+
+        Assert.NotNull(loaded);
+        Assert.Equal(2, loaded.NamedViews.Count);
+        Assert.Equal("Plan View", loaded.NamedViews[0].Name);
+        Assert.Equal(100, loaded.NamedViews[0].PanX);
+        Assert.Equal(200, loaded.NamedViews[0].PanY);
+        Assert.Equal(1.5, loaded.NamedViews[0].Zoom);
+        Assert.Single(loaded.NamedViews[0].VisibleLayerIds);
+        Assert.Equal("layer-1", loaded.NamedViews[0].VisibleLayerIds[0]);
+        Assert.Equal("Detail A", loaded.NamedViews[1].Name);
+        Assert.Equal(3.0, loaded.NamedViews[1].Zoom);
+    }
+
+    [Fact]
+    public async Task SaveAndLoad_PlotStyleTables_RoundTrips()
+    {
+        var project = new ProjectModel();
+        project.PlotStyleTables.Add(PlotStyleTable.CreateMonochrome());
+        var filePath = Path.Combine(_tempDir, "plotstyles.ecproj");
+
+        await _service.SaveProjectAsync(project, filePath);
+        var loaded = await _service.LoadProjectAsync(filePath);
+
+        Assert.NotNull(loaded);
+        Assert.Single(loaded.PlotStyleTables);
+        Assert.Equal("monochrome.ctb", loaded.PlotStyleTables[0].Name);
+        Assert.Equal(256, loaded.PlotStyleTables[0].Pens.Count);
+    }
+
+    [Fact]
+    public async Task SaveAndLoad_PlotLayout_RoundTrips()
+    {
+        var project = new ProjectModel();
+        project.PlotLayout = new PlotLayout
+        {
+            PaperSize = PaperSize.ANSI_D,
+            PlotScale = 24.0,
+            CustomWidth = 11.0,
+            CustomHeight = 8.5
+        };
+        var filePath = Path.Combine(_tempDir, "plotlayout.ecproj");
+
+        await _service.SaveProjectAsync(project, filePath);
+        var loaded = await _service.LoadProjectAsync(filePath);
+
+        Assert.NotNull(loaded?.PlotLayout);
+        Assert.Equal(PaperSize.ANSI_D, loaded.PlotLayout.PaperSize);
+        Assert.Equal(24.0, loaded.PlotLayout.PlotScale);
+    }
 }

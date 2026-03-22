@@ -31,6 +31,10 @@ public partial class App : Application
         var sc = new ServiceCollection();
         ConfigureServices(sc);
         Services = sc.BuildServiceProvider();
+
+        // Create and show the main window via DI (StartupUri removed from App.xaml)
+        var mainWindow = Services.GetRequiredService<MainWindow>();
+        mainWindow.Show();
     }
 
     private static void ConfigureServices(IServiceCollection services)
@@ -47,10 +51,20 @@ public partial class App : Application
         services.AddSingleton<Dimension2DService>();
         services.AddSingleton<ShadowGeometryTree>();
 
-        // ViewModels
-        services.AddSingleton<MainViewModel>();
+        // ViewModels (singleton — shared across the app)
+        services.AddSingleton<MainViewModel>(sp => new MainViewModel(
+            sp.GetRequiredService<ComponentFileService>(),
+            sp.GetRequiredService<ProjectFileService>(),
+            sp.GetRequiredService<UndoRedoService>(),
+            sp.GetRequiredService<UnitConversionService>(),
+            sp.GetRequiredService<BomExportService>(),
+            sp.GetRequiredService<SnapService>(),
+            sp.GetRequiredService<PdfCalibrationService>(),
+            sp.GetRequiredService<MarkupRenderService>(),
+            sp.GetRequiredService<Dimension2DService>(),
+            sp.GetRequiredService<ShadowGeometryTree>()));
 
-        // Main window
+        // Main window (transient — new instance each time, though only created once)
         services.AddTransient<MainWindow>();
     }
 

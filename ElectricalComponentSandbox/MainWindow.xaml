@@ -5,6 +5,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:local="clr-namespace:ElectricalComponentSandbox"
     xmlns:converters="clr-namespace:ElectricalComponentSandbox.Converters"
+    xmlns:rendering="clr-namespace:ElectricalComponentSandbox.Rendering"
     xmlns:h="http://helix-toolkit.org/wpf"
     mc:Ignorable="d"
     Icon="app.ico"
@@ -497,29 +498,35 @@
                                     </ToolBar>
                                     
                                     <!-- 2D Canvas with pan/zoom -->
-                                    <ScrollViewer x:Name="PlanScrollViewer" 
-                                                AutomationProperties.AutomationId="PlanScrollViewer"
-                                                HorizontalScrollBarVisibility="Auto"
-                                                VerticalScrollBarVisibility="Auto"
-                                                PanningMode="Both"
-                                                PanningDeceleration="0.001"
-                                                PanningRatio="1">
-                                        <Canvas x:Name="PlanCanvas" 
-                                              AutomationProperties.AutomationId="PlanCanvas"
-                                              Width="2000" Height="2000"
-                                              Background="White"
-                                              IsManipulationEnabled="True"
-                                              ManipulationStarting="PlanCanvas_ManipulationStarting"
-                                              ManipulationDelta="PlanCanvas_ManipulationDelta"
-                                              MouseLeftButtonDown="PlanCanvas_MouseLeftButtonDown"
-                                              MouseMove="PlanCanvas_MouseMove"
-                                              MouseLeftButtonUp="PlanCanvas_MouseLeftButtonUp"
-                                              MouseWheel="PlanCanvas_MouseWheel">
-                                            <Canvas.LayoutTransform>
-                                                <ScaleTransform x:Name="PlanCanvasScale" ScaleX="1" ScaleY="1"/>
-                                            </Canvas.LayoutTransform>
-                                        </Canvas>
-                                    </ScrollViewer>
+                                    <Grid>
+                                        <!-- GPU-accelerated background layer (grid, markup) -->
+                                        <rendering:SkiaCanvasHost x:Name="SkiaBackground"
+                                            IsHitTestVisible="False"/>
+                                        <ScrollViewer x:Name="PlanScrollViewer" 
+                                                    AutomationProperties.AutomationId="PlanScrollViewer"
+                                                    HorizontalScrollBarVisibility="Auto"
+                                                    VerticalScrollBarVisibility="Auto"
+                                                    PanningMode="Both"
+                                                    PanningDeceleration="0.001"
+                                                    PanningRatio="1"
+                                                    Background="Transparent">
+                                            <Canvas x:Name="PlanCanvas" 
+                                                  AutomationProperties.AutomationId="PlanCanvas"
+                                                  Width="2000" Height="2000"
+                                                  Background="Transparent"
+                                                  IsManipulationEnabled="True"
+                                                  ManipulationStarting="PlanCanvas_ManipulationStarting"
+                                                  ManipulationDelta="PlanCanvas_ManipulationDelta"
+                                                  MouseLeftButtonDown="PlanCanvas_MouseLeftButtonDown"
+                                                  MouseMove="PlanCanvas_MouseMove"
+                                                  MouseLeftButtonUp="PlanCanvas_MouseLeftButtonUp"
+                                                  MouseWheel="PlanCanvas_MouseWheel">
+                                                <Canvas.LayoutTransform>
+                                                    <ScaleTransform x:Name="PlanCanvasScale" ScaleX="1" ScaleY="1"/>
+                                                </Canvas.LayoutTransform>
+                                            </Canvas>
+                                        </ScrollViewer>
+                                    </Grid>
                                 </DockPanel>
                             </Grid>
                         </TabItem>
