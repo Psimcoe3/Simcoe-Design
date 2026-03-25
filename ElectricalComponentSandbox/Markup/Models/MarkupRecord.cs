@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Windows;
 
 namespace ElectricalComponentSandbox.Markup.Models;
@@ -31,6 +32,7 @@ public enum MarkupType
 
 /// <summary>
 /// Lifecycle status for punch-list / review workflows (Bluebeam-style).
+/// Covers full electrical construction review cycle: open → in-progress → resolved → approved/rejected/void.
 /// </summary>
 public enum MarkupStatus
 {
@@ -38,8 +40,12 @@ public enum MarkupStatus
     Open,
     /// <summary>Assigned and work has begun</summary>
     InProgress,
-    /// <summary>Work completed and verified</summary>
+    /// <summary>Fix applied, pending verification</summary>
+    Resolved,
+    /// <summary>Verified and accepted by reviewer</summary>
     Approved,
+    /// <summary>Reviewer returned the item for rework</summary>
+    Rejected,
     /// <summary>Cancelled / no longer applicable</summary>
     Void
 }
@@ -81,6 +87,25 @@ public class MarkupMetadata
 /// </summary>
 public class MarkupRecord
 {
+    public static string GetTypeDisplayText(MarkupType type) => type switch
+    {
+        MarkupType.ConduitRun => "Conduit Run",
+        MarkupType.RevisionCloud => "Revision Cloud",
+        MarkupType.LeaderNote => "Leader Note",
+        _ => type.ToString()
+    };
+
+    public static string GetStatusDisplayText(MarkupStatus status) => status switch
+    {
+        MarkupStatus.Open => "Open",
+        MarkupStatus.InProgress => "In Progress",
+        MarkupStatus.Resolved => "Resolved",
+        MarkupStatus.Approved => "Approved",
+        MarkupStatus.Rejected => "Rejected",
+        MarkupStatus.Void => "Void",
+        _ => status.ToString()
+    };
+
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public MarkupType Type { get; set; }
 
@@ -136,6 +161,11 @@ public class MarkupRecord
 
     public MarkupAppearance Appearance { get; set; } = new();
     public MarkupMetadata Metadata { get; set; } = new();
+    public string TypeDisplayText => GetTypeDisplayText(Type);
+    public string StatusDisplayText => GetStatusDisplayText(Status);
+    public string LayerDisplayText => LayerId;
+    public string CreatedDisplayText => FormatUtcForDisplay(Metadata.CreatedUtc);
+    public string ModifiedDisplayText => FormatUtcForDisplay(Metadata.ModifiedUtc);
 
     /// <summary>For cutout calculations: IDs of inner polygon markups subtracted from this polygon</summary>
     public List<string> CutoutIds { get; set; } = new();
@@ -170,5 +200,13 @@ public class MarkupRecord
         }
 
         BoundingRect = new Rect(minX, minY, maxX - minX, maxY - minY);
+    }
+
+    private static string FormatUtcForDisplay(DateTime utc)
+    {
+        if (utc == default)
+            return string.Empty;
+
+        return utc.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
     }
 }

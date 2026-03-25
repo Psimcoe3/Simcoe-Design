@@ -46,6 +46,38 @@ public class Dimension2DService
         Opacity = 1.0
     };
 
+    // ── Style application ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Applies a <see cref="DimensionStyleDefinition"/> to this service,
+    /// configuring text height, arrow size, number format, unit suffix, and appearance.
+    /// </summary>
+    public void ApplyStyle(Models.DimensionStyleDefinition style)
+    {
+        TextHeight = style.TextHeight;
+        ArrowSize = style.ArrowSize;
+        ExtLineOffset = style.ExtensionLineOffset;
+        ScaleFactor = style.LinearScaleFactor;
+        UnitSuffix = style.UnitSuffix;
+
+        NumberFormat = style.UnitFormat switch
+        {
+            Models.DimensionUnitFormat.Decimal => $"F{Math.Min(style.Precision, 8)}",
+            Models.DimensionUnitFormat.Scientific => $"E{Math.Min(style.Precision, 8)}",
+            _ => "F2"
+        };
+
+        DefaultAppearance = new MarkupAppearance
+        {
+            StrokeColor = style.DimensionLineColor ?? "#000000",
+            StrokeWidth = style.LineWeight > 0 ? style.LineWeight : 1.0,
+            FillColor = "#00000000",
+            FontFamily = style.FontFamily,
+            FontSize = style.TextHeight,
+            Opacity = 1.0
+        };
+    }
+
     // ── Factory methods ───────────────────────────────────────────────────────
 
     /// <summary>

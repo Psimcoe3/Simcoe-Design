@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ElectricalComponentSandbox.Rendering;
 using ElectricalComponentSandbox.Services;
 using ElectricalComponentSandbox.Services.Dimensioning;
+using ElectricalComponentSandbox.Services.Export;
 using ElectricalComponentSandbox.ViewModels;
 
 namespace ElectricalComponentSandbox;
@@ -50,6 +51,10 @@ public partial class App : Application
         services.AddSingleton<MarkupRenderService>();
         services.AddSingleton<Dimension2DService>();
         services.AddSingleton<ShadowGeometryTree>();
+        services.AddSingleton<ElectricalCalculationService>();
+        services.AddSingleton<PlotToPdfService>();
+        services.AddSingleton<XfdfExportService>();
+        services.AddSingleton<SelectionFilterService>();
 
         // ViewModels (singleton — shared across the app)
         services.AddSingleton<MainViewModel>(sp => new MainViewModel(
@@ -62,7 +67,11 @@ public partial class App : Application
             sp.GetRequiredService<PdfCalibrationService>(),
             sp.GetRequiredService<MarkupRenderService>(),
             sp.GetRequiredService<Dimension2DService>(),
-            sp.GetRequiredService<ShadowGeometryTree>()));
+            sp.GetRequiredService<ShadowGeometryTree>(),
+            sp.GetRequiredService<ElectricalCalculationService>(),
+            sp.GetRequiredService<PlotToPdfService>(),
+            sp.GetRequiredService<XfdfExportService>(),
+            sp.GetRequiredService<SelectionFilterService>()));
 
         // Main window (transient — new instance each time, though only created once)
         services.AddTransient<MainWindow>();

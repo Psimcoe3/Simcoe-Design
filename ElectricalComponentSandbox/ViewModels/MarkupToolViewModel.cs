@@ -60,6 +60,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
     private DimensionSubType _dimSubType = DimensionSubType.Linear;
     private string          _statusFilter = "All";
     private string          _typeFilter   = "All";
+    private string          _layerFilter  = "All";
     private string          _labelSearch  = string.Empty;
     private MarkupRecord?   _selectedMarkup;
 
@@ -67,6 +68,27 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
     /// <summary>Markups currently visible in the list panel (after status + type + text filters)</summary>
     public ObservableCollection<MarkupRecord> FilteredMarkups { get; } = new();
+
+    /// <summary>Valid status filter values for the Markups panel</summary>
+    public IReadOnlyList<string> StatusFilterOptions { get; } = new[]
+    {
+        "All",
+        MarkupRecord.GetStatusDisplayText(MarkupStatus.Open),
+        MarkupRecord.GetStatusDisplayText(MarkupStatus.InProgress),
+        MarkupRecord.GetStatusDisplayText(MarkupStatus.Resolved),
+        MarkupRecord.GetStatusDisplayText(MarkupStatus.Approved),
+        MarkupRecord.GetStatusDisplayText(MarkupStatus.Rejected),
+        MarkupRecord.GetStatusDisplayText(MarkupStatus.Void)
+    };
+
+    /// <summary>Valid markup type filter values for the Markups panel</summary>
+    public IReadOnlyList<string> TypeFilterOptions { get; } =
+        new[] { "All" }
+            .Concat(Enum.GetValues<MarkupType>().Select(MarkupRecord.GetTypeDisplayText))
+            .ToArray();
+
+    /// <summary>Distinct layer IDs represented by the current markup set</summary>
+    public ObservableCollection<string> LayerFilterOptions { get; } = new() { "All" };
 
     // ── Active tool ───────────────────────────────────────────────────────────
 
@@ -99,18 +121,50 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
     // ── List filters ──────────────────────────────────────────────────────────
 
-    /// <summary>"All", "Open", "InProgress", "Approved", "Void"</summary>
+    /// <summary>"All", "Open", "In Progress", "Resolved", "Void"</summary>
     public string StatusFilter
     {
         get => _statusFilter;
-        set { _statusFilter = value; OnPropertyChanged(); ApplyFilter(); }
+        set
+        {
+            _statusFilter = string.IsNullOrWhiteSpace(value) ? "All" : value;
+            if (_statusFilter != "All" && !TryParseStatusFilter(_statusFilter, out _))
+                _statusFilter = "All";
+            OnPropertyChanged();
+            ApplyFilter();
+        }
     }
 
-    /// <summary>"All" or any MarkupType.ToString()</summary>
+    /// <summary>"All" or any <see cref="MarkupType"/> display label.</summary>
     public string TypeFilter
     {
         get => _typeFilter;
-        set { _typeFilter = value; OnPropertyChanged(); ApplyFilter(); }
+        set
+        {
+            _typeFilter = string.IsNullOrWhiteSpace(value) ? "All" : value;
+            if (_typeFilter != "All" && !TryParseTypeFilter(_typeFilter, out _))
+                _typeFilter = "All";
+            OnPropertyChanged();
+            ApplyFilter();
+        }
+    }
+
+    /// <summary>"All" or an exact markup LayerId.</summary>
+    public string LayerFilter
+    {
+        get => _layerFilter;
+        set
+        {
+            _layerFilter = string.IsNullOrWhiteSpace(value) ? "All" : value;
+            if (_layerFilter != "All" &&
+                !LayerFilterOptions.Contains(_layerFilter, StringComparer.OrdinalIgnoreCase))
+            {
+                _layerFilter = "All";
+            }
+
+            OnPropertyChanged();
+            ApplyFilter();
+        }
     }
 
     /// <summary>Free-text search against Label and TextContent</summary>
@@ -123,15 +177,24 @@ public class MarkupToolViewModel : INotifyPropertyChanged
     public MarkupRecord? SelectedMarkup
     {
         get => _selectedMarkup;
-        set { _selectedMarkup = value; OnPropertyChanged(); }
+        set
+        {
+            _selectedMarkup = value;
+            OnPropertyChanged();
+            CommandManager.InvalidateRequerySuggested();
+        }
     }
 
     // ── Statistics (for status bar) ───────────────────────────────────────────
 
-    public int TotalCount    => _allMarkups.Count;
-    public int OpenCount     => _allMarkups.Count(m => m.Status == MarkupStatus.Open);
+    public int TotalCount      => _allMarkups.Count;
+    public int OpenCount       => _allMarkups.Count(m => m.Status == MarkupStatus.Open);
     public int InProgressCount => _allMarkups.Count(m => m.Status == MarkupStatus.InProgress);
-    public int ApprovedCount => _allMarkups.Count(m => m.Status == MarkupStatus.Approved);
+    public int ResolvedCount   => _allMarkups.Count(m => m.Status == MarkupStatus.Resolved);
+    public int ApprovedCount   => _allMarkups.Count(m => m.Status == MarkupStatus.Approved);
+    public int RejectedCount   => _allMarkups.Count(m => m.Status == MarkupStatus.Rejected);
+    public int VoidCount       => _allMarkups.Count(m => m.Status == MarkupStatus.Void);
+    public int FilteredCount   => FilteredMarkups.Count;
 
     // ── Commands ──────────────────────────────────────────────────────────────
 
@@ -160,7 +223,12 @@ public class MarkupToolViewModel : INotifyPropertyChanged
     public MarkupToolViewModel(ObservableCollection<MarkupRecord> allMarkups)
     {
         _allMarkups = allMarkups;
-        _allMarkups.CollectionChanged += (_, _) => { ApplyFilter(); OnCountsChanged(); };
+        _allMarkups.CollectionChanged += (_, _) =>
+        {
+            RefreshLayerFilterOptions();
+            ApplyFilter();
+            OnCountsChanged();
+        };
 
         SetToolNoneCommand      = new RelayCommand(_ => ActiveMode = MarkupToolMode.None);
         SetToolLineCommand      = new RelayCommand(_ => ActiveMode = MarkupToolMode.Line);
@@ -181,11 +249,11 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
         DeleteSelectedCommand  = new RelayCommand(_ => DeleteSelected(), _ => SelectedMarkup != null);
         ApproveSelectedCommand = new RelayCommand(_ => SetSelectedStatus(MarkupStatus.Approved), _ => SelectedMarkup != null);
-        RejectSelectedCommand  = new RelayCommand(_ => SetSelectedStatus(MarkupStatus.Void), _ => SelectedMarkup != null);
+        RejectSelectedCommand  = new RelayCommand(_ => SetSelectedStatus(MarkupStatus.Rejected), _ => SelectedMarkup != null);
 
         SetAllStatusCommand = new RelayCommand(param =>
         {
-            if (param is string s && Enum.TryParse<MarkupStatus>(s, out var status))
+            if (param is string s && TryParseStatusFilter(s, out var status))
                 SetAllVisible(status);
         });
 
@@ -193,13 +261,17 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         {
             _statusFilter = "All";
             _typeFilter = "All";
+            _layerFilter = "All";
             _labelSearch = string.Empty;
             OnPropertyChanged(nameof(StatusFilter));
             OnPropertyChanged(nameof(TypeFilter));
+            OnPropertyChanged(nameof(LayerFilter));
             OnPropertyChanged(nameof(LabelSearch));
             ApplyFilter();
+            CommandManager.InvalidateRequerySuggested();
         });
 
+        RefreshLayerFilterOptions();
         ApplyFilter();
     }
 
@@ -209,23 +281,38 @@ public class MarkupToolViewModel : INotifyPropertyChanged
     {
         var filtered = (IEnumerable<MarkupRecord>)_allMarkups;
 
-        if (_statusFilter != "All" && Enum.TryParse<MarkupStatus>(_statusFilter, out var status))
+        if (_statusFilter != "All" && TryParseStatusFilter(_statusFilter, out var status))
             filtered = filtered.Where(m => m.Status == status);
 
-        if (_typeFilter != "All" && Enum.TryParse<MarkupType>(_typeFilter, out var mtype))
+        if (_typeFilter != "All" && TryParseTypeFilter(_typeFilter, out var mtype))
             filtered = filtered.Where(m => m.Type == mtype);
+
+        if (_layerFilter != "All")
+            filtered = filtered.Where(m => string.Equals(m.LayerId, _layerFilter, StringComparison.OrdinalIgnoreCase));
 
         if (!string.IsNullOrWhiteSpace(_labelSearch))
         {
             var lower = _labelSearch.ToLowerInvariant();
             filtered = filtered.Where(m =>
                 m.Metadata.Label.Contains(lower, StringComparison.OrdinalIgnoreCase) ||
-                m.TextContent.Contains(lower, StringComparison.OrdinalIgnoreCase));
+                m.TextContent.Contains(lower, StringComparison.OrdinalIgnoreCase) ||
+                m.Metadata.Subject.Contains(lower, StringComparison.OrdinalIgnoreCase) ||
+                m.LayerId.Contains(lower, StringComparison.OrdinalIgnoreCase) ||
+                m.Metadata.Author.Contains(lower, StringComparison.OrdinalIgnoreCase) ||
+                (m.StatusNote?.Contains(lower, StringComparison.OrdinalIgnoreCase) ?? false));
         }
+
+        filtered = filtered
+            .OrderByDescending(m => m.Metadata.ModifiedUtc)
+            .ThenByDescending(m => m.Metadata.CreatedUtc)
+            .ThenBy(m => m.Metadata.Label, StringComparer.OrdinalIgnoreCase);
 
         FilteredMarkups.Clear();
         foreach (var m in filtered)
             FilteredMarkups.Add(m);
+
+        OnPropertyChanged(nameof(FilteredCount));
+        CommandManager.InvalidateRequerySuggested();
     }
 
     // ── Punch-list operations ─────────────────────────────────────────────────
@@ -235,22 +322,31 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         if (SelectedMarkup == null) return;
         _allMarkups.Remove(SelectedMarkup);
         SelectedMarkup = null;
+        CommandManager.InvalidateRequerySuggested();
     }
 
     private void SetSelectedStatus(MarkupStatus s)
     {
         if (SelectedMarkup == null) return;
         SelectedMarkup.Status = s;
+        SelectedMarkup.Metadata.ModifiedUtc = DateTime.UtcNow;
         // Re-apply filter in case it changes visibility
         ApplyFilter();
         OnCountsChanged();
+        CommandManager.InvalidateRequerySuggested();
     }
 
     private void SetAllVisible(MarkupStatus status)
     {
         foreach (var m in FilteredMarkups.ToList())
+        {
             m.Status = status;
+            m.Metadata.ModifiedUtc = DateTime.UtcNow;
+        }
+
+        ApplyFilter();
         OnCountsChanged();
+        CommandManager.InvalidateRequerySuggested();
     }
 
     /// <summary>
@@ -275,7 +371,66 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(TotalCount));
         OnPropertyChanged(nameof(OpenCount));
         OnPropertyChanged(nameof(InProgressCount));
+        OnPropertyChanged(nameof(ResolvedCount));
         OnPropertyChanged(nameof(ApprovedCount));
+        OnPropertyChanged(nameof(RejectedCount));
+        OnPropertyChanged(nameof(VoidCount));
+        OnPropertyChanged(nameof(FilteredCount));
+        CommandManager.InvalidateRequerySuggested();
+    }
+
+    private void RefreshLayerFilterOptions()
+    {
+        var layers = _allMarkups
+            .Select(markup => markup.LayerId)
+            .Where(layerId => !string.IsNullOrWhiteSpace(layerId))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(layerId => layerId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        LayerFilterOptions.Clear();
+        LayerFilterOptions.Add("All");
+        foreach (var layerId in layers)
+            LayerFilterOptions.Add(layerId);
+
+        if (_layerFilter != "All" &&
+            !LayerFilterOptions.Contains(_layerFilter, StringComparer.OrdinalIgnoreCase))
+        {
+            _layerFilter = "All";
+            OnPropertyChanged(nameof(LayerFilter));
+        }
+    }
+
+    private static bool TryParseStatusFilter(string filter, out MarkupStatus status)
+    {
+        foreach (var candidate in Enum.GetValues<MarkupStatus>())
+        {
+            if (string.Equals(filter, candidate.ToString(), StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(filter, MarkupRecord.GetStatusDisplayText(candidate), StringComparison.OrdinalIgnoreCase))
+            {
+                status = candidate;
+                return true;
+            }
+        }
+
+        status = default;
+        return false;
+    }
+
+    private static bool TryParseTypeFilter(string filter, out MarkupType type)
+    {
+        foreach (var candidate in Enum.GetValues<MarkupType>())
+        {
+            if (string.Equals(filter, candidate.ToString(), StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(filter, MarkupRecord.GetTypeDisplayText(candidate), StringComparison.OrdinalIgnoreCase))
+            {
+                type = candidate;
+                return true;
+            }
+        }
+
+        type = default;
+        return false;
     }
 
     // ── INotifyPropertyChanged ────────────────────────────────────────────────

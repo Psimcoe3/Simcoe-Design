@@ -16,6 +16,8 @@ public class LayerManagerViewModel : INotifyPropertyChanged
     private readonly ObservableCollection<Layer> _projectLayers;
     private LayerRowViewModel? _selectedRow;
 
+    public event EventHandler<LayerRowChangedEventArgs>? LayerRowChanged;
+
     /// <summary>Flat list of layer rows shown in the layer manager grid</summary>
     public ObservableCollection<LayerRowViewModel> Rows { get; } = new();
 
@@ -46,7 +48,12 @@ public class LayerManagerViewModel : INotifyPropertyChanged
         SelectAllCommand   = new RelayCommand(_ => SetAllVisible(true));
 
         Refresh();
-        _projectLayers.CollectionChanged += (_, _) => Refresh();
+        _projectLayers.CollectionChanged += (_, _) =>
+        {
+            Refresh();
+            var affectedLayer = SelectedRow?.Layer ?? _projectLayers.FirstOrDefault() ?? Layer.CreateDefault();
+            LayerRowChanged?.Invoke(this, new LayerRowChangedEventArgs(affectedLayer, null));
+        };
     }
 
     // ── Sync ──────────────────────────────────────────────────────────────────
@@ -56,6 +63,10 @@ public class LayerManagerViewModel : INotifyPropertyChanged
     {
         // Preserve selection by id
         var selectedId = SelectedRow?.Layer.Id;
+
+        foreach (var existingRow in Rows)
+            existingRow.PropertyChanged -= OnRowChanged;
+
         Rows.Clear();
 
         foreach (var layer in _projectLayers)
@@ -124,6 +135,68 @@ public class LayerManagerViewModel : INotifyPropertyChanged
     {
         foreach (var row in Rows)
             row.IsVisible = visible;
+    }
+
+    // ── Layer State Snapshots ───────────────────────────────────────────────
+
+    /// <summary>Saved layer state snapshots (name → per-layer visibility/freeze/lock/plot)</summary>
+    public ObservableCollection<LayerStateSnapshot> SavedStates { get; } = new();
+
+    /// <summary>Captures the current layer state as a named snapshot</summary>
+    public void SaveState(string name)
+    {
+        var existing = SavedStates.FirstOrDefault(s =>
+            string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (existing != null)
+            SavedStates.Remove(existing);
+
+        var snapshot = new LayerStateSnapshot
+        {
+            Name = name,
+            SavedUtc = DateTime.UtcNow,
+            LayerStates = _projectLayers.Select(l => new LayerStateEntry
+            {
+                LayerId = l.Id,
+                IsVisible = l.IsVisible,
+                IsFrozen = l.IsFrozen,
+                IsLocked = l.IsLocked,
+                IsPlotted = l.IsPlotted
+            }).ToList()
+        };
+        SavedStates.Add(snapshot);
+    }
+
+    /// <summary>Restores a named snapshot, applying visibility/freeze/lock/plot to matching layers</summary>
+    public void RestoreState(string name)
+    {
+        var snapshot = SavedStates.FirstOrDefault(s =>
+            string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (snapshot == null) return;
+
+        foreach (var entry in snapshot.LayerStates)
+        {
+            var layer = _projectLayers.FirstOrDefault(l =>
+                string.Equals(l.Id, entry.LayerId, StringComparison.Ordinal));
+            if (layer == null) continue;
+
+            layer.IsVisible = entry.IsVisible;
+            layer.IsFrozen = entry.IsFrozen;
+            layer.IsLocked = entry.IsLocked;
+            layer.IsPlotted = entry.IsPlotted;
+        }
+
+        Refresh();
+        var first = _projectLayers.FirstOrDefault() ?? Layer.CreateDefault();
+        LayerRowChanged?.Invoke(this, new LayerRowChangedEventArgs(first, null));
+    }
+
+    /// <summary>Deletes a saved snapshot</summary>
+    public void DeleteState(string name)
+    {
+        var snapshot = SavedStates.FirstOrDefault(s =>
+            string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (snapshot != null)
+            SavedStates.Remove(snapshot);
     }
 
     // ── Bulk operations ───────────────────────────────────────────────────────
@@ -203,7 +276,8 @@ public class LayerManagerViewModel : INotifyPropertyChanged
 
     private void OnRowChanged(object? sender, PropertyChangedEventArgs e)
     {
-        // Row VM writes directly into the Layer model — no further action needed
+        if (sender is LayerRowViewModel row)
+            LayerRowChanged?.Invoke(this, new LayerRowChangedEventArgs(row.Layer, e.PropertyName));
     }
 
     // ── INotifyPropertyChanged ────────────────────────────────────────────────
@@ -211,6 +285,18 @@ public class LayerManagerViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     protected void OnPropertyChanged([CallerMemberName] string? p = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(p));
+}
+
+public sealed class LayerRowChangedEventArgs : EventArgs
+{
+    public LayerRowChangedEventArgs(Layer layer, string? propertyName)
+    {
+        Layer = layer;
+        PropertyName = propertyName;
+    }
+
+    public Layer Layer { get; }
+    public string? PropertyName { get; }
 }
 
 /// <summary>
@@ -302,4 +388,26 @@ internal sealed class RelayCommand : ICommand
         add    => CommandManager.RequerySuggested += value;
         remove => CommandManager.RequerySuggested -= value;
     }
+}
+
+/// <summary>
+/// A saved snapshot of all layer states (visibility, freeze, lock, plot).
+/// </summary>
+public class LayerStateSnapshot
+{
+    public string Name { get; set; } = string.Empty;
+    public DateTime SavedUtc { get; set; }
+    public List<LayerStateEntry> LayerStates { get; set; } = new();
+}
+
+/// <summary>
+/// Per-layer state within a snapshot.
+/// </summary>
+public class LayerStateEntry
+{
+    public string LayerId { get; set; } = string.Empty;
+    public bool IsVisible { get; set; } = true;
+    public bool IsFrozen { get; set; }
+    public bool IsLocked { get; set; }
+    public bool IsPlotted { get; set; } = true;
 }

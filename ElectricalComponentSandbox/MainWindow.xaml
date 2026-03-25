@@ -71,6 +71,14 @@
                 <MenuItem Header="Export BOM CSV..." Click="ExportBomCsv_Click"/>
                 <MenuItem Header="Export IFC..." Click="ExportIfc_Click"/>
                 <MenuItem Header="Export Schedule (Excel)..." Click="ExportSchedule_Click"/>
+                <MenuItem Header="Export DXF (AutoCAD)..." Click="ExportScheduleDxf_Click"/>
+                <MenuItem Header="Export XFDF Markups..." Click="ExportXfdf_Click"/>
+                <MenuItem Header="Import XFDF Markups..." Click="ImportXfdf_Click"/>
+                <Separator/>
+                <MenuItem Header="Plot to Image..." Click="PlotToImage_Click"/>
+                <MenuItem Header="Insert Schedule Table..." Click="InsertScheduleTable_Click"/>
+                <MenuItem Header="Insert Symbol Legend..." Click="InsertSymbolLegend_Click"/>
+                <MenuItem Header="Insert Title Block..." Click="InsertTitleBlock_Click"/>
                 <MenuItem Header="Run Revit Introspection..." Click="RunRevitIntrospection_Click"/>
                 <Separator/>
                 <MenuItem Header="Exit" Click="Exit_Click"/>
@@ -79,8 +87,31 @@
                 <MenuItem Header="Undo" Click="Undo_Click" InputGestureText="Ctrl+Z"/>
                 <MenuItem Header="Redo" Click="Redo_Click" InputGestureText="Ctrl+Y"/>
                 <Separator/>
+                <MenuItem Header="Cut" Click="CutComponent_Click" InputGestureText="Ctrl+X"/>
+                <MenuItem Header="Copy" Click="CopyComponent_Click" InputGestureText="Ctrl+C"/>
+                <MenuItem Header="Paste" Click="PasteComponent_Click" InputGestureText="Ctrl+V"/>
+                <MenuItem Header="Paste in Place" Click="PasteInPlace_Click"/>
+                <Separator/>
                 <MenuItem Header="Delete Selected" Click="DeleteComponent_Click" InputGestureText="Delete"/>
+                <MenuItem Header="Duplicate Selected" Click="DuplicateComponent_Click" InputGestureText="Ctrl+D"/>
+                <MenuItem Header="Rectangular Array..." Click="RectangularArray_Click"/>
+                <MenuItem Header="Polar Array..." Click="PolarArray_Click"/>
+                <Separator/>
+                <MenuItem Header="Move..." Click="MoveComponent_Click"/>
+                <MenuItem Header="Rotate..." Click="RotateComponent_Click"/>
+                <MenuItem Header="Mirror..." Click="MirrorComponent_Click"/>
+                <Separator/>
                 <MenuItem Header="Delete Last Bend Point" Click="DeleteLastBendPoint_Click"/>
+                <Separator/>
+                <MenuItem Header="Measure Distance" Click="MeasureDistance_Click"/>
+                <MenuItem Header="Measure Area" Click="MeasureArea_Click"/>
+                <Separator/>
+                <MenuItem Header="Select by Layer..." Click="SelectByLayer_Click"/>
+                <MenuItem Header="Select by Type..." Click="SelectByType_Click"/>
+                <MenuItem Header="Select Similar" Click="SelectSimilar_Click"/>
+                <MenuItem Header="Quick Select..." Click="QuickSelect_Click"/>
+                <Separator/>
+                <MenuItem Header="Bulk Edit Properties..." Click="BulkEditProperties_Click"/>
             </MenuItem>
             <MenuItem Header="View">
                 <MenuItem Header="Show Grid" IsCheckable="True" IsChecked="{Binding ShowGrid}"/>
@@ -106,6 +137,17 @@
                     <Separator/>
                     <MenuItem x:Name="NamedViewsListMenuItem" Header="(none saved)" IsEnabled="False"/>
                 </MenuItem>
+                <Separator/>
+                <Separator/>
+                <MenuItem Header="Zoom Extents" Click="ZoomExtents_Click" InputGestureText="Ctrl+Shift+E"/>
+                <MenuItem Header="Zoom Selection" Click="ZoomSelection_Click"/>
+                <MenuItem Header="Home View" Click="HomeView_Click" InputGestureText="Home"/>
+                <Separator/>
+                <MenuItem Header="Layer States">
+                    <MenuItem Header="Save Layer State..." Click="SaveLayerState_Click"/>
+                    <MenuItem Header="Restore Layer State..." Click="RestoreLayerState_Click"/>
+                    <MenuItem Header="Delete Layer State..." Click="DeleteLayerState_Click"/>
+                </MenuItem>
             </MenuItem>
             <MenuItem Header="Tools">
                 <MenuItem Header="Conduit" Click="AddConduit_Click"/>
@@ -121,6 +163,7 @@
                 <MenuItem Header="Sketch Rectangle" Click="SketchRectangle_Click"/>
                 <MenuItem Header="Convert Sketch" Click="ConvertSketch_Click"/>
                 <MenuItem Header="Freehand Conduit" Click="FreehandConduit_Click"/>
+                <MenuItem Header="Offset Conduit..." Click="OffsetConduit_Click"/>
                 <MenuItem Header="Auto-Route" Click="AutoRoute_Click"/>
                 <Separator/>
                 <MenuItem Header="Export Runs CSV" Click="ExportRunSchedule_Click"/>
@@ -129,6 +172,34 @@
                 <MenuItem Header="Plot Style (CTB)..." Click="PlotStyleManager_Click"/>
                 <MenuItem Header="Page Setup..." Click="PageSetup_Click"/>
                 <MenuItem Header="Print Preview..." Click="PrintPreview_Click"/>
+            </MenuItem>
+            <MenuItem Header="Electrical">
+                <MenuItem Header="Voltage Drop Calculator..." Click="VoltageDropCalc_Click"/>
+                <MenuItem Header="Wire Size Recommendation..." Click="WireSizeCalc_Click"/>
+                <Separator/>
+                <MenuItem Header="Panel Load Summary..." Click="PanelLoadSummary_Click"/>
+                <MenuItem Header="Rebuild Panel Schedules" Click="RebuildPanelSchedules_Click"/>
+                <Separator/>
+                <MenuItem Header="Add Circuit..." Click="AddCircuit_Click"/>
+                <MenuItem Header="Edit Circuit..." Click="EditCircuit_Click"/>
+                <MenuItem Header="Delete Circuit..." Click="DeleteCircuit_Click"/>
+                <Separator/>
+                <MenuItem Header="Conduit Fill Check..." Click="ConduitFillCheck_Click"/>
+                <Separator/>
+                <MenuItem Header="Run NEC Design Check..." Click="RunNecCheck_Click"/>
+                <MenuItem Header="Export Electrical Report..." Click="ExportElectricalReport_Click"/>
+            </MenuItem>
+            <MenuItem Header="Markup">
+                <MenuItem Header="Add Callout..." Click="AddCallout_Click"/>
+                <MenuItem Header="Add Leader Note..." Click="AddLeaderNote_Click"/>
+                <MenuItem Header="Add Revision Cloud..." Click="AddRevisionCloud_Click"/>
+                <MenuItem Header="Add Stamp..." Click="AddStamp_Click"/>
+                <Separator/>
+                <MenuItem Header="Approve Selected" Click="ApproveMarkup_Click"/>
+                <MenuItem Header="Reject Selected" Click="RejectMarkup_Click"/>
+                <MenuItem Header="Resolve Selected" Click="ResolveMarkup_Click"/>
+                <Separator/>
+                <MenuItem Header="Markup Summary..." Click="MarkupSummary_Click"/>
             </MenuItem>
             <MenuItem Header="Sketch Rectangle" Click="SketchRectangle_Click"/>
             <MenuItem Header="Convert Sketch" Click="ConvertSketch_Click"/>
@@ -365,6 +436,7 @@
                             <DataGridCheckBoxColumn Header="V" Binding="{Binding IsVisible, UpdateSourceTrigger=PropertyChanged}" Width="24"/>
                             <DataGridCheckBoxColumn Header="L" Binding="{Binding IsLocked, UpdateSourceTrigger=PropertyChanged}" Width="24"/>
                             <DataGridCheckBoxColumn Header="F" Binding="{Binding IsFrozen, UpdateSourceTrigger=PropertyChanged}" Width="24"/>
+                            <DataGridCheckBoxColumn Header="P" Binding="{Binding IsPlotted, UpdateSourceTrigger=PropertyChanged}" Width="24"/>
                             <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" IsReadOnly="True"/>
                             <DataGridTextColumn Header="Color" Binding="{Binding Color}" Width="50" IsReadOnly="True"/>
                         </DataGrid.Columns>
@@ -696,19 +768,26 @@
                     <TabItem Header="Markups">
                         <DockPanel>
                             <!-- Filter bar -->
-                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4,4,4,0">
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4,4,4,0" VerticalAlignment="Center">
                                 <TextBlock Text="Status:" VerticalAlignment="Center" FontSize="11"/>
-                                <ComboBox x:Name="MarkupStatusFilterCombo" Width="80" FontSize="11" Margin="3,0,6,0"
-                                          SelectedValuePath="Content"
+                                <ComboBox x:Name="MarkupStatusFilterCombo" Width="92" FontSize="11" Margin="3,0,8,0"
+                                          ItemsSource="{Binding MarkupTool.StatusFilterOptions}"
+                                          SelectedItem="{Binding MarkupTool.StatusFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                           SelectionChanged="MarkupStatusFilter_Changed">
-                                    <ComboBoxItem Content="All" IsSelected="True"/>
-                                    <ComboBoxItem Content="Open"/>
-                                    <ComboBoxItem Content="InProgress"/>
-                                    <ComboBoxItem Content="Resolved"/>
-                                    <ComboBoxItem Content="Closed"/>
                                 </ComboBox>
-                                <TextBox x:Name="MarkupSearchBox" Width="100" FontSize="11"
-                                         ToolTip="Search markup labels"
+                                <TextBlock Text="Type:" VerticalAlignment="Center" FontSize="11"/>
+                                <ComboBox x:Name="MarkupTypeFilterCombo" Width="120" FontSize="11" Margin="3,0,8,0"
+                                          ItemsSource="{Binding MarkupTool.TypeFilterOptions}"
+                                          SelectedItem="{Binding MarkupTool.TypeFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          SelectionChanged="MarkupTypeFilter_Changed"/>
+                                <TextBlock Text="Layer:" VerticalAlignment="Center" FontSize="11"/>
+                                <ComboBox x:Name="MarkupLayerFilterCombo" Width="112" FontSize="11" Margin="3,0,8,0"
+                                          ItemsSource="{Binding MarkupTool.LayerFilterOptions}"
+                                          SelectedItem="{Binding MarkupTool.LayerFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          SelectionChanged="MarkupLayerFilter_Changed"/>
+                                <TextBlock Text="Search:" VerticalAlignment="Center" FontSize="11"/>
+                                <TextBox x:Name="MarkupSearchBox" Width="122" FontSize="11" Margin="3,0,8,0"
+                                         ToolTip="Search labels, subjects, layers, and authors"
                                          TextChanged="MarkupSearch_Changed"/>
                             </StackPanel>
                             <!-- Counts -->
@@ -717,7 +796,22 @@
                                            Text="{Binding MarkupTool.TotalCount, StringFormat='Total: {0}'}"/>
                                 <TextBlock FontSize="10" Foreground="OrangeRed" Margin="8,0,0,0"
                                            Text="{Binding MarkupTool.OpenCount, StringFormat='Open: {0}'}"/>
+                                <TextBlock FontSize="10" Foreground="#9A6700" Margin="8,0,0,0"
+                                           Text="{Binding MarkupTool.InProgressCount, StringFormat='In Progress: {0}'}"/>
+                                <TextBlock FontSize="10" Foreground="#0A7D29" Margin="8,0,0,0"
+                                           Text="{Binding MarkupTool.ApprovedCount, StringFormat='Resolved: {0}'}"/>
+                                <TextBlock FontSize="10" Foreground="#6E7781" Margin="8,0,0,0"
+                                           Text="{Binding MarkupTool.VoidCount, StringFormat='Void: {0}'}"/>
+                                <TextBlock FontSize="10" Foreground="Gray" Margin="8,0,0,0"
+                                           Text="{Binding MarkupTool.FilteredCount, StringFormat='Filtered: {0}'}"/>
                             </StackPanel>
+                            <!-- Actions -->
+                            <WrapPanel DockPanel.Dock="Top" Margin="4,4,4,6">
+                                <Button Content="Resolve" Command="{Binding MarkupTool.ApproveSelectedCommand}" Padding="8,2" Margin="0,0,6,4"/>
+                                <Button Content="Void" Command="{Binding MarkupTool.RejectSelectedCommand}" Padding="8,2" Margin="0,0,6,4"/>
+                                <Button Content="Delete" Command="{Binding MarkupTool.DeleteSelectedCommand}" Padding="8,2" Margin="0,0,6,4"/>
+                                <Button Content="Clear Filters" Command="{Binding MarkupTool.ClearFiltersCommand}" Padding="8,2" Margin="0,0,6,4"/>
+                            </WrapPanel>
                             <!-- List -->
                             <ListView x:Name="MarkupListView"
                                       ItemsSource="{Binding MarkupTool.FilteredMarkups}"
@@ -725,9 +819,13 @@
                                       FontSize="11">
                                 <ListView.View>
                                     <GridView>
-                                        <GridViewColumn Header="Type" DisplayMemberBinding="{Binding Type}" Width="80"/>
-                                        <GridViewColumn Header="Label" DisplayMemberBinding="{Binding Metadata.Label}" Width="100"/>
-                                        <GridViewColumn Header="Status" DisplayMemberBinding="{Binding Status}" Width="70"/>
+                                        <GridViewColumn Header="Status" DisplayMemberBinding="{Binding StatusDisplayText}" Width="84"/>
+                                        <GridViewColumn Header="Type" DisplayMemberBinding="{Binding TypeDisplayText}" Width="96"/>
+                                        <GridViewColumn Header="Label" DisplayMemberBinding="{Binding Metadata.Label}" Width="130"/>
+                                        <GridViewColumn Header="Subject" DisplayMemberBinding="{Binding Metadata.Subject}" Width="118"/>
+                                        <GridViewColumn Header="Layer" DisplayMemberBinding="{Binding LayerDisplayText}" Width="102"/>
+                                        <GridViewColumn Header="Author" DisplayMemberBinding="{Binding Metadata.Author}" Width="92"/>
+                                        <GridViewColumn Header="Modified" DisplayMemberBinding="{Binding ModifiedDisplayText}" Width="118"/>
                                     </GridView>
                                 </ListView.View>
                             </ListView>
@@ -751,5 +849,32 @@
                           DragCompleted="PropertiesGridSplitter_DragCompleted"/>
 
         </Grid>
+
+        <!-- Status Bar -->
+        <StatusBar x:Name="AppStatusBar" DockPanel.Dock="Bottom" Height="24">
+            <StatusBarItem>
+                <TextBlock x:Name="CoordinateText" Text="X: 0.000  Y: 0.000" FontFamily="Consolas" FontSize="11"/>
+            </StatusBarItem>
+            <Separator/>
+            <StatusBarItem>
+                <TextBlock x:Name="ZoomLevelText" Text="Zoom: 100%" FontFamily="Consolas" FontSize="11"/>
+            </StatusBarItem>
+            <Separator/>
+            <StatusBarItem>
+                <TextBlock x:Name="ComponentCountText" Text="Components: 0" FontSize="11"/>
+            </StatusBarItem>
+            <Separator/>
+            <StatusBarItem>
+                <TextBlock x:Name="SelectionCountText" Text="Selected: 0" FontSize="11"/>
+            </StatusBarItem>
+            <Separator/>
+            <StatusBarItem>
+                <TextBlock x:Name="ActiveLayerText" Text="Layer: Default" FontSize="11"/>
+            </StatusBarItem>
+            <Separator/>
+            <StatusBarItem>
+                <TextBlock x:Name="OrthoStatusText" Text="" FontSize="11" Foreground="Gray"/>
+            </StatusBarItem>
+        </StatusBar>
     </DockPanel>
 </Window>

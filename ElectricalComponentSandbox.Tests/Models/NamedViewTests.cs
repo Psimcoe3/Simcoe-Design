@@ -1,3 +1,4 @@
+using System.Windows.Media.Media3D;
 using ElectricalComponentSandbox.Models;
 
 namespace ElectricalComponentSandbox.Tests.Models;
@@ -15,6 +16,11 @@ public class NamedViewTests
         Assert.Equal(0.0, view.PanY);
         Assert.Equal(1.0, view.Zoom);
         Assert.Null(view.VisibleLayerIds);
+        Assert.Null(view.CameraPosition);
+        Assert.Null(view.CameraLookDirection);
+        Assert.Null(view.CameraUpDirection);
+        Assert.Null(view.CameraFieldOfView);
+        Assert.False(view.Has3DCamera);
     }
 
     [Fact]
@@ -44,5 +50,33 @@ public class NamedViewTests
         var b = new NamedView();
 
         Assert.NotEqual(a.Id, b.Id);
+    }
+
+    [Fact]
+    public void Has3DCamera_TrueWhenCameraPositionSet()
+    {
+        var view = new NamedView
+        {
+            CameraPosition = new Point3D(10, 5, 20),
+            CameraLookDirection = new Vector3D(-1, -0.5, -1),
+            CameraUpDirection = new Vector3D(0, 1, 0),
+            CameraFieldOfView = 60.0
+        };
+
+        Assert.True(view.Has3DCamera);
+        Assert.Equal(new Point3D(10, 5, 20), view.CameraPosition);
+        Assert.Equal(60.0, view.CameraFieldOfView);
+    }
+
+    [Fact]
+    public void Has3DCamera_FalseWhenNoCameraPosition()
+    {
+        var view = new NamedView
+        {
+            CameraLookDirection = new Vector3D(0, 0, -1),
+            CameraUpDirection = new Vector3D(0, 1, 0)
+        };
+
+        Assert.False(view.Has3DCamera);
     }
 }

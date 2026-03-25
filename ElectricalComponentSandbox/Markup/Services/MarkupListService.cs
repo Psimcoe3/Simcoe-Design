@@ -76,7 +76,7 @@ public class MarkupListService
     public string ExportCsv(IEnumerable<MarkupRecord> markups)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Id,Type,Label,Subject,Layer,Measurement,Depth,Author,Created");
+        sb.AppendLine("Id,Status,Type,Label,Subject,Layer,Measurement,Depth,Author,Created,Modified,StatusNote");
 
         int row = 0;
         foreach (var m in markups)
@@ -85,14 +85,17 @@ public class MarkupListService
             string measurement = _measurement.GetMeasurementSummary(m);
             sb.AppendLine(
                 $"\"{EscapeCsv(m.Id)}\"," +
-                $"{m.Type}," +
+                $"\"{EscapeCsv(m.StatusDisplayText)}\"," +
+                $"\"{EscapeCsv(m.TypeDisplayText)}\"," +
                 $"\"{EscapeCsv(m.Metadata.Label)}\"," +
                 $"\"{EscapeCsv(m.Metadata.Subject)}\"," +
                 $"\"{EscapeCsv(m.LayerId)}\"," +
                 $"\"{EscapeCsv(measurement)}\"," +
                 $"{m.Metadata.Depth:F2}," +
                 $"\"{EscapeCsv(m.Metadata.Author)}\"," +
-                $"{m.Metadata.CreatedUtc:O}");
+                $"{m.Metadata.CreatedUtc:O}," +
+                $"{m.Metadata.ModifiedUtc:O}," +
+                $"\"{EscapeCsv(m.StatusNote ?? string.Empty)}\"");
         }
 
         return sb.ToString();

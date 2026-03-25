@@ -5,6 +5,7 @@ using System.Windows.Media;
 using System.Windows.Media.Media3D;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using ElectricalComponentSandbox.Markup.Models;
 using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.Rendering;
 using ElectricalComponentSandbox.Services;
@@ -26,7 +27,15 @@ public partial class MainWindow
         SyncCanvasInteractionControllerFromViewModel();
 
         _canvasInteractionController.SelectionRectCompleted += OnCanvasInteractionSelectionRectCompleted;
-        _canvasInteractionController.CursorMoved += () => SkiaBackground.RequestRedraw();
+        _canvasInteractionController.CursorMoved += () =>
+        {
+            SkiaBackground.RequestRedraw();
+            if (_canvasInteractionController != null)
+            {
+                var docPt = _canvasInteractionController.CursorDocPoint;
+                UpdateCoordinateDisplay(docPt.X, docPt.Y);
+            }
+        };
     }
 
     private void SyncCanvasInteractionControllerFromViewModel()
@@ -56,6 +65,7 @@ public partial class MainWindow
         drawingContext.PanX = -PlanScrollViewer.HorizontalOffset;
         drawingContext.PanY = -PlanScrollViewer.VerticalOffset;
         drawingContext.SyncCoordTransform();
+        SyncPdfCalibrationState();
     }
 
     private void ApplyCanvasInteractionContextToViewport()
@@ -91,20 +101,50 @@ public partial class MainWindow
                 componentRect,
                 source: component);
         }
+
+        foreach (var markup in _viewModel.Markups)
+        {
+            if (!IsLayerVisible(layerVisibilityById, markup.LayerId))
+                continue;
+
+            _canvasInteractionShadowTree.AddOrUpdate(markup);
+        }
     }
 
     private void OnCanvasInteractionSelectionRectCompleted(IReadOnlyList<string> ids, bool crossing)
     {
         _viewModel.SelectedComponentIds.Clear();
         ElectricalComponent? firstSelected = null;
+        MarkupRecord? firstMarkup = null;
 
         foreach (var id in ids)
         {
-            _viewModel.SelectedComponentIds.Add(id);
-            firstSelected ??= _viewModel.Components.FirstOrDefault(component => string.Equals(component.Id, id, StringComparison.Ordinal));
+            var component = _viewModel.Components.FirstOrDefault(candidate => string.Equals(candidate.Id, id, StringComparison.Ordinal));
+            if (component != null)
+            {
+                _viewModel.SelectedComponentIds.Add(id);
+                firstSelected ??= component;
+                continue;
+            }
+
+            firstMarkup ??= _viewModel.Markups.FirstOrDefault(markup => string.Equals(markup.Id, id, StringComparison.Ordinal));
         }
 
-        _viewModel.SelectedComponent = firstSelected;
+        if (firstSelected != null)
+        {
+            ClearMarkupSelection();
+            _viewModel.SelectedComponent = firstSelected;
+        }
+        else if (firstMarkup != null)
+        {
+            _viewModel.SelectedComponent = null;
+            _viewModel.MarkupTool.SelectedMarkup = firstMarkup;
+        }
+        else
+        {
+            _viewModel.SelectedComponent = null;
+            ClearMarkupSelection();
+        }
 
         ActionLogService.Instance.Log(LogCategory.Selection, "2D selection rectangle",
             $"Mode: {(crossing ? "Crossing" : "Window")}, Hits: {ids.Count}");
@@ -208,6 +248,12 @@ public partial class MainWindow
     private void PlanCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         var pos = e.GetPosition(PlanCanvas);
+
+        if (_isPdfCalibrationMode)
+        {
+            e.Handled = HandlePdfCalibrationCanvasClick(pos);
+            return;
+        }
 
         if (TryPlacePendingComponentOnCanvas(pos))
         {
@@ -325,6 +371,7 @@ public partial class MainWindow
         var hit = PlanCanvas.InputHitTest(pos) as FrameworkElement;
         if (hit != null && _canvasToComponentMap.ContainsKey(hit))
         {
+            ClearMarkupSelection();
             if (_isEditingConduitPath &&
                 _viewModel.SelectedComponent is ConduitComponent &&
                 ReferenceEquals(_canvasToComponentMap[hit], _viewModel.SelectedComponent))
@@ -346,6 +393,7 @@ public partial class MainWindow
 
         if (hit != null && _canvasToSketchMap.TryGetValue(hit, out var hitSketch))
         {
+            ClearMarkupSelection();
             _selectedSketchPrimitive = hitSketch;
             Update2DCanvas();
             e.Handled = true;
@@ -354,6 +402,7 @@ public partial class MainWindow
 
         if (TryHitConduitPath2D(pos, out var hitConduit) && hitConduit != null)
         {
+            ClearMarkupSelection();
             _selectedSketchPrimitive = null;
             _viewModel.SelectedComponent = hitConduit;
 
@@ -375,6 +424,12 @@ public partial class MainWindow
             return;
         }
 
+        if (TryStartMarkupSelectionDrag(pos))
+        {
+            e.Handled = true;
+            return;
+        }
+
         PlanCanvas.CaptureMouse();
         SyncCanvasInteractionContextFromViewport();
         _canvasInteractionController?.OnMouseDown(e.GetPosition(PlanScrollViewer), MouseButton.Left, Keyboard.Modifiers);
@@ -384,6 +439,13 @@ public partial class MainWindow
     private void PlanCanvas_MouseMove(object sender, MouseEventArgs e)
     {
         var pos = e.GetPosition(PlanCanvas);
+
+        if (_isPdfCalibrationMode)
+        {
+            UpdatePdfCalibrationPreview(pos);
+            e.Handled = true;
+            return;
+        }
 
         if (HandleFreehandMouseMove(pos))
         {
@@ -498,6 +560,13 @@ public partial class MainWindow
             _lastMousePosition = pos;
             QueueSceneRefresh(update2D: true);
         }
+        else if (_isDraggingMarkup)
+        {
+            _canvasInteractionController?.ClearPreview();
+            UpdateDraggedMarkupPreview(pos);
+            e.Handled = true;
+            return;
+        }
 
         SyncCanvasInteractionContextFromViewport();
         _canvasInteractionController?.OnMouseMove(e.GetPosition(PlanScrollViewer), _snapEndpointsCache, _snapSegmentsCache);
@@ -544,6 +613,16 @@ public partial class MainWindow
                 SetMobilePane(MobilePane.Properties);
             }
         }
+
+        if (_isDraggingMarkup)
+        {
+            FinishMarkupSelectionDrag();
+            _mobileSelectionCandidate = false;
+            PlanCanvas.ReleaseMouseCapture();
+            e.Handled = true;
+            return;
+        }
+
         _isDragging2D = false;
         _draggedElement2D = null;
         _mobileSelectionCandidate = false;
@@ -780,6 +859,12 @@ public partial class MainWindow
 
     private void UpdatePlanCanvasCursor()
     {
+        if (_isPdfCalibrationMode)
+        {
+            PlanCanvas.Cursor = Cursors.Cross;
+            return;
+        }
+
         if (_isFreehandDrawing)
         {
             PlanCanvas.Cursor = Cursors.Pen;
@@ -793,6 +878,9 @@ public partial class MainWindow
 
     private void ExitConflictingAuthoringModes()
     {
+        if (_isPdfCalibrationMode)
+            CancelPdfCalibrationMode(logCancellation: false);
+
         if (_isSketchLineMode || _isSketchRectangleMode)
             ExitSketchModes();
 

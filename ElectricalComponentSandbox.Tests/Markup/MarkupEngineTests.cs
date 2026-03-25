@@ -860,7 +860,7 @@ public class MarkupListServiceTests
     {
         var (svc, markups) = CreateTestData();
         var csv = svc.ExportCsv(markups);
-        Assert.Contains("Id,Type,Label", csv);
+        Assert.Contains("Id,Status,Type,Label", csv);
         Assert.Contains("Run A", csv);
     }
 
@@ -1275,5 +1275,39 @@ public class NullPdfGeometryProviderTests
         var (w, h) = provider.GetPageSize();
         Assert.Equal(612, w);
         Assert.Equal(792, h);
+    }
+}
+
+public class MarkupStatusTests
+{
+    [Theory]
+    [InlineData(MarkupStatus.Open, "Open")]
+    [InlineData(MarkupStatus.InProgress, "In Progress")]
+    [InlineData(MarkupStatus.Resolved, "Resolved")]
+    [InlineData(MarkupStatus.Approved, "Approved")]
+    [InlineData(MarkupStatus.Rejected, "Rejected")]
+    [InlineData(MarkupStatus.Void, "Void")]
+    public void GetStatusDisplayText_ReturnsExpected(MarkupStatus status, string expected)
+    {
+        Assert.Equal(expected, MarkupRecord.GetStatusDisplayText(status));
+    }
+
+    [Fact]
+    public void MarkupStatus_HasFullConstructionReviewCycle()
+    {
+        var values = Enum.GetValues<MarkupStatus>();
+        Assert.Contains(MarkupStatus.Open, values);
+        Assert.Contains(MarkupStatus.InProgress, values);
+        Assert.Contains(MarkupStatus.Resolved, values);
+        Assert.Contains(MarkupStatus.Approved, values);
+        Assert.Contains(MarkupStatus.Rejected, values);
+        Assert.Contains(MarkupStatus.Void, values);
+    }
+
+    [Fact]
+    public void DefaultStatus_IsOpen()
+    {
+        var record = new MarkupRecord();
+        Assert.Equal(MarkupStatus.Open, record.Status);
     }
 }

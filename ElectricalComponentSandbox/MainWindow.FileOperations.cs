@@ -265,6 +265,113 @@ public partial class MainWindow
         return System.IO.Path.GetDirectoryName(dialog.FileName);
     }
     
+    // ── XFDF Export / Import ──────────────────────────────────────────────
+
+    private void ExportXfdf_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_viewModel.Markups.Any())
+        {
+            MessageBox.Show("No markups to export.", "Export XFDF",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dlg = new SaveFileDialog
+        {
+            Filter = "XFDF Files (*.xfdf)|*.xfdf",
+            FileName = "markups.xfdf",
+            Title = "Export XFDF Markups"
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        try
+        {
+            _viewModel.XfdfService.ExportToFile(_viewModel.Markups, dlg.FileName);
+            ActionLogService.Instance.Log(LogCategory.FileOperation, "XFDF exported",
+                $"File: {dlg.FileName}, Markups: {_viewModel.Markups.Count}");
+            MessageBox.Show($"Exported {_viewModel.Markups.Count} markup(s) to XFDF.",
+                "Export XFDF", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            ActionLogService.Instance.LogError(LogCategory.FileOperation, "XFDF export failed", ex);
+            MessageBox.Show($"XFDF export failed:\n{ex.Message}", "Export XFDF",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void ImportXfdf_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFileDialog
+        {
+            Filter = "XFDF Files (*.xfdf)|*.xfdf|All Files (*.*)|*.*",
+            Title = "Import XFDF Markups"
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        try
+        {
+            var imported = _viewModel.XfdfService.ImportFromFile(dlg.FileName);
+            foreach (var markup in imported)
+                _viewModel.Markups.Add(markup);
+
+            ActionLogService.Instance.Log(LogCategory.FileOperation, "XFDF imported",
+                $"File: {dlg.FileName}, Imported: {imported.Count}");
+            MessageBox.Show($"Imported {imported.Count} markup(s) from XFDF.",
+                "Import XFDF", MessageBoxButton.OK, MessageBoxImage.Information);
+
+            QueueSceneRefresh(update2D: true, update3D: false, updateProperties: false);
+        }
+        catch (Exception ex)
+        {
+            ActionLogService.Instance.LogError(LogCategory.FileOperation, "XFDF import failed", ex);
+            MessageBox.Show($"XFDF import failed:\n{ex.Message}", "Import XFDF",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    // ── Plot to Image ────────────────────────────────────────────────────
+
+    private void PlotToImage_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_viewModel.Components.Any())
+        {
+            MessageBox.Show("No components to plot.", "Plot to Image",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dlg = new SaveFileDialog
+        {
+            Filter = "PNG Files (*.png)|*.png",
+            FileName = "plot.png",
+            Title = "Plot to Image"
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        try
+        {
+            var layout = new Models.PlotLayout();
+            var extents = _viewModel.PlotService.ComputeModelExtents(
+                _viewModel.Components.ToList(), _viewModel.Layers.ToList());
+            var bitmap = _viewModel.PlotService.RenderToBitmap(
+                layout, null, _viewModel.Components.ToList(),
+                _viewModel.Layers.ToList(), extents);
+            _viewModel.PlotService.SaveToPng(bitmap, dlg.FileName);
+
+            ActionLogService.Instance.Log(LogCategory.FileOperation, "Plot to image complete",
+                $"File: {dlg.FileName}");
+            MessageBox.Show("Plot exported successfully!", "Plot to Image",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            ActionLogService.Instance.LogError(LogCategory.FileOperation, "Plot to image failed", ex);
+            MessageBox.Show($"Plot to image failed:\n{ex.Message}", "Plot to Image",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     private void Exit_Click(object sender, RoutedEventArgs e)
     {
         ActionLogService.Instance.Log(LogCategory.Application, "Exit requested via menu");

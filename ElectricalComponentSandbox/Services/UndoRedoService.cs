@@ -111,9 +111,9 @@ public class MoveComponentAction : IUndoableAction
     private readonly Models.ElectricalComponent _component;
     private readonly System.Windows.Media.Media3D.Point3D _oldPosition;
     private readonly System.Windows.Media.Media3D.Point3D _newPosition;
-    
+
     public string Description => $"Move {_component.Name}";
-    
+
     public MoveComponentAction(Models.ElectricalComponent component,
         System.Windows.Media.Media3D.Point3D oldPosition,
         System.Windows.Media.Media3D.Point3D newPosition)
@@ -122,7 +122,320 @@ public class MoveComponentAction : IUndoableAction
         _oldPosition = oldPosition;
         _newPosition = newPosition;
     }
-    
+
     public void Execute() => _component.Position = _newPosition;
     public void Undo() => _component.Position = _oldPosition;
+}
+
+/// <summary>
+/// Action to rotate a component
+/// </summary>
+public class RotateComponentAction : IUndoableAction
+{
+    private readonly Models.ElectricalComponent _component;
+    private readonly System.Windows.Media.Media3D.Vector3D _oldRotation;
+    private readonly System.Windows.Media.Media3D.Vector3D _newRotation;
+
+    public string Description => $"Rotate {_component.Name}";
+
+    public RotateComponentAction(Models.ElectricalComponent component,
+        System.Windows.Media.Media3D.Vector3D oldRotation,
+        System.Windows.Media.Media3D.Vector3D newRotation)
+    {
+        _component = component;
+        _oldRotation = oldRotation;
+        _newRotation = newRotation;
+    }
+
+    public void Execute() => _component.Rotation = _newRotation;
+    public void Undo() => _component.Rotation = _oldRotation;
+}
+
+/// <summary>
+/// Action to scale a component
+/// </summary>
+public class ScaleComponentAction : IUndoableAction
+{
+    private readonly Models.ElectricalComponent _component;
+    private readonly System.Windows.Media.Media3D.Vector3D _oldScale;
+    private readonly System.Windows.Media.Media3D.Vector3D _newScale;
+
+    public string Description => $"Scale {_component.Name}";
+
+    public ScaleComponentAction(Models.ElectricalComponent component,
+        System.Windows.Media.Media3D.Vector3D oldScale,
+        System.Windows.Media.Media3D.Vector3D newScale)
+    {
+        _component = component;
+        _oldScale = oldScale;
+        _newScale = newScale;
+    }
+
+    public void Execute() => _component.Scale = _newScale;
+    public void Undo() => _component.Scale = _oldScale;
+}
+
+/// <summary>
+/// Action to mirror a component about an axis.
+/// Mirrors the position relative to a mirror line and optionally flips the scale.
+/// </summary>
+public class MirrorComponentAction : IUndoableAction
+{
+    private readonly Models.ElectricalComponent _component;
+    private readonly System.Windows.Media.Media3D.Point3D _oldPosition;
+    private readonly System.Windows.Media.Media3D.Point3D _newPosition;
+    private readonly System.Windows.Media.Media3D.Vector3D _oldScale;
+    private readonly System.Windows.Media.Media3D.Vector3D _newScale;
+
+    public string Description => $"Mirror {_component.Name}";
+
+    public MirrorComponentAction(Models.ElectricalComponent component,
+        System.Windows.Media.Media3D.Point3D mirroredPosition,
+        System.Windows.Media.Media3D.Vector3D mirroredScale)
+    {
+        _component = component;
+        _oldPosition = component.Position;
+        _newPosition = mirroredPosition;
+        _oldScale = component.Scale;
+        _newScale = mirroredScale;
+    }
+
+    public void Execute()
+    {
+        _component.Position = _newPosition;
+        _component.Scale = _newScale;
+    }
+
+    public void Undo()
+    {
+        _component.Position = _oldPosition;
+        _component.Scale = _oldScale;
+    }
+}
+
+/// <summary>
+/// Action to change a single property on a component (layer, elevation, material, etc.)
+/// </summary>
+public class PropertyChangeAction<T> : IUndoableAction
+{
+    private readonly Action<T> _setter;
+    private readonly T _oldValue;
+    private readonly T _newValue;
+    private readonly string _description;
+
+    public string Description => _description;
+
+    public PropertyChangeAction(string description, Action<T> setter, T oldValue, T newValue)
+    {
+        _description = description;
+        _setter = setter;
+        _oldValue = oldValue;
+        _newValue = newValue;
+    }
+
+    public void Execute() => _setter(_newValue);
+    public void Undo() => _setter(_oldValue);
+}
+
+/// <summary>
+/// Groups multiple actions into a single undoable transaction.
+/// All sub-actions execute/undo as a unit.
+/// </summary>
+public class CompositeAction : IUndoableAction
+{
+    private readonly List<IUndoableAction> _actions;
+
+    public string Description { get; }
+
+    public CompositeAction(string description, IEnumerable<IUndoableAction> actions)
+    {
+        Description = description;
+        _actions = actions.ToList();
+    }
+
+    public void Execute()
+    {
+        foreach (var action in _actions)
+            action.Execute();
+    }
+
+    public void Undo()
+    {
+        for (int i = _actions.Count - 1; i >= 0; i--)
+            _actions[i].Undo();
+    }
+}
+
+/// <summary>
+/// Undoable layer visibility change.
+/// </summary>
+public class LayerVisibilityAction : IUndoableAction
+{
+    private readonly Models.Layer _layer;
+    private readonly bool _oldVisible;
+    private readonly bool _newVisible;
+
+    public string Description => $"Toggle visibility: {_layer.Name}";
+
+    public LayerVisibilityAction(Models.Layer layer, bool newVisible)
+    {
+        _layer = layer;
+        _oldVisible = layer.IsVisible;
+        _newVisible = newVisible;
+    }
+
+    public void Execute() => _layer.IsVisible = _newVisible;
+    public void Undo() => _layer.IsVisible = _oldVisible;
+}
+
+/// <summary>
+/// Undoable layer freeze/thaw change.
+/// </summary>
+public class LayerFreezeAction : IUndoableAction
+{
+    private readonly Models.Layer _layer;
+    private readonly bool _oldFrozen;
+    private readonly bool _newFrozen;
+
+    public string Description => $"Toggle freeze: {_layer.Name}";
+
+    public LayerFreezeAction(Models.Layer layer, bool newFrozen)
+    {
+        _layer = layer;
+        _oldFrozen = layer.IsFrozen;
+        _newFrozen = newFrozen;
+    }
+
+    public void Execute() => _layer.IsFrozen = _newFrozen;
+    public void Undo() => _layer.IsFrozen = _oldFrozen;
+}
+
+/// <summary>
+/// Undoable layer lock change.
+/// </summary>
+public class LayerLockAction : IUndoableAction
+{
+    private readonly Models.Layer _layer;
+    private readonly bool _oldLocked;
+    private readonly bool _newLocked;
+
+    public string Description => $"Toggle lock: {_layer.Name}";
+
+    public LayerLockAction(Models.Layer layer, bool newLocked)
+    {
+        _layer = layer;
+        _oldLocked = layer.IsLocked;
+        _newLocked = newLocked;
+    }
+
+    public void Execute() => _layer.IsLocked = _newLocked;
+    public void Undo() => _layer.IsLocked = _oldLocked;
+}
+
+/// <summary>
+/// Undoable add to a generic collection (circuits, markups, etc.).
+/// </summary>
+public class AddItemAction<T> : IUndoableAction
+{
+    private readonly IList<T> _collection;
+    private readonly T _item;
+    private readonly string _itemName;
+
+    public string Description => $"Add {_itemName}";
+
+    public AddItemAction(IList<T> collection, T item, string itemName)
+    {
+        _collection = collection;
+        _item = item;
+        _itemName = itemName;
+    }
+
+    public void Execute() => _collection.Add(_item);
+    public void Undo() => _collection.Remove(_item);
+}
+
+/// <summary>
+/// Undoable remove from a generic collection.
+/// </summary>
+public class RemoveItemAction<T> : IUndoableAction
+{
+    private readonly IList<T> _collection;
+    private readonly T _item;
+    private readonly int _index;
+    private readonly string _itemName;
+
+    public string Description => $"Remove {_itemName}";
+
+    public RemoveItemAction(IList<T> collection, T item, string itemName)
+    {
+        _collection = collection;
+        _item = item;
+        _index = collection.IndexOf(item);
+        _itemName = itemName;
+    }
+
+    public void Execute() => _collection.Remove(_item);
+    public void Undo()
+    {
+        if (_index >= 0 && _index <= _collection.Count)
+            _collection.Insert(_index, _item);
+        else
+            _collection.Add(_item);
+    }
+}
+
+/// <summary>
+/// Undoable bulk property change using SelectionFilterService results.
+/// </summary>
+public class BulkPropertyChangeAction : IUndoableAction
+{
+    private readonly SelectionFilterService _filterService;
+    private readonly IReadOnlyList<Models.ElectricalComponent> _components;
+    private readonly BulkPropertyChange _change;
+    private BulkPropertyChangeResult? _result;
+
+    public string Description => $"Bulk edit {_components.Count} component(s)";
+
+    public BulkPropertyChangeAction(
+        SelectionFilterService filterService,
+        IReadOnlyList<Models.ElectricalComponent> components,
+        BulkPropertyChange change)
+    {
+        _filterService = filterService;
+        _components = components;
+        _change = change;
+    }
+
+    public void Execute()
+    {
+        _result = _filterService.ApplyBulkPropertyChange(_components, _change);
+    }
+
+    public void Undo()
+    {
+        if (_result != null)
+            _filterService.RevertBulkPropertyChange(_result);
+    }
+}
+
+/// <summary>
+/// Undoable markup status change.
+/// </summary>
+public class MarkupStatusAction : IUndoableAction
+{
+    private readonly Markup.Models.MarkupRecord _markup;
+    private readonly Markup.Models.MarkupStatus _oldStatus;
+    private readonly Markup.Models.MarkupStatus _newStatus;
+
+    public string Description => $"Change markup status: {_markup.Metadata.Label}";
+
+    public MarkupStatusAction(Markup.Models.MarkupRecord markup, Markup.Models.MarkupStatus newStatus)
+    {
+        _markup = markup;
+        _oldStatus = markup.Status;
+        _newStatus = newStatus;
+    }
+
+    public void Execute() => _markup.Status = _newStatus;
+    public void Undo() => _markup.Status = _oldStatus;
 }

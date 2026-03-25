@@ -391,12 +391,26 @@ public partial class MainWindow
         var minElevation = Math.Min(path.Min(p => p.Z), elevation) - 2.0;
         var maxElevation = Math.Max(path.Max(p => p.Z), elevation) + 12.0;
 
+        // Build obstacle boxes from non-conduit components for pathfinding
+        var obstacles = _viewModel.Components
+            .Where(c => c is not ConduitComponent)
+            .Select(c => new ObstacleBox(
+                new XYZ(c.Position.X - c.Parameters.Width / 2,
+                        c.Position.Z - c.Parameters.Height / 2,
+                        minElevation),
+                new XYZ(c.Position.X + c.Parameters.Width / 2,
+                        c.Position.Z + c.Parameters.Height / 2,
+                        maxElevation)))
+            .ToList();
+
         var run = ConduitEngine.AutoRouteAlongPath(path, new RoutingOptions
         {
             ConduitTypeId = ConduitEngine.Store.Settings.DefaultConduitTypeId,
             TradeSize = ConduitEngine.DrawingTool.TradeSize,
             Elevation = elevation,
             Material = ConduitEngine.DrawingTool.Material,
+            UsePathfinding = obstacles.Count > 0,
+            Obstacles = obstacles,
             RoutingBounds = new ObstacleBox(
                 new XYZ(planBounds.MinX, planBounds.MinZ, minElevation),
                 new XYZ(planBounds.MaxX, planBounds.MaxZ, maxElevation))

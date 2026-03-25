@@ -6,27 +6,22 @@ namespace ElectricalComponentSandbox.Services.Export;
 
 /// <summary>
 /// Writes an IFC4 P21 (STEP Physical File) with electrical components mapped to
-/// standard IfcElectricalDomain entities.
+/// standard IfcElectricalDomain entities with real geometry.
 ///
-/// Subset implemented:
-///   IfcProject / IfcSite / IfcBuilding / IfcBuildingStorey  — minimal context
-///   IfcCableCarrierSegment   — conduit runs
-///   IfcDistributionFlowElement — panels and junction boxes
-///   IfcFlowFitting            — conduit fittings / elbows
-///   IfcLocalPlacement / IfcAxis2Placement3D  — origin-only placement
-///   IfcProductDefinitionShape — empty for now (geometry not exported)
+/// Geometry implemented:
+///   IfcExtrudedAreaSolid for boxes, panels, supports, cable trays, hangers
+///   IfcExtrudedAreaSolid (circular profile) for conduit segments
+///   IfcLocalPlacement with actual X, Y, Z coordinates
+///   IfcShapeRepresentation → IfcProductDefinitionShape
+///   IfcPropertySet for component parameters
 /// </summary>
 public class IfcExportService
 {
     // ── Configuration ─────────────────────────────────────────────────────────
 
-    /// <summary>Application name written to the FILE_DESCRIPTION header.</summary>
     public string ApplicationName  { get; set; } = "SimcoeDesign ElectricalComponentSandbox";
-    /// <summary>Project name embedded in IfcProject.</summary>
     public string ProjectName      { get; set; } = "Electrical Project";
-    /// <summary>Author string for FILE_NAME AUTHOR field.</summary>
     public string AuthorName       { get; set; } = Environment.UserName;
-    /// <summary>Originating organisation string.</summary>
     public string Organisation     { get; set; } = "Simcoe Design";
 
     // ── Entity counter ────────────────────────────────────────────────────────
@@ -36,9 +31,6 @@ public class IfcExportService
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Exports <paramref name="components"/> to an IFC4 P21 text file at <paramref name="outputPath"/>.
-    /// </summary>
     public void ExportToIfc(IEnumerable<ElectricalComponent> components, string outputPath)
     {
         _id = 0;
@@ -56,12 +48,12 @@ public class IfcExportService
         lines.Add("");
         lines.Add("DATA;");
 
-        // ── Shared geometry helpers ───────────────────────────────────────────
-        int idOrigin      = NextId(); // IfcCartesianPoint (0,0,0)
-        int idDirZ        = NextId(); // IfcDirection (0,0,1)
-        int idDirX        = NextId(); // IfcDirection (1,0,0)
-        int idPlacement0  = NextId(); // IfcAxis2Placement3D — world origin
-        int idLocalWorld  = NextId(); // IfcLocalPlacement — world placement
+        // ── Shared geometry context ───────────────────────────────────────────
+        int idOrigin     = NextId();
+        int idDirZ       = NextId();
+        int idDirX       = NextId();
+        int idPlacement0 = NextId();
+        int idLocalWorld = NextId();
 
         lines.Add($"#{idOrigin}     = IFCCARTESIANPOINT((0.,0.,0.));");
         lines.Add($"#{idDirZ}       = IFCDIRECTION((0.,0.,1.));");
@@ -69,16 +61,19 @@ public class IfcExportService
         lines.Add($"#{idPlacement0} = IFCAXIS2PLACEMENT3D(#{idOrigin},#{idDirZ},#{idDirX});");
         lines.Add($"#{idLocalWorld} = IFCLOCALPLACEMENT($,#{idPlacement0});");
 
-        // ── IfcProject context ────────────────────────────────────────────────
-        int idOwnerHist  = NextId();
-        int idProject    = NextId();
-        int idSite       = NextId();
-        int idBuilding   = NextId();
-        int idStorey     = NextId();
+        // Geometric representation context
+        int idRepCtx = NextId();
+        lines.Add($"#{idRepCtx} = IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#{idPlacement0},$);");
 
-        string guid1 = NewIfcGuid();
+        // ── IfcProject context ────────────────────────────────────────────────
+        int idOwnerHist = NextId();
+        int idProject   = NextId();
+        int idSite      = NextId();
+        int idBuilding  = NextId();
+        int idStorey    = NextId();
+
         lines.Add($"#{idOwnerHist} = IFCOWNERHISTORY($,$,$,$.NOTDEFINED.,$,$,$,0);");
-        lines.Add($"#{idProject}   = IFCPROJECT('{guid1}',#{idOwnerHist},'{EscapeString(ProjectName)}',$,$,$,$,$,$);");
+        lines.Add($"#{idProject}   = IFCPROJECT('{NewIfcGuid()}',#{idOwnerHist},'{EscapeString(ProjectName)}',$,$,$,$,(#{idRepCtx}),$);");
         lines.Add($"#{idSite}      = IFCSITE('{NewIfcGuid()}',#{idOwnerHist},'Site',$,$,#{idLocalWorld},$,$,.ELEMENT.,$,$,$,$,$);");
         lines.Add($"#{idBuilding}  = IFCBUILDING('{NewIfcGuid()}',#{idOwnerHist},'Building',$,$,#{idLocalWorld},$,$,.ELEMENT.,$,$,$);");
         lines.Add($"#{idStorey}    = IFCBUILDINGSTOREY('{NewIfcGuid()}',#{idOwnerHist},'Level 1',$,$,#{idLocalWorld},$,$,.ELEMENT.,0.);");
@@ -88,20 +83,20 @@ public class IfcExportService
 
         foreach (var comp in components)
         {
-            int entityId = WriteComponent(comp, lines, idOwnerHist, idLocalWorld);
+            int entityId = WriteComponent(comp, lines, idOwnerHist, idLocalWorld, idRepCtx);
             if (entityId > 0)
                 storeyRelItems.Add(entityId);
         }
 
         // ── Aggregation relationships ─────────────────────────────────────────
-        lines.Add($"#{ NextId()} = IFCRELAGGREGATES('{NewIfcGuid()}',#{idOwnerHist},$,$,#{idProject},(#{idSite}));");
-        lines.Add($"#{ NextId()} = IFCRELAGGREGATES('{NewIfcGuid()}',#{idOwnerHist},$,$,#{idSite},(#{idBuilding}));");
-        lines.Add($"#{ NextId()} = IFCRELAGGREGATES('{NewIfcGuid()}',#{idOwnerHist},$,$,#{idBuilding},(#{idStorey}));");
+        lines.Add($"#{NextId()} = IFCRELAGGREGATES('{NewIfcGuid()}',#{idOwnerHist},$,$,#{idProject},(#{idSite}));");
+        lines.Add($"#{NextId()} = IFCRELAGGREGATES('{NewIfcGuid()}',#{idOwnerHist},$,$,#{idSite},(#{idBuilding}));");
+        lines.Add($"#{NextId()} = IFCRELAGGREGATES('{NewIfcGuid()}',#{idOwnerHist},$,$,#{idBuilding},(#{idStorey}));");
 
         if (storeyRelItems.Count > 0)
         {
             var contained = string.Join(",", storeyRelItems.Select(i => $"#{i}"));
-            lines.Add($"#{ NextId()} = IFCRELCONTAINEDINSPATIALSTRUCTURE('{NewIfcGuid()}',#{idOwnerHist},$,$,({contained}),#{idStorey});");
+            lines.Add($"#{NextId()} = IFCRELCONTAINEDINSPATIALSTRUCTURE('{NewIfcGuid()}',#{idOwnerHist},$,$,({contained}),#{idStorey});");
         }
 
         lines.Add("ENDSEC;");
@@ -113,96 +108,239 @@ public class IfcExportService
     // ── Component mapping ─────────────────────────────────────────────────────
 
     private int WriteComponent(ElectricalComponent comp, List<string> lines,
-                                int ownerHist, int worldPlacement)
+                                int ownerHist, int worldPlacement, int repCtx)
     {
         var name     = EscapeString(string.IsNullOrEmpty(comp.Name) ? comp.GetType().Name : comp.Name);
         var typeDesc = comp.GetType().Name;
-        var guid     = NewIfcGuid();
 
-        // Map component type to IFC entity name
-        string ifcType = comp switch
-        {
-            ConduitComponent  => "IFCCABLECARRIERSEGMENT",
-            PanelComponent    => "IFCDISTRIBUTIONFLOWelement",
-            BoxComponent      => "IFCDISTRIBUTIONFLOWELEMENTTYPE",
-            _                 => "IFCDISTRIBUTIONELEMENT"
-        };
+        // Write placement with actual coordinates
+        int placId = WriteComponentPlacement(comp, lines, worldPlacement);
 
+        // Write geometry
+        int shapeId = WriteComponentGeometry(comp, lines, repCtx);
+
+        // Map component type to IFC entity
         int id = NextId();
+        string ifcGuid = NewIfcGuid();
 
-        // Placement referencing world
-        int placId = NextId();
-        int axId   = NextId();
-        int ptId   = WriteComponentOrigin(comp, lines);
+        switch (comp)
+        {
+            case ConduitComponent conduit:
+                lines.Add($"#{id} = IFCCABLECARRIERSEGMENT('{ifcGuid}',#{ownerHist},'{name}',$,'{typeDesc}',#{placId},#{shapeId},$,.CONDUIT.);");
+                WriteConduitPSet(conduit, lines, ownerHist, id);
+                break;
+
+            case PanelComponent panel:
+                lines.Add($"#{id} = IFCDISTRIBUTIONCONTROLELEMENTTYPE('{ifcGuid}',#{ownerHist},'{name}',$,'{typeDesc}',#{placId},#{shapeId},$,.NOTDEFINED.);");
+                WritePanelPSet(panel, lines, ownerHist, id);
+                break;
+
+            case BoxComponent:
+                lines.Add($"#{id} = IFCJUNCTIONBOX('{ifcGuid}',#{ownerHist},'{name}',$,'{typeDesc}',#{placId},#{shapeId},$,.DATA.);");
+                WriteComponentPSet(comp, lines, ownerHist, id);
+                break;
+
+            default:
+                lines.Add($"#{id} = IFCDISTRIBUTIONELEMENT('{ifcGuid}',#{ownerHist},'{name}',$,'{typeDesc}',#{placId},#{shapeId},$);");
+                WriteComponentPSet(comp, lines, ownerHist, id);
+                break;
+        }
+
+        return id;
+    }
+
+    private int WriteComponentPlacement(ElectricalComponent comp, List<string> lines, int worldPlacement)
+    {
+        double x = comp.Position.X;
+        double y = comp.Position.Y;
+        double z = comp.Parameters.Elevation;
+
+        int ptId   = NextId();
         int dirZId = NextId();
         int dirXId = NextId();
+        int axId   = NextId();
+        int placId = NextId();
 
+        // Apply rotation around Z axis
+        double rotRad = comp.Rotation.Z * Math.PI / 180.0;
+        double cosR = Math.Cos(rotRad);
+        double sinR = Math.Sin(rotRad);
+
+        lines.Add($"#{ptId}   = IFCCARTESIANPOINT(({R(x)},{R(y)},{R(z)}));");
         lines.Add($"#{dirZId} = IFCDIRECTION((0.,0.,1.));");
-        lines.Add($"#{dirXId} = IFCDIRECTION((1.,0.,0.));");
+        lines.Add($"#{dirXId} = IFCDIRECTION(({R(cosR)},{R(sinR)},0.));");
         lines.Add($"#{axId}   = IFCAXIS2PLACEMENT3D(#{ptId},#{dirZId},#{dirXId});");
         lines.Add($"#{placId} = IFCLOCALPLACEMENT(#{worldPlacement},#{axId});");
 
-        // PredefinedType for cable carrier
-        string predefined = comp is ConduitComponent ? ".CONDUIT." : ".NOTDEFINED.";
+        return placId;
+    }
 
-        // Entity line — all fields except ObjectType/Description written as $ where not used
+    private int WriteComponentGeometry(ElectricalComponent comp, List<string> lines, int repCtx)
+    {
+        int solidId;
+
         if (comp is ConduitComponent conduit)
         {
-            lines.Add($"#{id} = IFCCABLECARRIERSEGMENT('{guid}',#{ownerHist},'{name}',$,'{typeDesc}',#{placId},$,$,{predefined.ToUpper()});");
-
-            // Property set for length
-            int psetId = WriteConduitPSet(conduit, lines, ownerHist, id);
-            _ = psetId;
+            solidId = WriteCircularExtrusion(lines,
+                conduit.Diameter / 2.0,
+                conduit.Length);
         }
         else
         {
-            lines.Add($"#{id} = {ifcType.ToUpper()}('{guid}',#{ownerHist},'{name}',$,'{typeDesc}',#{placId},$,$,.NOTDEFINED.);");
+            double w = comp.Parameters.Width * comp.Scale.X;
+            double d = comp.Parameters.Depth * comp.Scale.Y;
+            double h = comp.Parameters.Height * comp.Scale.Z;
+
+            solidId = WriteRectangularExtrusion(lines, w, d, h);
         }
 
-        return id;
+        // IfcShapeRepresentation
+        int repId = NextId();
+        lines.Add($"#{repId} = IFCSHAPEREPRESENTATION(#{repCtx},'Body','SweptSolid',(#{solidId}));");
+
+        // IfcProductDefinitionShape
+        int prodShapeId = NextId();
+        lines.Add($"#{prodShapeId} = IFCPRODUCTDEFINITIONSHAPE($,$,(#{repId}));");
+
+        return prodShapeId;
     }
 
-    private int WriteComponentOrigin(ElectricalComponent comp, List<string> lines)
+    private int WriteRectangularExtrusion(List<string> lines, double width, double depth, double height)
     {
-        // X/Y are not on ComponentParameters; use 0,0 and elevation for Z
-        double z = comp.Parameters.Elevation;
-        int id = NextId();
-        lines.Add($"#{id} = IFCCARTESIANPOINT((0.,0.,{FormatIfcReal(z)}));");
-        return id;
+        double hw = width / 2.0;
+        double hd = depth / 2.0;
+
+        int p1 = NextId(), p2 = NextId(), p3 = NextId(), p4 = NextId();
+        lines.Add($"#{p1} = IFCCARTESIANPOINT(({R(-hw)},{R(-hd)}));");
+        lines.Add($"#{p2} = IFCCARTESIANPOINT(({R(hw)},{R(-hd)}));");
+        lines.Add($"#{p3} = IFCCARTESIANPOINT(({R(hw)},{R(hd)}));");
+        lines.Add($"#{p4} = IFCCARTESIANPOINT(({R(-hw)},{R(hd)}));");
+
+        int polyId = NextId();
+        lines.Add($"#{polyId} = IFCPOLYLINE((#{p1},#{p2},#{p3},#{p4},#{p1}));");
+
+        int profileId = NextId();
+        lines.Add($"#{profileId} = IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#{polyId});");
+
+        int posId = NextId();
+        int originId = NextId();
+        int dirId = NextId();
+        lines.Add($"#{originId} = IFCCARTESIANPOINT((0.,0.,0.));");
+        lines.Add($"#{dirId}    = IFCDIRECTION((0.,0.,1.));");
+        lines.Add($"#{posId}    = IFCAXIS2PLACEMENT3D(#{originId},#{dirId},$);");
+
+        int solidId = NextId();
+        lines.Add($"#{solidId} = IFCEXTRUDEDAREASOLID(#{profileId},#{posId},#{dirId},{R(height)});");
+
+        return solidId;
     }
 
-    private int WriteConduitPSet(ConduitComponent conduit, List<string> lines, int ownerHist, int conduitId)
+    private int WriteCircularExtrusion(List<string> lines, double radius, double length)
     {
-        double length     = conduit.Length;
-        double tradeSize  = conduit.Diameter;
-        string conduitType = conduit.ConduitType;
+        int profileId = NextId();
+        lines.Add($"#{profileId} = IFCCIRCLEPROFILEDEF(.AREA.,$,$,{R(radius)});");
 
-        int pLengthValId   = NextId();
-        int pLengthId      = NextId();
-        int pTradeSizeValId= NextId();
-        int pTradeSizeId   = NextId();
-        int pTypeValId     = NextId();
-        int pTypeId        = NextId();
-        int psetId         = NextId();
-        int relId          = NextId();
+        int originId = NextId();
+        int dirId = NextId();
+        int posId = NextId();
+        lines.Add($"#{originId} = IFCCARTESIANPOINT((0.,0.,0.));");
+        lines.Add($"#{dirId}    = IFCDIRECTION((0.,0.,1.));");
+        lines.Add($"#{posId}    = IFCAXIS2PLACEMENT3D(#{originId},#{dirId},$);");
 
-        lines.Add($"#{pLengthValId}    = IFCREAL({FormatIfcReal(length)});");
-        lines.Add($"#{pLengthId}       = IFCPROPERTYSINGLEVALUE('NominalLength',$,#{pLengthValId},$);");
-        lines.Add($"#{pTradeSizeValId} = IFCREAL({FormatIfcReal(tradeSize)});");
-        lines.Add($"#{pTradeSizeId}    = IFCPROPERTYSINGLEVALUE('TradeSize',$,#{pTradeSizeValId},$);");
-        lines.Add($"#{pTypeValId}      = IFCLABEL('{EscapeString(conduitType)}');");
-        lines.Add($"#{pTypeId}         = IFCPROPERTYSINGLEVALUE('ConduitType',$,#{pTypeValId},$);");
-        lines.Add($"#{psetId}          = IFCPROPERTYSET('{NewIfcGuid()}',#{ownerHist},'Pset_CableCarrierSegmentTypeConduit',$,(#{pLengthId},#{pTradeSizeId},#{pTypeId}));");
-        lines.Add($"#{relId}           = IFCRELDEFINESBYPROPERTIES('{NewIfcGuid()}',#{ownerHist},$,$,(#{conduitId}),#{psetId});");
+        int solidId = NextId();
+        lines.Add($"#{solidId} = IFCEXTRUDEDAREASOLID(#{profileId},#{posId},#{dirId},{R(length)});");
 
-        return psetId;
+        return solidId;
+    }
+
+    // ── Property sets ─────────────────────────────────────────────────────────
+
+    private void WriteConduitPSet(ConduitComponent conduit, List<string> lines, int ownerHist, int entityId)
+    {
+        var props = new List<int>();
+
+        props.Add(WritePropReal(lines, "NominalLength", conduit.Length));
+        props.Add(WritePropReal(lines, "TradeSize", conduit.Diameter));
+        props.Add(WritePropLabel(lines, "ConduitType", conduit.ConduitType));
+        props.Add(WritePropReal(lines, "BendRadius", conduit.BendRadius));
+        props.Add(WritePropLabel(lines, "Material", conduit.Parameters.Material));
+        props.Add(WritePropLabel(lines, "Manufacturer", conduit.Parameters.Manufacturer));
+        props.Add(WritePropLabel(lines, "PartNumber", conduit.Parameters.PartNumber));
+
+        WritePSet(lines, ownerHist, entityId, "Pset_CableCarrierSegmentTypeConduit", props);
+    }
+
+    private void WritePanelPSet(PanelComponent panel, List<string> lines, int ownerHist, int entityId)
+    {
+        var props = new List<int>();
+
+        props.Add(WritePropInt(lines, "CircuitCount", panel.CircuitCount));
+        props.Add(WritePropReal(lines, "Amperage", panel.Amperage));
+        props.Add(WritePropLabel(lines, "PanelType", panel.PanelType));
+        props.Add(WritePropReal(lines, "Elevation", panel.Parameters.Elevation));
+        props.Add(WritePropLabel(lines, "Manufacturer", panel.Parameters.Manufacturer));
+        props.Add(WritePropLabel(lines, "PartNumber", panel.Parameters.PartNumber));
+
+        WritePSet(lines, ownerHist, entityId, "Pset_ElectricalPanel", props);
+    }
+
+    private void WriteComponentPSet(ElectricalComponent comp, List<string> lines, int ownerHist, int entityId)
+    {
+        var props = new List<int>();
+
+        props.Add(WritePropReal(lines, "Width", comp.Parameters.Width));
+        props.Add(WritePropReal(lines, "Height", comp.Parameters.Height));
+        props.Add(WritePropReal(lines, "Depth", comp.Parameters.Depth));
+        props.Add(WritePropReal(lines, "Elevation", comp.Parameters.Elevation));
+        props.Add(WritePropLabel(lines, "Material", comp.Parameters.Material));
+        props.Add(WritePropLabel(lines, "Manufacturer", comp.Parameters.Manufacturer));
+        props.Add(WritePropLabel(lines, "PartNumber", comp.Parameters.PartNumber));
+
+        WritePSet(lines, ownerHist, entityId, "Pset_ComponentParameters", props);
+    }
+
+    private void WritePSet(List<string> lines, int ownerHist, int entityId,
+        string psetName, List<int> propIds)
+    {
+        int psetId = NextId();
+        var propRefs = string.Join(",", propIds.Select(i => $"#{i}"));
+        lines.Add($"#{psetId} = IFCPROPERTYSET('{NewIfcGuid()}',#{ownerHist},'{psetName}',$,({propRefs}));");
+
+        int relId = NextId();
+        lines.Add($"#{relId} = IFCRELDEFINESBYPROPERTIES('{NewIfcGuid()}',#{ownerHist},$,$,(#{entityId}),#{psetId});");
+    }
+
+    private int WritePropReal(List<string> lines, string name, double value)
+    {
+        int valId = NextId();
+        int propId = NextId();
+        lines.Add($"#{valId}  = IFCREAL({R(value)});");
+        lines.Add($"#{propId} = IFCPROPERTYSINGLEVALUE('{name}',$,#{valId},$);");
+        return propId;
+    }
+
+    private int WritePropInt(List<string> lines, string name, int value)
+    {
+        int valId = NextId();
+        int propId = NextId();
+        lines.Add($"#{valId}  = IFCINTEGER({value});");
+        lines.Add($"#{propId} = IFCPROPERTYSINGLEVALUE('{name}',$,#{valId},$);");
+        return propId;
+    }
+
+    private int WritePropLabel(List<string> lines, string name, string value)
+    {
+        int valId = NextId();
+        int propId = NextId();
+        lines.Add($"#{valId}  = IFCLABEL('{EscapeString(value)}');");
+        lines.Add($"#{propId} = IFCPROPERTYSINGLEVALUE('{name}',$,#{valId},$);");
+        return propId;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static string FormatIfcReal(double v)
+    private static string R(double v)
     {
-        // IFC P21 reals must have a decimal point
         var s = v.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
         return s.Contains('.') ? s : s + ".";
     }
@@ -210,21 +348,14 @@ public class IfcExportService
     private static string EscapeString(string? value)
     {
         if (string.IsNullOrEmpty(value)) return string.Empty;
-        // P21 strings: single-quotes doubled, backslashes doubled
         return value.Replace("\\", "\\\\").Replace("'", "''");
     }
 
-    /// <summary>
-    /// Generates a pseudo-random Base64-encoded IFC GUID (22 chars, IFC character set).
-    /// Real projects should use a deterministic GUID derived from the component ID.
-    /// </summary>
     private static string NewIfcGuid()
     {
-        // IFC GUID uses a custom Base64 alphabet over the raw bytes of a GUID
         const string chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
         var bytes = Guid.NewGuid().ToByteArray();
         var sb    = new StringBuilder(22);
-        // Encode 16 bytes into 22 base-64 IFC characters
         ulong part1 = BitConverter.ToUInt64(bytes, 0);
         ulong part2 = BitConverter.ToUInt64(bytes, 8);
         for (int i = 0; i < 11; i++)
