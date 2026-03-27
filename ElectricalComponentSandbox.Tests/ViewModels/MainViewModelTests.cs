@@ -1,4 +1,6 @@
+using System.Windows;
 using System.Windows.Media.Media3D;
+using ElectricalComponentSandbox.Markup.Models;
 using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.Services;
 using ElectricalComponentSandbox.ViewModels;
@@ -250,6 +252,171 @@ public class MainViewModelTests
         var vm = new MainViewModel();
 
         Assert.NotNull(vm.FileService);
+    }
+
+    [Fact]
+    public void MarkupTool_SelectedStructuredMarkup_ExposesAnnotationMetadata()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            TextContent = "PANEL-A"
+        };
+        markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationKindField] = DrawingAnnotationMarkupService.ScheduleTableAnnotationKind;
+        markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationTextRoleField] = DrawingAnnotationMarkupService.TextRoleCell;
+        markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationTextKeyField] = "NAME";
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasStructuredSelection);
+        Assert.True(vm.MarkupTool.HasTextEditableSelection);
+        Assert.True(vm.MarkupTool.HasSelectedMarkupTextDetails);
+        Assert.Equal(DrawingAnnotationMarkupService.ScheduleTableAnnotationKind, vm.MarkupTool.SelectedMarkupAnnotationKind);
+        Assert.Equal(DrawingAnnotationMarkupService.TextRoleCell, vm.MarkupTool.SelectedMarkupAnnotationRole);
+        Assert.Equal("NAME", vm.MarkupTool.SelectedMarkupAnnotationKey);
+        Assert.Equal("Direct text edit available for structured schedule, legend, and title-block text", vm.MarkupTool.SelectedMarkupTextEditSummary);
+        Assert.Equal("Current Value: PANEL-A", vm.MarkupTool.SelectedMarkupTextDetails);
+    }
+
+    [Fact]
+    public void MarkupTool_SelectedPlainMarkup_HidesStructuredAnnotationMetadata()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle
+        };
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.False(vm.MarkupTool.HasStructuredSelection);
+        Assert.False(vm.MarkupTool.HasTextEditableSelection);
+        Assert.False(vm.MarkupTool.HasSelectedMarkupTextDetails);
+        Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupAnnotationKind);
+        Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupAnnotationRole);
+        Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupAnnotationKey);
+        Assert.Equal("Direct text editing is currently available for structured schedule, legend, and title-block text only", vm.MarkupTool.SelectedMarkupTextEditSummary);
+        Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupTextDetails);
+    }
+
+    [Fact]
+    public void MarkupTool_RefreshSelectedMarkupPresentation_UpdatesTextDetailsAfterEdit()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            TextContent = "PANEL-A"
+        };
+        markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationKindField] = DrawingAnnotationMarkupService.ScheduleTableAnnotationKind;
+        markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationTextRoleField] = DrawingAnnotationMarkupService.TextRoleCell;
+        markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationTextKeyField] = "NAME";
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        markup.TextContent = "PANEL-B";
+        vm.MarkupTool.RefreshSelectedMarkupPresentation();
+
+        Assert.Equal("Current Value: PANEL-B", vm.MarkupTool.SelectedMarkupTextDetails);
+    }
+
+    [Fact]
+    public void MarkupTool_SelectedCircleMarkup_ReportsGeometryEditability()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Radius = 12
+        };
+        markup.Vertices.Add(new Point(0, 0));
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasGeometryEditableSelection);
+        Assert.True(vm.MarkupTool.HasGeometryShortcutHint);
+        Assert.True(vm.MarkupTool.HasSelectedMarkupGeometryDetails);
+        Assert.Equal("Numeric edit available: radius", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.Equal("Shortcut: Ctrl+Shift+G", vm.MarkupTool.SelectedMarkupGeometryShortcutHint);
+        Assert.Equal("Radius: 12", vm.MarkupTool.SelectedMarkupGeometryDetails);
+    }
+
+    [Fact]
+    public void MarkupTool_GroupedArcSelection_DisablesGeometryEditability()
+    {
+        var vm = new MainViewModel();
+        var selectedMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 10
+        };
+        selectedMarkup.Vertices.Add(new Point(0, 0));
+        selectedMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = "group-1";
+
+        var groupedPeer = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            TextContent = "peer"
+        };
+        groupedPeer.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = "group-1";
+
+        vm.Markups.Add(selectedMarkup);
+        vm.Markups.Add(groupedPeer);
+        vm.MarkupTool.SelectedMarkup = selectedMarkup;
+
+        Assert.False(vm.MarkupTool.HasGeometryEditableSelection);
+        Assert.False(vm.MarkupTool.HasGeometryShortcutHint);
+        Assert.False(vm.MarkupTool.HasSelectedMarkupGeometryDetails);
+        Assert.Equal("Numeric geometry editing is disabled for grouped selections", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupGeometryShortcutHint);
+        Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupGeometryDetails);
+    }
+
+    [Fact]
+    public void MarkupTool_SelectedArcMarkup_ExposesGeometryDetails()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 18.5,
+            ArcStartDeg = 30,
+            ArcSweepDeg = 120
+        };
+        markup.Vertices.Add(new Point(0, 0));
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasGeometryEditableSelection);
+        Assert.Equal(
+            $"Radius: 18.5{Environment.NewLine}Start: 30 deg{Environment.NewLine}End: 150 deg{Environment.NewLine}Sweep: 120 deg",
+            vm.MarkupTool.SelectedMarkupGeometryDetails);
+    }
+
+    [Fact]
+    public void MarkupTool_RefreshSelectedMarkupPresentation_UpdatesGeometryDetailsAfterEdit()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Radius = 12
+        };
+        markup.Vertices.Add(new Point(0, 0));
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        markup.Radius = 24.25;
+        vm.MarkupTool.RefreshSelectedMarkupPresentation();
+
+        Assert.Equal("Radius: 24.25", vm.MarkupTool.SelectedMarkupGeometryDetails);
     }
 
     // ===== New Feature Tests =====

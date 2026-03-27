@@ -424,6 +424,42 @@ public partial class MainWindow
             return;
         }
 
+        if (TryStartMarkupArcAngleDrag(pos))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (TryStartMarkupRadiusDrag(pos))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (e.ClickCount == 2 && TryEditStructuredMarkupText(pos))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (e.ClickCount == 2 && TryInsertMarkupVertex(pos))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (TryStartMarkupVertexDrag(pos))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (TryStartMarkupResizeDrag(pos))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (TryStartMarkupSelectionDrag(pos))
         {
             e.Handled = true;
@@ -560,6 +596,34 @@ public partial class MainWindow
             _lastMousePosition = pos;
             QueueSceneRefresh(update2D: true);
         }
+        else if (_isDraggingMarkupArcAngle)
+        {
+            _canvasInteractionController?.ClearPreview();
+            UpdateDraggedMarkupArcAnglePreview(pos);
+            e.Handled = true;
+            return;
+        }
+        else if (_isDraggingMarkupRadius)
+        {
+            _canvasInteractionController?.ClearPreview();
+            UpdateDraggedMarkupRadiusPreview(pos);
+            e.Handled = true;
+            return;
+        }
+        else if (_isDraggingMarkupVertex)
+        {
+            _canvasInteractionController?.ClearPreview();
+            UpdateDraggedMarkupVertexPreview(pos);
+            e.Handled = true;
+            return;
+        }
+        else if (_isResizingMarkup)
+        {
+            _canvasInteractionController?.ClearPreview();
+            UpdateMarkupResizePreview(pos);
+            e.Handled = true;
+            return;
+        }
         else if (_isDraggingMarkup)
         {
             _canvasInteractionController?.ClearPreview();
@@ -617,6 +681,42 @@ public partial class MainWindow
         if (_isDraggingMarkup)
         {
             FinishMarkupSelectionDrag();
+            _mobileSelectionCandidate = false;
+            PlanCanvas.ReleaseMouseCapture();
+            e.Handled = true;
+            return;
+        }
+
+        if (_isDraggingMarkupArcAngle)
+        {
+            FinishMarkupArcAngleDrag();
+            _mobileSelectionCandidate = false;
+            PlanCanvas.ReleaseMouseCapture();
+            e.Handled = true;
+            return;
+        }
+
+        if (_isDraggingMarkupRadius)
+        {
+            FinishMarkupRadiusDrag();
+            _mobileSelectionCandidate = false;
+            PlanCanvas.ReleaseMouseCapture();
+            e.Handled = true;
+            return;
+        }
+
+        if (_isDraggingMarkupVertex)
+        {
+            FinishMarkupVertexDrag();
+            _mobileSelectionCandidate = false;
+            PlanCanvas.ReleaseMouseCapture();
+            e.Handled = true;
+            return;
+        }
+
+        if (_isResizingMarkup)
+        {
+            FinishMarkupResizeDrag();
             _mobileSelectionCandidate = false;
             PlanCanvas.ReleaseMouseCapture();
             e.Handled = true;

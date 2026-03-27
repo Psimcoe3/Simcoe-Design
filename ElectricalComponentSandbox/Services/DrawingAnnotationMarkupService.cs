@@ -14,6 +14,20 @@ public sealed class DrawingAnnotationMarkupService
 {
     public const string DefaultLayerId = "markup-default";
     public const string AnnotationGroupIdField = "AnnotationGroupId";
+    public const string AnnotationKindField = "AnnotationKind";
+    public const string AnnotationTextRoleField = "AnnotationTextRole";
+    public const string AnnotationTextKeyField = "AnnotationTextKey";
+    public const string AnnotationRowIndexField = "AnnotationRowIndex";
+    public const string AnnotationColumnIndexField = "AnnotationColumnIndex";
+    public const string ScheduleTableAnnotationKind = "ScheduleTable";
+    public const string SymbolLegendAnnotationKind = "SymbolLegend";
+    public const string TitleBlockAnnotationKind = "TitleBlock";
+    public const string TextRoleTitle = "Title";
+    public const string TextRoleHeader = "Header";
+    public const string TextRoleCell = "Cell";
+    public const string TextRoleFieldLabel = "FieldLabel";
+    public const string TextRoleFieldValue = "FieldValue";
+    public const string TextRoleZoneLabel = "ZoneLabel";
     public const string TextAlignField = "TextAlign";
     public const string BoldField = "Bold";
     public const double PdfPointsPerInch = 72.0;
@@ -22,6 +36,15 @@ public sealed class DrawingAnnotationMarkupService
         ScheduleTable table,
         Point origin,
         string layerId = DefaultLayerId)
+    {
+        return CreateScheduleTableMarkups(table, origin, layerId, ScheduleTableAnnotationKind);
+    }
+
+    private IReadOnlyList<MarkupRecord> CreateScheduleTableMarkups(
+        ScheduleTable table,
+        Point origin,
+        string layerId,
+        string annotationKind)
     {
         var markups = new List<MarkupRecord>();
         var groupId = Guid.NewGuid().ToString("N");
@@ -61,7 +84,7 @@ public sealed class DrawingAnnotationMarkupService
             subject: "Table Header",
             label: $"{table.Title} Header"));
 
-        markups.Add(CreateTextMarkup(
+        var titleMarkup = CreateTextMarkup(
             table.Title,
             new Point(origin.X + table.TotalWidth / 2.0, origin.Y + table.TitleHeight * 0.68),
             layerId,
@@ -71,7 +94,9 @@ public sealed class DrawingAnnotationMarkupService
             subject: "Table Title",
             label: table.Title,
             align: TextAlign.Center,
-            bold: true));
+            bold: true);
+        SetStructuredTextMetadata(titleMarkup, annotationKind, TextRoleTitle, table.Title);
+        markups.Add(titleMarkup);
 
         double currentX = origin.X;
         for (int i = 0; i < table.Columns.Count; i++)
@@ -82,7 +107,7 @@ public sealed class DrawingAnnotationMarkupService
                 column.Alignment,
                 fontSize: 9.0);
 
-            markups.Add(CreateTextMarkup(
+            var headerMarkup = CreateTextMarkup(
                 column.Header,
                 headerAnchor,
                 layerId,
@@ -92,7 +117,9 @@ public sealed class DrawingAnnotationMarkupService
                 subject: "Table Header",
                 label: column.Header,
                 align: ToTextAlign(column.Alignment),
-                bold: true));
+                bold: true);
+            SetStructuredTextMetadata(headerMarkup, annotationKind, TextRoleHeader, column.Header, columnIndex: i);
+            markups.Add(headerMarkup);
 
             currentX += column.Width;
             if (i < table.Columns.Count - 1)
@@ -143,7 +170,7 @@ public sealed class DrawingAnnotationMarkupService
                 var value = colIndex < row.Length ? row[colIndex] ?? string.Empty : string.Empty;
                 if (!string.IsNullOrWhiteSpace(value))
                 {
-                    markups.Add(CreateTextMarkup(
+                    var cellMarkup = CreateTextMarkup(
                         value,
                         GetCellTextAnchor(cellRect, column.Alignment, fontSize: 8.6),
                         layerId,
@@ -152,7 +179,9 @@ public sealed class DrawingAnnotationMarkupService
                         strokeColor: "#FF111827",
                         subject: "Table Cell",
                         label: column.Header,
-                        align: ToTextAlign(column.Alignment)));
+                        align: ToTextAlign(column.Alignment));
+                    SetStructuredTextMetadata(cellMarkup, annotationKind, TextRoleCell, column.Header, rowIndex, colIndex);
+                    markups.Add(cellMarkup);
                 }
 
                 currentX += column.Width;
@@ -213,7 +242,7 @@ public sealed class DrawingAnnotationMarkupService
             });
         }
 
-        var markups = CreateScheduleTableMarkups(table, origin, layerId).ToList();
+        var markups = CreateScheduleTableMarkups(table, origin, layerId, SymbolLegendAnnotationKind).ToList();
         var groupId = markups
             .Select(m => GetCustomField(m, AnnotationGroupIdField))
             .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
@@ -300,7 +329,7 @@ public sealed class DrawingAnnotationMarkupService
                 subject: "Zone Mark",
                 label: zone.Label));
 
-            markups.Add(CreateTextMarkup(
+            var zoneLabelMarkup = CreateTextMarkup(
                 zone.Label,
                 labelPoint,
                 layerId,
@@ -310,7 +339,9 @@ public sealed class DrawingAnnotationMarkupService
                 subject: "Zone Label",
                 label: zone.Label,
                 align: TextAlign.Center,
-                bold: true));
+                bold: true);
+            SetStructuredTextMetadata(zoneLabelMarkup, TitleBlockAnnotationKind, TextRoleZoneLabel, zone.Label);
+            markups.Add(zoneLabelMarkup);
         }
 
         foreach (var cell in geometry.TitleBlockCells)
@@ -326,7 +357,7 @@ public sealed class DrawingAnnotationMarkupService
                 subject: "Title Block Cell",
                 label: cell.Label));
 
-            markups.Add(CreateTextMarkup(
+            var labelMarkup = CreateTextMarkup(
                 cell.Label,
                 new Point(rect.X + 4.0, rect.Y + 10.0),
                 layerId,
@@ -335,11 +366,13 @@ public sealed class DrawingAnnotationMarkupService
                 strokeColor: "#FF6B7280",
                 subject: "Title Block Label",
                 label: cell.Label,
-                bold: true));
+                bold: true);
+            SetStructuredTextMetadata(labelMarkup, TitleBlockAnnotationKind, TextRoleFieldLabel, cell.Label);
+            markups.Add(labelMarkup);
 
             if (!string.IsNullOrWhiteSpace(cell.Value))
             {
-                markups.Add(CreateTextMarkup(
+                var valueMarkup = CreateTextMarkup(
                     cell.Value,
                     new Point(rect.X + 4.0, rect.Y + Math.Min(rect.Height - 4.0, 22.0)),
                     layerId,
@@ -347,7 +380,9 @@ public sealed class DrawingAnnotationMarkupService
                     fontSize: 8.8,
                     strokeColor: "#FF111827",
                     subject: "Title Block Value",
-                    label: cell.Label));
+                    label: cell.Label);
+                SetStructuredTextMetadata(valueMarkup, TitleBlockAnnotationKind, TextRoleFieldValue, cell.Label);
+                markups.Add(valueMarkup);
             }
         }
 
@@ -683,6 +718,27 @@ public sealed class DrawingAnnotationMarkupService
         if (markup.BoundingRect == Rect.Empty)
             markup.UpdateBoundingRect();
         return markup;
+    }
+
+    private static void SetStructuredTextMetadata(
+        MarkupRecord markup,
+        string annotationKind,
+        string textRole,
+        string? textKey = null,
+        int? rowIndex = null,
+        int? columnIndex = null)
+    {
+        markup.Metadata.CustomFields[AnnotationKindField] = annotationKind;
+        markup.Metadata.CustomFields[AnnotationTextRoleField] = textRole;
+
+        if (!string.IsNullOrWhiteSpace(textKey))
+            markup.Metadata.CustomFields[AnnotationTextKeyField] = textKey;
+
+        if (rowIndex.HasValue)
+            markup.Metadata.CustomFields[AnnotationRowIndexField] = rowIndex.Value.ToString(CultureInfo.InvariantCulture);
+
+        if (columnIndex.HasValue)
+            markup.Metadata.CustomFields[AnnotationColumnIndexField] = columnIndex.Value.ToString(CultureInfo.InvariantCulture);
     }
 
     private static Point GetCellTextAnchor(Rect rect, HorizontalAlignment alignment, double fontSize)

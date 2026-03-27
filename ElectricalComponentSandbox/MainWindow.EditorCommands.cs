@@ -51,6 +51,9 @@ public partial class MainWindow
 
     private void DeleteComponent_Click(object sender, RoutedEventArgs e)
     {
+        if (DeleteSelectedMarkupSelection())
+            return;
+
         _viewModel.DeleteSelectedComponent();
     }
 

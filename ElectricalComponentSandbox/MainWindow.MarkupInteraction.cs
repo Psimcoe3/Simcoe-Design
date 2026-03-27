@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Windows;
+using System.Windows.Input;
 using ElectricalComponentSandbox.Markup.Models;
 using ElectricalComponentSandbox.Rendering;
 using ElectricalComponentSandbox.Services;
@@ -7,10 +9,482 @@ namespace ElectricalComponentSandbox;
 
 public partial class MainWindow
 {
+    private bool _isDraggingMarkupArcAngle = false;
     private readonly MarkupInteractionService _markupInteractionService = new();
     private bool _isDraggingMarkup = false;
+    private bool _isDraggingMarkupRadius = false;
+    private bool _isDraggingMarkupVertex = false;
+    private bool _isResizingMarkup = false;
+    private MarkupArcAngleHandle _activeMarkupArcAngleHandle = MarkupArcAngleHandle.None;
+    private MarkupResizeHandle _activeMarkupResizeHandle = MarkupResizeHandle.None;
+    private int _activeMarkupVertexIndex = -1;
+    private Rect _markupResizeStartBounds = Rect.Empty;
     private readonly List<MarkupRecord> _draggedMarkups = new();
+    private readonly List<MarkupRecord> _resizedMarkups = new();
     private readonly Dictionary<string, MarkupGeometrySnapshot> _markupDragStartSnapshots = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, MarkupGeometrySnapshot> _markupResizeStartSnapshots = new(StringComparer.Ordinal);
+    private MarkupRecord? _arcAngleDraggedMarkup;
+    private MarkupGeometrySnapshot? _markupArcAngleStartSnapshot;
+    private MarkupRecord? _radiusDraggedMarkup;
+    private MarkupGeometrySnapshot? _markupRadiusStartSnapshot;
+    private MarkupRecord? _vertexDraggedMarkup;
+    private MarkupGeometrySnapshot? _markupVertexStartSnapshot;
+
+    private bool TryStartMarkupArcAngleDrag(Point canvasPoint)
+    {
+        if (_viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup)
+            return false;
+
+        var selectionSet = _markupInteractionService.GetSelectionSet(selectedMarkup, _viewModel.Markups);
+        if (selectionSet.Count != 1 || !_markupInteractionService.CanEditArcAngles(selectedMarkup))
+            return false;
+
+        var handle = _markupInteractionService.HitTestArcAngleHandle(canvasPoint, selectedMarkup, GetMarkupHitTolerance());
+        if (handle == MarkupArcAngleHandle.None)
+            return false;
+
+        _isDraggingMarkupArcAngle = true;
+        _activeMarkupArcAngleHandle = handle;
+        _arcAngleDraggedMarkup = selectedMarkup;
+        _markupArcAngleStartSnapshot = _markupInteractionService.Capture(selectedMarkup);
+        _lastMousePosition = canvasPoint;
+        _dragStartCanvasPosition = canvasPoint;
+        _mobileSelectionCandidate = _isMobileView;
+
+        PlanCanvas.CaptureMouse();
+        SkiaBackground.RequestRedraw();
+        return true;
+    }
+
+    private bool TryStartMarkupRadiusDrag(Point canvasPoint)
+    {
+        if (_viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup)
+            return false;
+
+        var selectionSet = _markupInteractionService.GetSelectionSet(selectedMarkup, _viewModel.Markups);
+        if (selectionSet.Count != 1 || !_markupInteractionService.CanEditRadius(selectedMarkup))
+            return false;
+
+        if (!_markupInteractionService.HitTestRadiusHandle(canvasPoint, selectedMarkup, GetMarkupHitTolerance()))
+            return false;
+
+        _isDraggingMarkupRadius = true;
+        _radiusDraggedMarkup = selectedMarkup;
+        _markupRadiusStartSnapshot = _markupInteractionService.Capture(selectedMarkup);
+        _lastMousePosition = canvasPoint;
+        _dragStartCanvasPosition = canvasPoint;
+        _mobileSelectionCandidate = _isMobileView;
+
+        PlanCanvas.CaptureMouse();
+        SkiaBackground.RequestRedraw();
+        return true;
+    }
+
+    private bool TryInsertMarkupVertex(Point canvasPoint)
+    {
+        if (_viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup)
+            return false;
+
+        var selectionSet = _markupInteractionService.GetSelectionSet(selectedMarkup, _viewModel.Markups);
+        if (selectionSet.Count != 1 || !_markupInteractionService.CanInsertVertices(selectedMarkup))
+            return false;
+
+        if (_markupInteractionService.HitTestVertexHandle(canvasPoint, selectedMarkup, GetMarkupHitTolerance()) >= 0)
+            return false;
+
+        if (!_markupInteractionService.TryFindInsertionPoint(canvasPoint, selectedMarkup, GetMarkupHitTolerance(), out var insertIndex, out var projectedPoint))
+            return false;
+
+        var before = _markupInteractionService.Capture(selectedMarkup);
+        if (!_markupInteractionService.InsertVertex(selectedMarkup, insertIndex, projectedPoint))
+            return false;
+
+        var after = _markupInteractionService.Capture(selectedMarkup);
+        _activeMarkupVertexIndex = insertIndex >= selectedMarkup.Vertices.Count ? selectedMarkup.Vertices.Count - 1 : insertIndex;
+        _viewModel.UndoRedo.Execute(new MarkupGeometryChangeAction(
+            "Insert vertex into",
+            _markupInteractionService,
+            selectedMarkup,
+            before,
+            after));
+        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+        ActionLogService.Instance.Log(LogCategory.Edit, "Markup vertex inserted", $"Type: {selectedMarkup.TypeDisplayText}");
+        return true;
+    }
+
+    private bool DeleteSelectedMarkupVertex()
+    {
+        if (_viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup || _activeMarkupVertexIndex < 0)
+            return false;
+
+        if (!_markupInteractionService.CanDeleteVertex(selectedMarkup))
+            return false;
+
+        var before = _markupInteractionService.Capture(selectedMarkup);
+        if (!_markupInteractionService.DeleteVertex(selectedMarkup, _activeMarkupVertexIndex))
+            return false;
+
+        var after = _markupInteractionService.Capture(selectedMarkup);
+        _activeMarkupVertexIndex = Math.Min(_activeMarkupVertexIndex, selectedMarkup.Vertices.Count - 1);
+        _viewModel.UndoRedo.Execute(new MarkupGeometryChangeAction(
+            "Delete vertex from",
+            _markupInteractionService,
+            selectedMarkup,
+            before,
+            after));
+        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+        ActionLogService.Instance.Log(LogCategory.Edit, "Markup vertex deleted", $"Type: {selectedMarkup.TypeDisplayText}");
+        return true;
+    }
+
+    private bool TryEditStructuredMarkupText(Point canvasPoint)
+    {
+        var hit = _canvasInteractionShadowTree.HitTest(canvasPoint, GetMarkupHitTolerance());
+        if (hit?.Kind != ShadowGeometryTree.ShadowNodeKind.Markup || hit.Source is not MarkupRecord markup)
+            return false;
+
+        SelectMarkupOnCanvas(markup);
+
+        return TryEditStructuredMarkupText(markup);
+    }
+
+    private bool TryEditSelectedStructuredMarkupText(bool showFeedbackIfUnsupported)
+    {
+        if (_viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup)
+        {
+            if (showFeedbackIfUnsupported)
+            {
+                MessageBox.Show("Select a structured annotation text markup first.", "Edit Annotation Text",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        return TryEditStructuredMarkupText(selectedMarkup, showFeedbackIfUnsupported);
+    }
+
+    private bool TryEditStructuredMarkupText(MarkupRecord markup, bool showFeedbackIfUnsupported = false)
+    {
+        if (!CanEditStructuredMarkupText(markup, out var annotationKind, out var textRole))
+        {
+            if (showFeedbackIfUnsupported)
+            {
+                MessageBox.Show("The selected markup is not an editable structured annotation text field.", "Edit Annotation Text",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        var title = GetStructuredMarkupEditTitle(annotationKind, textRole);
+        var prompt = GetStructuredMarkupEditPrompt(markup, annotationKind, textRole);
+        var input = PromptInput(title, prompt, markup.TextContent);
+        if (input == null)
+            return true;
+
+        if (string.Equals(input, markup.TextContent, StringComparison.Ordinal))
+            return true;
+
+        var action = new MarkupTextChangeAction(markup, input);
+        _viewModel.UndoRedo.Execute(action);
+        _viewModel.MarkupTool.RefreshSelectedMarkupPresentation();
+        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+        ActionLogService.Instance.Log(LogCategory.Edit, "Structured markup text edited",
+            $"Kind: {annotationKind}, Role: {textRole}, Label: {markup.Metadata.Label}");
+        return true;
+    }
+
+    private bool TryEditSelectedMarkupGeometry(bool showFeedbackIfUnsupported)
+    {
+        if (_viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup)
+        {
+            if (showFeedbackIfUnsupported)
+            {
+                MessageBox.Show("Select a single circle or arc markup first.", "Edit Geometry",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        var selectionSet = _markupInteractionService.GetSelectionSet(selectedMarkup, _viewModel.Markups);
+        if (selectionSet.Count != 1)
+        {
+            if (showFeedbackIfUnsupported)
+            {
+                MessageBox.Show("Numeric geometry editing is available for a single selected circle or arc markup.", "Edit Geometry",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        return selectedMarkup.Type switch
+        {
+            MarkupType.Circle => TryEditSelectedCircleGeometry(selectedMarkup),
+            MarkupType.Arc => TryEditSelectedArcGeometry(selectedMarkup),
+            _ => ShowUnsupportedGeometryEditMessage(showFeedbackIfUnsupported)
+        };
+    }
+
+    private bool TryEditSelectedCircleGeometry(MarkupRecord markup)
+    {
+        var input = PromptInput(
+            "Edit Circle Geometry",
+            "Enter radius:\n\nExamples:\n12\nradius=12",
+            FormattableString.Invariant($"radius={markup.Radius:0.##}"));
+        if (input == null)
+            return true;
+
+        if (!TryParseMarkupGeometryAssignments(input, out var values, out var errorMessage))
+        {
+            MessageBox.Show(errorMessage, "Edit Circle Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return true;
+        }
+
+        if (!TryGetAssignmentOrScalar(values, input, "radius", markup.Radius, out var radius))
+        {
+            MessageBox.Show("Enter a numeric radius value.", "Edit Circle Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return true;
+        }
+
+        var before = _markupInteractionService.Capture(markup);
+        _markupInteractionService.SetRadius(markup, radius);
+        return CommitMarkupGeometryEdit(markup, before, "Edit circle geometry", $"Type: {markup.TypeDisplayText}, Radius: {markup.Radius:0.##}");
+    }
+
+    private bool TryEditSelectedArcGeometry(MarkupRecord markup)
+    {
+        var input = PromptInput(
+            "Edit Arc Geometry",
+            "Enter radius, start angle, and either end or sweep.\n\nExamples:\nradius=12\nstart=30\nend=150\n\nor\nradius=12\nstart=30\nsweep=120",
+            BuildArcGeometryDefaultValue(markup));
+        if (input == null)
+            return true;
+
+        if (!TryParseMarkupGeometryAssignments(input, out var values, out var errorMessage))
+        {
+            MessageBox.Show(errorMessage, "Edit Arc Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return true;
+        }
+
+        if (!TryGetAssignment(values, "radius", markup.Radius, out var radius) || radius <= 0)
+        {
+            MessageBox.Show("Radius must be a positive number.", "Edit Arc Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return true;
+        }
+
+        if (!TryGetAssignment(values, "start", markup.ArcStartDeg, out var startAngleDeg))
+        {
+            MessageBox.Show("Start angle must be numeric.", "Edit Arc Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return true;
+        }
+
+        var hasSweep = TryGetOptionalAssignment(values, "sweep", out var sweepAngleDeg);
+        var hasEnd = TryGetOptionalAssignment(values, "end", out var endAngleDeg);
+
+        var before = _markupInteractionService.Capture(markup);
+        if (!_markupInteractionService.SetArcGeometry(markup, radius, startAngleDeg, hasSweep ? sweepAngleDeg : null, hasEnd ? endAngleDeg : null))
+            return false;
+
+        return CommitMarkupGeometryEdit(
+            markup,
+            before,
+            "Edit arc geometry",
+            FormattableString.Invariant($"Type: {markup.TypeDisplayText}, Radius: {markup.Radius:0.##}, Start: {markup.ArcStartDeg:0.##}, Sweep: {markup.ArcSweepDeg:0.##}"));
+    }
+
+    private bool CommitMarkupGeometryEdit(MarkupRecord markup, MarkupGeometrySnapshot before, string actionName, string logDetails)
+    {
+        var after = _markupInteractionService.Capture(markup);
+        if (MarkupSnapshotsEqual(before, after))
+            return true;
+
+        _viewModel.UndoRedo.Execute(new MarkupGeometryChangeAction(
+            actionName,
+            _markupInteractionService,
+            markup,
+            before,
+            after));
+        _viewModel.MarkupTool.RefreshSelectedMarkupPresentation();
+        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+        ActionLogService.Instance.Log(LogCategory.Edit, "Markup geometry edited", logDetails);
+        return true;
+    }
+
+    private static bool ShowUnsupportedGeometryEditMessage(bool showFeedbackIfUnsupported)
+    {
+        if (showFeedbackIfUnsupported)
+        {
+            MessageBox.Show("Numeric geometry editing is currently available for circle and arc markups only.", "Edit Geometry",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        return false;
+    }
+
+    private static string BuildArcGeometryDefaultValue(MarkupRecord markup)
+    {
+        var endAngle = NormalizeMarkupAngle(markup.ArcStartDeg + markup.ArcSweepDeg);
+        return string.Join(Environment.NewLine, new[]
+        {
+            FormattableString.Invariant($"radius={markup.Radius:0.##}"),
+            FormattableString.Invariant($"start={NormalizeMarkupAngle(markup.ArcStartDeg):0.##}"),
+            FormattableString.Invariant($"end={endAngle:0.##}")
+        });
+    }
+
+    private static bool TryParseMarkupGeometryAssignments(string input, out Dictionary<string, double> values, out string errorMessage)
+    {
+        values = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        errorMessage = string.Empty;
+        var tokens = input
+            .Split(new[] { '\r', '\n', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        foreach (var token in tokens)
+        {
+            var separatorIndex = token.IndexOf('=');
+            if (separatorIndex < 0)
+                continue;
+
+            var key = token[..separatorIndex].Trim();
+            var valueText = token[(separatorIndex + 1)..].Trim();
+            if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(valueText))
+            {
+                errorMessage = "Use key=value pairs such as radius=12 or start=30.";
+                return false;
+            }
+
+            if (!TryParseMarkupGeometryNumber(valueText, out var value))
+            {
+                errorMessage = $"'{valueText}' is not a valid number.";
+                return false;
+            }
+
+            values[key] = value;
+        }
+
+        return true;
+    }
+
+    private static bool TryGetAssignment(Dictionary<string, double> values, string key, double fallbackValue, out double value)
+    {
+        if (values.TryGetValue(key, out value))
+            return true;
+
+        value = fallbackValue;
+        return true;
+    }
+
+    private static bool TryGetOptionalAssignment(Dictionary<string, double> values, string key, out double value)
+    {
+        return values.TryGetValue(key, out value);
+    }
+
+    private static bool TryGetAssignmentOrScalar(Dictionary<string, double> values, string input, string key, double fallbackValue, out double value)
+    {
+        if (values.TryGetValue(key, out value))
+            return true;
+
+        var trimmed = input.Trim();
+        if (trimmed.Contains('=') || trimmed.Contains('\n') || trimmed.Contains('\r') || trimmed.Contains(';'))
+        {
+            value = fallbackValue;
+            return false;
+        }
+
+        return TryParseMarkupGeometryNumber(trimmed, out value);
+    }
+
+    private static bool TryParseMarkupGeometryNumber(string input, out double value)
+    {
+        return double.TryParse(input, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out value) ||
+               double.TryParse(input, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.CurrentCulture, out value);
+    }
+
+    private bool DeleteSelectedMarkupSelection()
+    {
+        if (_viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup)
+            return false;
+
+        var selectionSet = _markupInteractionService.GetSelectionSet(selectedMarkup, _viewModel.Markups);
+        if (selectionSet.Count == 0)
+            return false;
+
+        var actions = selectionSet
+            .Select(markup => new RemoveItemAction<MarkupRecord>(_viewModel.Markups, markup, $"{markup.TypeDisplayText} markup"))
+            .Cast<IUndoableAction>()
+            .ToList();
+
+        ClearMarkupSelection();
+        _viewModel.UndoRedo.Execute(actions.Count == 1
+            ? actions[0]
+            : new CompositeAction("Delete markup annotation", actions));
+        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+        ActionLogService.Instance.Log(LogCategory.Edit, "Markup deleted", $"Count: {actions.Count}");
+        return true;
+    }
+
+    private bool TryStartMarkupVertexDrag(Point canvasPoint)
+    {
+        if (_viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup)
+            return false;
+
+        var selectionSet = _markupInteractionService.GetSelectionSet(selectedMarkup, _viewModel.Markups);
+        if (selectionSet.Count != 1 || !_markupInteractionService.CanEditVertices(selectedMarkup))
+            return false;
+
+        var vertexIndex = _markupInteractionService.HitTestVertexHandle(canvasPoint, selectedMarkup, GetMarkupHitTolerance());
+        if (vertexIndex < 0)
+            return false;
+
+        _isDraggingMarkupVertex = true;
+        _activeMarkupVertexIndex = vertexIndex;
+        _vertexDraggedMarkup = selectedMarkup;
+        _markupVertexStartSnapshot = _markupInteractionService.Capture(selectedMarkup);
+        _lastMousePosition = canvasPoint;
+        _dragStartCanvasPosition = canvasPoint;
+        _mobileSelectionCandidate = _isMobileView;
+
+        PlanCanvas.CaptureMouse();
+        SkiaBackground.RequestRedraw();
+        return true;
+    }
+
+    private bool TryStartMarkupResizeDrag(Point canvasPoint)
+    {
+        if (_viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup)
+            return false;
+
+        var selectionSet = _markupInteractionService.GetSelectionSet(selectedMarkup, _viewModel.Markups);
+        if (!_markupInteractionService.CanResize(selectionSet))
+            return false;
+
+        var bounds = _markupInteractionService.GetAggregateBounds(selectionSet);
+        var handle = _markupInteractionService.HitTestResizeHandle(canvasPoint, bounds, GetMarkupHitTolerance());
+        if (handle == MarkupResizeHandle.None)
+            return false;
+
+        _isResizingMarkup = true;
+        _activeMarkupResizeHandle = handle;
+        _markupResizeStartBounds = bounds;
+        _lastMousePosition = canvasPoint;
+        _dragStartCanvasPosition = canvasPoint;
+        _mobileSelectionCandidate = _isMobileView;
+        _resizedMarkups.Clear();
+        _markupResizeStartSnapshots.Clear();
+
+        foreach (var markup in selectionSet)
+        {
+            _resizedMarkups.Add(markup);
+            _markupResizeStartSnapshots[markup.Id] = _markupInteractionService.Capture(markup);
+        }
+
+        PlanCanvas.CaptureMouse();
+        SkiaBackground.RequestRedraw();
+        return true;
+    }
 
     private bool TryStartMarkupSelectionDrag(Point canvasPoint)
     {
@@ -38,6 +512,93 @@ public partial class MainWindow
         return true;
     }
 
+    private void UpdateMarkupResizePreview(Point canvasPoint)
+    {
+        if (!_isResizingMarkup || _resizedMarkups.Count == 0 || _markupResizeStartBounds == Rect.Empty)
+            return;
+
+        BeginFastInteractionMode();
+        if (_mobileSelectionCandidate &&
+            (Math.Abs(canvasPoint.X - _dragStartCanvasPosition.X) > 4 || Math.Abs(canvasPoint.Y - _dragStartCanvasPosition.Y) > 4))
+        {
+            _mobileSelectionCandidate = false;
+        }
+
+        var resizedBounds = _markupInteractionService.BuildResizedBounds(
+            _markupResizeStartBounds,
+            canvasPoint,
+            _activeMarkupResizeHandle,
+            GetMarkupMinimumSize());
+
+        foreach (var markup in _resizedMarkups)
+        {
+            if (_markupResizeStartSnapshots.TryGetValue(markup.Id, out var snapshot))
+                _markupInteractionService.Resize(markup, snapshot, _markupResizeStartBounds, resizedBounds);
+        }
+
+        _lastMousePosition = canvasPoint;
+        SkiaBackground.RequestRedraw();
+    }
+
+    private void UpdateDraggedMarkupRadiusPreview(Point canvasPoint)
+    {
+        if (!_isDraggingMarkupRadius || _radiusDraggedMarkup == null || _radiusDraggedMarkup.Vertices.Count == 0)
+            return;
+
+        BeginFastInteractionMode();
+        if (_mobileSelectionCandidate &&
+            (Math.Abs(canvasPoint.X - _dragStartCanvasPosition.X) > 4 || Math.Abs(canvasPoint.Y - _dragStartCanvasPosition.Y) > 4))
+        {
+            _mobileSelectionCandidate = false;
+        }
+
+        var center = _radiusDraggedMarkup.Vertices[0];
+        var radius = (canvasPoint - center).Length;
+        _markupInteractionService.SetRadius(_radiusDraggedMarkup, radius);
+        _lastMousePosition = canvasPoint;
+        SkiaBackground.RequestRedraw();
+    }
+
+    private void UpdateDraggedMarkupArcAnglePreview(Point canvasPoint)
+    {
+        if (!_isDraggingMarkupArcAngle || _arcAngleDraggedMarkup == null || _activeMarkupArcAngleHandle == MarkupArcAngleHandle.None)
+            return;
+
+        BeginFastInteractionMode();
+        if (_mobileSelectionCandidate &&
+            (Math.Abs(canvasPoint.X - _dragStartCanvasPosition.X) > 4 || Math.Abs(canvasPoint.Y - _dragStartCanvasPosition.Y) > 4))
+        {
+            _mobileSelectionCandidate = false;
+        }
+
+        var center = _arcAngleDraggedMarkup.Vertices[0];
+        var angleDeg = Math.Atan2(canvasPoint.Y - center.Y, canvasPoint.X - center.X) * 180.0 / Math.PI;
+        var snapIncrementDeg = GetMarkupAngleSnapIncrement();
+        if (snapIncrementDeg > 0)
+            angleDeg = _markupInteractionService.SnapAngleDegrees(angleDeg, snapIncrementDeg);
+
+        _markupInteractionService.SetArcAngle(_arcAngleDraggedMarkup, _activeMarkupArcAngleHandle, angleDeg);
+        _lastMousePosition = canvasPoint;
+        SkiaBackground.RequestRedraw();
+    }
+
+    private void UpdateDraggedMarkupVertexPreview(Point canvasPoint)
+    {
+        if (!_isDraggingMarkupVertex || _vertexDraggedMarkup == null || _activeMarkupVertexIndex < 0)
+            return;
+
+        BeginFastInteractionMode();
+        if (_mobileSelectionCandidate &&
+            (Math.Abs(canvasPoint.X - _dragStartCanvasPosition.X) > 4 || Math.Abs(canvasPoint.Y - _dragStartCanvasPosition.Y) > 4))
+        {
+            _mobileSelectionCandidate = false;
+        }
+
+        _markupInteractionService.MoveVertex(_vertexDraggedMarkup, _activeMarkupVertexIndex, canvasPoint);
+        _lastMousePosition = canvasPoint;
+        SkiaBackground.RequestRedraw();
+    }
+
     private void UpdateDraggedMarkupPreview(Point canvasPoint)
     {
         if (!_isDraggingMarkup || _draggedMarkups.Count == 0)
@@ -61,6 +622,135 @@ public partial class MainWindow
         SkiaBackground.RequestRedraw();
     }
 
+    private void FinishMarkupResizeDrag()
+    {
+        if (!_isResizingMarkup)
+            return;
+
+        var actions = _resizedMarkups
+            .Where(markup => _markupResizeStartSnapshots.TryGetValue(markup.Id, out var snapshot) &&
+                             !MarkupSnapshotsEqual(snapshot, _markupInteractionService.Capture(markup)))
+            .Select(markup => new MarkupGeometryChangeAction(
+                "Resize",
+                _markupInteractionService,
+                markup,
+                _markupResizeStartSnapshots[markup.Id],
+                _markupInteractionService.Capture(markup)))
+            .Cast<IUndoableAction>()
+            .ToList();
+
+        _isResizingMarkup = false;
+        _activeMarkupResizeHandle = MarkupResizeHandle.None;
+        _markupResizeStartBounds = Rect.Empty;
+        _resizedMarkups.Clear();
+        _markupResizeStartSnapshots.Clear();
+
+        if (actions.Count > 0)
+        {
+            _viewModel.UndoRedo.Execute(new CompositeAction("Resize markup annotation", actions));
+            QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+            ActionLogService.Instance.Log(LogCategory.Edit, "Markup resized", $"Count: {actions.Count}");
+        }
+        else
+        {
+            SkiaBackground.RequestRedraw();
+        }
+    }
+
+    private void FinishMarkupRadiusDrag()
+    {
+        if (!_isDraggingMarkupRadius || _radiusDraggedMarkup == null || _markupRadiusStartSnapshot == null)
+            return;
+
+        var currentSnapshot = _markupInteractionService.Capture(_radiusDraggedMarkup);
+        var changed = !MarkupSnapshotsEqual(_markupRadiusStartSnapshot, currentSnapshot);
+
+        _isDraggingMarkupRadius = false;
+        var markup = _radiusDraggedMarkup;
+        var startSnapshot = _markupRadiusStartSnapshot;
+        _radiusDraggedMarkup = null;
+        _markupRadiusStartSnapshot = null;
+
+        if (changed)
+        {
+            _viewModel.UndoRedo.Execute(new MarkupGeometryChangeAction(
+                "Edit radius of",
+                _markupInteractionService,
+                markup,
+                startSnapshot,
+                currentSnapshot));
+            QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+            ActionLogService.Instance.Log(LogCategory.Edit, "Markup radius edited", $"Type: {markup.TypeDisplayText}");
+        }
+        else
+        {
+            SkiaBackground.RequestRedraw();
+        }
+    }
+
+    private void FinishMarkupArcAngleDrag()
+    {
+        if (!_isDraggingMarkupArcAngle || _arcAngleDraggedMarkup == null || _markupArcAngleStartSnapshot == null)
+            return;
+
+        var currentSnapshot = _markupInteractionService.Capture(_arcAngleDraggedMarkup);
+        var changed = !MarkupSnapshotsEqual(_markupArcAngleStartSnapshot, currentSnapshot);
+
+        _isDraggingMarkupArcAngle = false;
+        _activeMarkupArcAngleHandle = MarkupArcAngleHandle.None;
+        var markup = _arcAngleDraggedMarkup;
+        var startSnapshot = _markupArcAngleStartSnapshot;
+        _arcAngleDraggedMarkup = null;
+        _markupArcAngleStartSnapshot = null;
+
+        if (changed)
+        {
+            _viewModel.UndoRedo.Execute(new MarkupGeometryChangeAction(
+                "Edit arc angle of",
+                _markupInteractionService,
+                markup,
+                startSnapshot,
+                currentSnapshot));
+            QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+            ActionLogService.Instance.Log(LogCategory.Edit, "Markup arc edited", $"Type: {markup.TypeDisplayText}");
+        }
+        else
+        {
+            SkiaBackground.RequestRedraw();
+        }
+    }
+
+    private void FinishMarkupVertexDrag()
+    {
+        if (!_isDraggingMarkupVertex || _vertexDraggedMarkup == null || _markupVertexStartSnapshot == null)
+            return;
+
+        var currentSnapshot = _markupInteractionService.Capture(_vertexDraggedMarkup);
+        var changed = !MarkupSnapshotsEqual(_markupVertexStartSnapshot, currentSnapshot);
+
+        _isDraggingMarkupVertex = false;
+        var markup = _vertexDraggedMarkup;
+        var startSnapshot = _markupVertexStartSnapshot;
+        _vertexDraggedMarkup = null;
+        _markupVertexStartSnapshot = null;
+
+        if (changed)
+        {
+            _viewModel.UndoRedo.Execute(new MarkupGeometryChangeAction(
+                "Edit",
+                _markupInteractionService,
+                markup,
+                startSnapshot,
+                currentSnapshot));
+            QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+            ActionLogService.Instance.Log(LogCategory.Edit, "Markup vertex edited", $"Type: {markup.TypeDisplayText}");
+        }
+        else
+        {
+            SkiaBackground.RequestRedraw();
+        }
+    }
+
     private void FinishMarkupSelectionDrag()
     {
         if (!_isDraggingMarkup)
@@ -69,7 +759,8 @@ public partial class MainWindow
         var actions = _draggedMarkups
             .Where(markup => _markupDragStartSnapshots.TryGetValue(markup.Id, out var snapshot) &&
                              !MarkupSnapshotsEqual(snapshot, _markupInteractionService.Capture(markup)))
-            .Select(markup => new MoveMarkupGeometryAction(
+            .Select(markup => new MarkupGeometryChangeAction(
+                "Move",
                 _markupInteractionService,
                 markup,
                 _markupDragStartSnapshots[markup.Id],
@@ -95,6 +786,9 @@ public partial class MainWindow
 
     private void SelectMarkupOnCanvas(MarkupRecord markup)
     {
+        if (!ReferenceEquals(_viewModel.MarkupTool.SelectedMarkup, markup))
+            _activeMarkupVertexIndex = -1;
+
         _selectedSketchPrimitive = null;
         _viewModel.SelectedComponentIds.Clear();
         if (_viewModel.SelectedComponent != null)
@@ -105,6 +799,15 @@ public partial class MainWindow
 
     private void ClearMarkupSelection()
     {
+        _activeMarkupVertexIndex = -1;
+        _isDraggingMarkupArcAngle = false;
+        _activeMarkupArcAngleHandle = MarkupArcAngleHandle.None;
+        _arcAngleDraggedMarkup = null;
+        _markupArcAngleStartSnapshot = null;
+        _radiusDraggedMarkup = null;
+        _markupRadiusStartSnapshot = null;
+        _vertexDraggedMarkup = null;
+        _markupVertexStartSnapshot = null;
         _viewModel.MarkupTool.SelectedMarkup = null;
     }
 
@@ -118,6 +821,10 @@ public partial class MainWindow
         if (bounds == Rect.Empty)
             return;
 
+        var canEditVertices = selectionSet.Count == 1 && _markupInteractionService.CanEditVertices(selectedMarkup);
+        var canEditArcAngles = selectionSet.Count == 1 && _markupInteractionService.CanEditArcAngles(selectedMarkup);
+        var canEditRadius = selectionSet.Count == 1 && _markupInteractionService.CanEditRadius(selectedMarkup);
+
         var highlightStyle = new RenderStyle
         {
             StrokeColor = "#FFFF8A00",
@@ -126,10 +833,59 @@ public partial class MainWindow
         };
 
         renderer.DrawRect(bounds, highlightStyle);
-        renderer.DrawGrip(bounds.TopLeft);
-        renderer.DrawGrip(bounds.TopRight);
-        renderer.DrawGrip(bounds.BottomLeft);
-        renderer.DrawGrip(bounds.BottomRight);
+
+        if (canEditArcAngles)
+        {
+            foreach (var handle in new[] { MarkupArcAngleHandle.Start, MarkupArcAngleHandle.End })
+            {
+                renderer.DrawGrip(
+                    _markupInteractionService.GetArcAngleHandlePoint(selectedMarkup, handle),
+                    hot: _isDraggingMarkupArcAngle && handle == _activeMarkupArcAngleHandle);
+            }
+
+            if (_isDraggingMarkupArcAngle)
+            {
+                DrawMarkupArcReadout(renderer, selectedMarkup);
+            }
+        }
+
+        if (canEditRadius)
+        {
+            renderer.DrawGrip(
+                _markupInteractionService.GetRadiusHandlePoint(selectedMarkup),
+                hot: _isDraggingMarkupRadius);
+
+            if (_isDraggingMarkupRadius)
+            {
+                DrawMarkupRadiusReadout(renderer, selectedMarkup);
+            }
+        }
+
+        if (canEditArcAngles || canEditRadius)
+            return;
+
+        if (canEditVertices)
+        {
+            var points = _markupInteractionService.GetVertexHandlePoints(selectedMarkup);
+            for (int i = 0; i < points.Count; i++)
+            {
+                renderer.DrawGrip(
+                    points[i],
+                    hot: _isDraggingMarkupVertex && i == _activeMarkupVertexIndex);
+            }
+        }
+        else if (_markupInteractionService.CanResize(selectionSet))
+        {
+            foreach (var handle in Enum.GetValues<MarkupResizeHandle>())
+            {
+                if (handle == MarkupResizeHandle.None)
+                    continue;
+
+                renderer.DrawGrip(
+                    _markupInteractionService.GetResizeHandlePoint(bounds, handle),
+                    hot: _isResizingMarkup && handle == _activeMarkupResizeHandle);
+            }
+        }
     }
 
     private double GetMarkupHitTolerance()
@@ -137,9 +893,178 @@ public partial class MainWindow
         return Math.Max(4.0, 8.0 / Math.Max(PlanCanvasScale.ScaleX, 0.1));
     }
 
+    private double GetMarkupMinimumSize()
+    {
+        return Math.Max(6.0, 12.0 / Math.Max(PlanCanvasScale.ScaleX, 0.1));
+    }
+
+    private double GetMarkupAngleSnapIncrement()
+    {
+        if (_viewModel.IsPolarActive && _viewModel.PolarIncrementDeg > 0)
+            return _viewModel.PolarIncrementDeg;
+
+        if (Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift))
+            return 15.0;
+
+        return 0.0;
+    }
+
+    private void DrawMarkupArcReadout(ICanvas2DRenderer renderer, MarkupRecord markup)
+    {
+        var activeHandlePoint = _markupInteractionService.GetArcAngleHandlePoint(markup, _activeMarkupArcAngleHandle);
+        var anchor = GetMarkupReadoutAnchor(renderer, activeHandlePoint, markup.BoundingRect);
+        var endAngle = NormalizeMarkupAngle(markup.ArcStartDeg + markup.ArcSweepDeg);
+        var snapIncrementDeg = GetMarkupAngleSnapIncrement();
+        var readout = FormattableString.Invariant(
+            $"Start {NormalizeMarkupAngle(markup.ArcStartDeg):0.#} deg  End {endAngle:0.#} deg  Sweep {markup.ArcSweepDeg:0.#} deg") +
+            (snapIncrementDeg > 0
+                ? FormattableString.Invariant($"  Snap {snapIncrementDeg:0.#} deg")
+                : string.Empty);
+
+        renderer.DrawTextBox(anchor, readout, new RenderStyle
+        {
+            StrokeColor = "#FF111827",
+            FontSize = 12.0,
+            Bold = true
+        }, boxFill: "#F2FFF7ED", padding: 6.0);
+    }
+
+    private void DrawMarkupRadiusReadout(ICanvas2DRenderer renderer, MarkupRecord markup)
+    {
+        var handlePoint = _markupInteractionService.GetRadiusHandlePoint(markup);
+        var anchor = GetMarkupReadoutAnchor(renderer, handlePoint, markup.BoundingRect);
+        var readout = FormattableString.Invariant($"Radius {markup.Radius:0.##}");
+
+        renderer.DrawTextBox(anchor, readout, new RenderStyle
+        {
+            StrokeColor = "#FF111827",
+            FontSize = 12.0,
+            Bold = true
+        }, boxFill: "#F2EFF6FF", padding: 6.0);
+    }
+
+    private static Point GetMarkupReadoutAnchor(ICanvas2DRenderer renderer, Point handlePoint, Rect bounds)
+    {
+        var offset = Math.Max(12.0 / Math.Max(renderer.Zoom, 0.1), 2.0);
+        var x = handlePoint.X + offset;
+        var y = handlePoint.Y - offset;
+
+        if (bounds != Rect.Empty)
+        {
+            x = Math.Max(x, bounds.Left + offset * 0.5);
+            y = Math.Max(y, bounds.Top + offset * 1.5);
+        }
+
+        return new Point(x, y);
+    }
+
+    private static double NormalizeMarkupAngle(double angleDeg)
+    {
+        var normalized = angleDeg % 360.0;
+        return normalized < 0 ? normalized + 360.0 : normalized;
+    }
+
+    private static bool CanEditStructuredMarkupText(MarkupRecord markup, out string annotationKind, out string textRole)
+    {
+        annotationKind = string.Empty;
+        textRole = string.Empty;
+
+        if (markup.Type != MarkupType.Text)
+            return false;
+
+        if (!markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.AnnotationKindField, out var annotationKindValue) ||
+            !markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.AnnotationTextRoleField, out var textRoleValue))
+            return false;
+
+        annotationKind = annotationKindValue ?? string.Empty;
+        textRole = textRoleValue ?? string.Empty;
+
+        return textRole is DrawingAnnotationMarkupService.TextRoleTitle or
+            DrawingAnnotationMarkupService.TextRoleCell or
+            DrawingAnnotationMarkupService.TextRoleFieldValue;
+    }
+
+    private static string GetStructuredMarkupEditTitle(string annotationKind, string textRole)
+    {
+        return (annotationKind, textRole) switch
+        {
+            (DrawingAnnotationMarkupService.TitleBlockAnnotationKind, DrawingAnnotationMarkupService.TextRoleFieldValue) => "Edit Title Block Field",
+            (DrawingAnnotationMarkupService.SymbolLegendAnnotationKind, DrawingAnnotationMarkupService.TextRoleTitle) => "Edit Symbol Legend Title",
+            (DrawingAnnotationMarkupService.SymbolLegendAnnotationKind, DrawingAnnotationMarkupService.TextRoleCell) => "Edit Symbol Legend Cell",
+            (_, DrawingAnnotationMarkupService.TextRoleTitle) => "Edit Table Title",
+            (_, DrawingAnnotationMarkupService.TextRoleCell) => "Edit Table Cell",
+            _ => "Edit Annotation Text"
+        };
+    }
+
+    private static string GetStructuredMarkupEditPrompt(MarkupRecord markup, string annotationKind, string textRole)
+    {
+        var textKey = markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.AnnotationTextKeyField, out var key)
+            ? key
+            : markup.Metadata.Label;
+
+        return (annotationKind, textRole) switch
+        {
+            (DrawingAnnotationMarkupService.TitleBlockAnnotationKind, DrawingAnnotationMarkupService.TextRoleFieldValue) => $"Update '{textKey}' value:",
+            (_, DrawingAnnotationMarkupService.TextRoleTitle) => "Update title text:",
+            (_, DrawingAnnotationMarkupService.TextRoleCell) => $"Update '{textKey}' text:",
+            _ => "Update text:"
+        };
+    }
+
+    private static void ApplyMarkupTextState(MarkupRecord markup, MarkupTextState state)
+    {
+        markup.TextContent = state.Text;
+        markup.BoundingRect = state.Bounds;
+        markup.Metadata.ModifiedUtc = state.ModifiedUtc;
+    }
+
+    private static MarkupTextState CaptureMarkupTextState(MarkupRecord markup)
+    {
+        return new MarkupTextState(markup.TextContent, markup.BoundingRect, markup.Metadata.ModifiedUtc);
+    }
+
+    private static MarkupTextState BuildUpdatedMarkupTextState(MarkupRecord markup, string text)
+    {
+        var anchor = markup.Vertices.Count > 0 ? markup.Vertices[0] : markup.BoundingRect.Location;
+        var align = GetMarkupTextAlign(markup);
+        var bounds = EstimateMarkupTextBounds(anchor, text, markup.Appearance.FontSize, align);
+        return new MarkupTextState(text, bounds, DateTime.UtcNow);
+    }
+
+    private static TextAlign GetMarkupTextAlign(MarkupRecord markup)
+    {
+        if (!markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.TextAlignField, out var alignValue))
+            return TextAlign.Left;
+
+        return Enum.TryParse<TextAlign>(alignValue, ignoreCase: true, out var align)
+            ? align
+            : TextAlign.Left;
+    }
+
+    private static Rect EstimateMarkupTextBounds(Point anchor, string text, double fontSize, TextAlign align)
+    {
+        var width = Math.Max(fontSize, text.Length * fontSize * 0.55);
+        var height = fontSize * 1.35;
+        var x = align switch
+        {
+            TextAlign.Center => anchor.X - width / 2.0,
+            TextAlign.Right => anchor.X - width,
+            _ => anchor.X
+        };
+
+        return new Rect(x, anchor.Y - height, width, height);
+    }
+
     private static bool MarkupSnapshotsEqual(MarkupGeometrySnapshot left, MarkupGeometrySnapshot right)
     {
-        if (left.BoundingRect != right.BoundingRect || left.Vertices.Count != right.Vertices.Count)
+        if (left.BoundingRect != right.BoundingRect ||
+            left.Vertices.Count != right.Vertices.Count ||
+            left.Radius != right.Radius ||
+            left.ArcStartDeg != right.ArcStartDeg ||
+            left.ArcSweepDeg != right.ArcSweepDeg ||
+            left.FontSize != right.FontSize ||
+            left.StrokeWidth != right.StrokeWidth)
             return false;
 
         for (int i = 0; i < left.Vertices.Count; i++)
@@ -152,28 +1077,97 @@ public partial class MainWindow
     }
 }
 
-internal sealed class MoveMarkupGeometryAction : IUndoableAction
+internal sealed class MarkupGeometryChangeAction : IUndoableAction
 {
+    private readonly string _verb;
     private readonly MarkupInteractionService _markupInteractionService;
     private readonly MarkupRecord _markup;
     private readonly MarkupGeometrySnapshot _oldSnapshot;
     private readonly MarkupGeometrySnapshot _newSnapshot;
 
-    public MoveMarkupGeometryAction(
+    public MarkupGeometryChangeAction(
+        string verb,
         MarkupInteractionService markupInteractionService,
         MarkupRecord markup,
         MarkupGeometrySnapshot oldSnapshot,
         MarkupGeometrySnapshot newSnapshot)
     {
+        _verb = verb;
         _markupInteractionService = markupInteractionService;
         _markup = markup;
         _oldSnapshot = oldSnapshot;
         _newSnapshot = newSnapshot;
     }
 
-    public string Description => $"Move {_markup.TypeDisplayText}";
+    public string Description => $"{_verb} {_markup.TypeDisplayText}";
 
     public void Execute() => _markupInteractionService.Apply(_markup, _newSnapshot);
 
     public void Undo() => _markupInteractionService.Apply(_markup, _oldSnapshot);
+}
+
+internal readonly record struct MarkupTextState(string Text, Rect Bounds, DateTime ModifiedUtc);
+
+internal sealed class MarkupTextChangeAction : IUndoableAction
+{
+    private readonly MarkupRecord _markup;
+    private readonly MarkupTextState _oldState;
+    private readonly MarkupTextState _newState;
+
+    public string Description => $"Edit text { _markup.TypeDisplayText}";
+
+    public MarkupTextChangeAction(MarkupRecord markup, string newText)
+    {
+        _markup = markup;
+        _oldState = CaptureState(markup);
+        _newState = BuildUpdatedState(markup, newText);
+    }
+
+    public void Execute() => ApplyState(_markup, _newState);
+
+    public void Undo() => ApplyState(_markup, _oldState);
+
+    private static void ApplyState(MarkupRecord markup, MarkupTextState state)
+    {
+        markup.TextContent = state.Text;
+        markup.BoundingRect = state.Bounds;
+        markup.Metadata.ModifiedUtc = state.ModifiedUtc;
+    }
+
+    private static MarkupTextState CaptureState(MarkupRecord markup)
+    {
+        return new MarkupTextState(markup.TextContent, markup.BoundingRect, markup.Metadata.ModifiedUtc);
+    }
+
+    private static MarkupTextState BuildUpdatedState(MarkupRecord markup, string text)
+    {
+        var anchor = markup.Vertices.Count > 0 ? markup.Vertices[0] : markup.BoundingRect.Location;
+        var align = GetTextAlign(markup);
+        var bounds = EstimateBounds(anchor, text, markup.Appearance.FontSize, align);
+        return new MarkupTextState(text, bounds, DateTime.UtcNow);
+    }
+
+    private static TextAlign GetTextAlign(MarkupRecord markup)
+    {
+        if (!markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.TextAlignField, out var alignValue))
+            return TextAlign.Left;
+
+        return Enum.TryParse<TextAlign>(alignValue, ignoreCase: true, out var align)
+            ? align
+            : TextAlign.Left;
+    }
+
+    private static Rect EstimateBounds(Point anchor, string text, double fontSize, TextAlign align)
+    {
+        var width = Math.Max(fontSize, text.Length * fontSize * 0.55);
+        var height = fontSize * 1.35;
+        var x = align switch
+        {
+            TextAlign.Center => anchor.X - width / 2.0,
+            TextAlign.Right => anchor.X - width,
+            _ => anchor.X
+        };
+
+        return new Rect(x, anchor.Y - height, width, height);
+    }
 }

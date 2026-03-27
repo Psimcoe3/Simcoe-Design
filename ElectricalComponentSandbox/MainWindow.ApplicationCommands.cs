@@ -110,6 +110,11 @@ public partial class MainWindow
                 ZoomExtents_Click(sender, e);
                 e.Handled = true;
             }
+            else if (e.Key == Key.G)
+            {
+                TryEditSelectedMarkupGeometry(showFeedbackIfUnsupported: true);
+                e.Handled = true;
+            }
 
             return;
         }
@@ -166,9 +171,15 @@ public partial class MainWindow
         if (modifiers != ModifierKeys.None)
             return;
 
-        if (e.Key == Key.Delete)
+        if (e.Key == Key.Delete || e.Key == Key.Back)
         {
-            DeleteComponent_Click(sender, e);
+            if (!DeleteSelectedMarkupVertex())
+                DeleteComponent_Click(sender, e);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.F2)
+        {
+            TryEditSelectedStructuredMarkupText(showFeedbackIfUnsupported: true);
             e.Handled = true;
         }
         else if (e.Key == Key.Home)

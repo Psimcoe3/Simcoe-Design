@@ -33,6 +33,15 @@ public class DrawingAnnotationMarkupServiceTests
         Assert.Contains(markups, m => m.Type == MarkupType.Text && m.TextContent == "TEST SCHEDULE");
         Assert.Contains(markups, m => m.Type == MarkupType.Text && m.TextContent == "PANEL-A");
         Assert.Contains(markups, m => m.Type == MarkupType.Text && m.TextContent == "480");
+
+        var titleMarkup = Assert.Single(markups.Where(m => m.Type == MarkupType.Text && m.TextContent == "TEST SCHEDULE"));
+        Assert.Equal(DrawingAnnotationMarkupService.ScheduleTableAnnotationKind, titleMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationKindField]);
+        Assert.Equal(DrawingAnnotationMarkupService.TextRoleTitle, titleMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationTextRoleField]);
+
+        var cellMarkup = Assert.Single(markups.Where(m => m.Type == MarkupType.Text && m.TextContent == "PANEL-A"));
+        Assert.Equal(DrawingAnnotationMarkupService.ScheduleTableAnnotationKind, cellMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationKindField]);
+        Assert.Equal(DrawingAnnotationMarkupService.TextRoleCell, cellMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationTextRoleField]);
+        Assert.Equal("NAME", cellMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationTextKeyField]);
     }
 
     [Fact]
@@ -46,7 +55,9 @@ public class DrawingAnnotationMarkupServiceTests
         var markups = _sut.CreateSymbolLegendMarkups(legend, new Point(60, 80));
 
         Assert.Contains(markups, m => m.Type == MarkupType.Circle && m.Metadata.Subject == "Legend Symbol");
-        Assert.Contains(markups, m => m.Type == MarkupType.Text && m.TextContent == "Duplex Receptacle");
+        var nameMarkup = Assert.Single(markups.Where(m => m.Type == MarkupType.Text && m.TextContent == "Duplex Receptacle"));
+        Assert.Equal(DrawingAnnotationMarkupService.SymbolLegendAnnotationKind, nameMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationKindField]);
+        Assert.Equal(DrawingAnnotationMarkupService.TextRoleCell, nameMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationTextRoleField]);
     }
 
     [Fact]
@@ -65,6 +76,12 @@ public class DrawingAnnotationMarkupServiceTests
         Assert.Equal(17.0 * DrawingAnnotationMarkupService.PdfPointsPerInch, outerBorder.BoundingRect.Width, 6);
         Assert.Equal(11.0 * DrawingAnnotationMarkupService.PdfPointsPerInch, outerBorder.BoundingRect.Height, 6);
         Assert.Contains(markups, m => m.Type == MarkupType.Text && m.Metadata.Subject == "Zone Label");
-        Assert.Contains(markups, m => m.Type == MarkupType.Text && m.Metadata.Subject == "Title Block Value");
+        var valueMarkups = markups.Where(m => m.Type == MarkupType.Text && m.Metadata.Subject == "Title Block Value").ToList();
+        Assert.NotEmpty(valueMarkups);
+        Assert.All(valueMarkups, valueMarkup =>
+        {
+            Assert.Equal(DrawingAnnotationMarkupService.TitleBlockAnnotationKind, valueMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationKindField]);
+            Assert.Equal(DrawingAnnotationMarkupService.TextRoleFieldValue, valueMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationTextRoleField]);
+        });
     }
 }

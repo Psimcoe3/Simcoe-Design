@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Input;
 using ElectricalComponentSandbox.Markup.Models;
+using ElectricalComponentSandbox.Services;
 
 namespace ElectricalComponentSandbox.ViewModels;
 
@@ -181,7 +183,108 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         {
             _selectedMarkup = value;
             OnPropertyChanged();
-            CommandManager.InvalidateRequerySuggested();
+            RefreshSelectedMarkupPresentation();
+        }
+    }
+
+    public bool HasSelectedMarkup => _selectedMarkup != null;
+
+    public bool HasStructuredSelection =>
+        _selectedMarkup?.Metadata.CustomFields.ContainsKey(DrawingAnnotationMarkupService.AnnotationKindField) == true &&
+        _selectedMarkup.Metadata.CustomFields.ContainsKey(DrawingAnnotationMarkupService.AnnotationTextRoleField);
+
+    public string SelectedMarkupAnnotationKind => GetSelectedMarkupCustomField(DrawingAnnotationMarkupService.AnnotationKindField);
+
+    public string SelectedMarkupAnnotationRole => GetSelectedMarkupCustomField(DrawingAnnotationMarkupService.AnnotationTextRoleField);
+
+    public string SelectedMarkupAnnotationKey => GetSelectedMarkupCustomField(DrawingAnnotationMarkupService.AnnotationTextKeyField);
+
+    public bool HasTextEditableSelection =>
+        _selectedMarkup?.Type == MarkupType.Text &&
+        HasStructuredSelection;
+
+    public string SelectedMarkupTextEditSummary
+    {
+        get
+        {
+            if (_selectedMarkup == null)
+                return string.Empty;
+
+            return HasTextEditableSelection
+                ? "Direct text edit available for structured schedule, legend, and title-block text"
+                : "Direct text editing is currently available for structured schedule, legend, and title-block text only";
+        }
+    }
+
+    public bool HasSelectedMarkupTextDetails => HasTextEditableSelection;
+
+    public string SelectedMarkupTextDetails
+    {
+        get
+        {
+            if (_selectedMarkup == null || !HasTextEditableSelection)
+                return string.Empty;
+
+            return string.IsNullOrWhiteSpace(_selectedMarkup.TextContent)
+                ? "Current Value: <empty>"
+                : $"Current Value: {_selectedMarkup.TextContent}";
+        }
+    }
+
+    public bool HasGeometryEditableSelection =>
+        _selectedMarkup is { } markup &&
+        GetSelectionSet(markup).Count == 1 &&
+        markup.Type is MarkupType.Circle or MarkupType.Arc;
+
+    public string SelectedMarkupGeometryEditSummary
+    {
+        get
+        {
+            if (_selectedMarkup == null)
+                return string.Empty;
+
+            if (HasGeometryEditableSelection)
+            {
+                return _selectedMarkup.Type == MarkupType.Circle
+                    ? "Numeric edit available: radius"
+                    : "Numeric edit available: radius, start, end, or sweep";
+            }
+
+            return GetSelectionSet(_selectedMarkup).Count > 1
+                ? "Numeric geometry editing is disabled for grouped selections"
+                : "Numeric geometry editing is currently available for circle and arc markups only";
+        }
+    }
+
+    public bool HasGeometryShortcutHint => HasGeometryEditableSelection;
+
+    public string SelectedMarkupGeometryShortcutHint =>
+        HasGeometryEditableSelection
+            ? "Shortcut: Ctrl+Shift+G"
+            : string.Empty;
+
+    public bool HasSelectedMarkupGeometryDetails => HasGeometryEditableSelection;
+
+    public string SelectedMarkupGeometryDetails
+    {
+        get
+        {
+            if (_selectedMarkup == null || !HasGeometryEditableSelection)
+                return string.Empty;
+
+            if (_selectedMarkup.Type == MarkupType.Circle)
+                return $"Radius: {FormatGeometryValue(_selectedMarkup.Radius)}";
+
+            var start = NormalizeMarkupAngle(_selectedMarkup.ArcStartDeg);
+            var end = NormalizeMarkupAngle(_selectedMarkup.ArcStartDeg + _selectedMarkup.ArcSweepDeg);
+
+            return string.Join(Environment.NewLine, new[]
+            {
+                $"Radius: {FormatGeometryValue(_selectedMarkup.Radius)}",
+                $"Start: {FormatGeometryValue(start)} deg",
+                $"End: {FormatGeometryValue(end)} deg",
+                $"Sweep: {FormatGeometryValue(_selectedMarkup.ArcSweepDeg)} deg"
+            });
         }
     }
 
@@ -227,6 +330,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         {
             RefreshLayerFilterOptions();
             ApplyFilter();
+            RefreshSelectedMarkupPresentation();
             OnCountsChanged();
         };
 
@@ -273,6 +377,26 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
         RefreshLayerFilterOptions();
         ApplyFilter();
+    }
+
+    public void RefreshSelectedMarkupPresentation()
+    {
+        OnPropertyChanged(nameof(HasSelectedMarkup));
+        OnPropertyChanged(nameof(HasStructuredSelection));
+        OnPropertyChanged(nameof(SelectedMarkupAnnotationKind));
+        OnPropertyChanged(nameof(SelectedMarkupAnnotationRole));
+        OnPropertyChanged(nameof(SelectedMarkupAnnotationKey));
+        OnPropertyChanged(nameof(HasTextEditableSelection));
+        OnPropertyChanged(nameof(SelectedMarkupTextEditSummary));
+        OnPropertyChanged(nameof(HasSelectedMarkupTextDetails));
+        OnPropertyChanged(nameof(SelectedMarkupTextDetails));
+        OnPropertyChanged(nameof(HasGeometryEditableSelection));
+        OnPropertyChanged(nameof(SelectedMarkupGeometryEditSummary));
+        OnPropertyChanged(nameof(HasGeometryShortcutHint));
+        OnPropertyChanged(nameof(SelectedMarkupGeometryShortcutHint));
+        OnPropertyChanged(nameof(HasSelectedMarkupGeometryDetails));
+        OnPropertyChanged(nameof(SelectedMarkupGeometryDetails));
+        CommandManager.InvalidateRequerySuggested();
     }
 
     // ── Filter logic ──────────────────────────────────────────────────────────
@@ -364,6 +488,45 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         record.Appearance.Opacity     = DefaultAppearance.Opacity;
         record.Appearance.FontFamily  = DefaultAppearance.FontFamily;
         record.Appearance.FontSize    = DefaultAppearance.FontSize;
+    }
+
+    private string GetSelectedMarkupCustomField(string fieldName)
+    {
+        if (_selectedMarkup == null)
+            return string.Empty;
+
+        return _selectedMarkup.Metadata.CustomFields.TryGetValue(fieldName, out var value)
+            ? value ?? string.Empty
+            : string.Empty;
+    }
+
+    private IReadOnlyList<MarkupRecord> GetSelectionSet(MarkupRecord selectedMarkup)
+    {
+        var groupId = selectedMarkup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.AnnotationGroupIdField, out var value)
+            ? value
+            : null;
+
+        if (string.IsNullOrWhiteSpace(groupId))
+            return new[] { selectedMarkup };
+
+        return _allMarkups
+            .Where(markup => markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.AnnotationGroupIdField, out var markupGroupId) &&
+                             string.Equals(markupGroupId, groupId, StringComparison.Ordinal))
+            .ToList();
+    }
+
+    private static double NormalizeMarkupAngle(double angleDegrees)
+    {
+        var normalized = angleDegrees % 360.0;
+        if (normalized < 0)
+            normalized += 360.0;
+
+        return normalized;
+    }
+
+    private static string FormatGeometryValue(double value)
+    {
+        return value.ToString("0.##", CultureInfo.CurrentCulture);
     }
 
     private void OnCountsChanged()

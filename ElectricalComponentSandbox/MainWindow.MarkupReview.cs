@@ -10,6 +10,21 @@ public partial class MainWindow
 {
     // ── Markup Review Workflow ───────────────────────────────────────────────
 
+    private void EditSelectedMarkupGeometry_Click(object sender, RoutedEventArgs e)
+    {
+        TryEditSelectedMarkupGeometry(showFeedbackIfUnsupported: true);
+    }
+
+    private void EditSelectedStructuredMarkup_Click(object sender, RoutedEventArgs e)
+    {
+        TryEditSelectedStructuredMarkupText(showFeedbackIfUnsupported: true);
+    }
+
+    private void MarkupListView_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        TryEditSelectedStructuredMarkupText(showFeedbackIfUnsupported: false);
+    }
+
     private void ApproveMarkup_Click(object sender, RoutedEventArgs e)
     {
         SetSelectedMarkupStatus(MarkupStatus.Approved, "Approve");
