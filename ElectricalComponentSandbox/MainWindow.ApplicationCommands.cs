@@ -10,6 +10,12 @@ namespace ElectricalComponentSandbox;
 
 public partial class MainWindow
 {
+    internal static bool IsEditSelectedMarkupGeometryShortcut(Key key, ModifierKeys modifiers)
+        => modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && key == Key.G;
+
+    internal static bool IsEditSelectedStructuredMarkupTextShortcut(Key key, ModifierKeys modifiers)
+        => modifiers == ModifierKeys.None && key == Key.F2;
+
     private void ApplyProperties_Click(object sender, RoutedEventArgs e)
     {
         var component = _viewModel.SelectedComponent;
@@ -110,7 +116,7 @@ public partial class MainWindow
                 ZoomExtents_Click(sender, e);
                 e.Handled = true;
             }
-            else if (e.Key == Key.G)
+            else if (IsEditSelectedMarkupGeometryShortcut(e.Key, modifiers))
             {
                 TryEditSelectedMarkupGeometry(showFeedbackIfUnsupported: true);
                 e.Handled = true;
@@ -171,13 +177,13 @@ public partial class MainWindow
         if (modifiers != ModifierKeys.None)
             return;
 
-        if (e.Key == Key.Delete || e.Key == Key.Back)
+        if (IsDeleteSelectedMarkupOrComponentShortcut(e.Key, modifiers))
         {
             if (!DeleteSelectedMarkupVertex())
                 DeleteComponent_Click(sender, e);
             e.Handled = true;
         }
-        else if (e.Key == Key.F2)
+        else if (IsEditSelectedStructuredMarkupTextShortcut(e.Key, modifiers))
         {
             TryEditSelectedStructuredMarkupText(showFeedbackIfUnsupported: true);
             e.Handled = true;
@@ -195,7 +201,7 @@ public partial class MainWindow
             SkiaBackground.RequestRedraw();
             e.Handled = true;
         }
-        else if (e.Key == Key.Escape)
+        else if (IsCancelActiveInteractionShortcut(e.Key, modifiers))
         {
             if (_isPdfCalibrationMode)
             {
@@ -240,6 +246,16 @@ public partial class MainWindow
                 e.Handled = true;
             }
         }
+    }
+
+    internal static bool IsDeleteSelectedMarkupOrComponentShortcut(Key key, ModifierKeys modifiers)
+    {
+        return modifiers == ModifierKeys.None && (key == Key.Delete || key == Key.Back);
+    }
+
+    internal static bool IsCancelActiveInteractionShortcut(Key key, ModifierKeys modifiers)
+    {
+        return modifiers == ModifierKeys.None && key == Key.Escape;
     }
 
     private void OpenReference_Click(object sender, RoutedEventArgs e)

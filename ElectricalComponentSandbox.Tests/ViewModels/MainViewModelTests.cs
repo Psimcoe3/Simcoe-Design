@@ -272,11 +272,13 @@ public class MainViewModelTests
 
         Assert.True(vm.MarkupTool.HasStructuredSelection);
         Assert.True(vm.MarkupTool.HasTextEditableSelection);
+        Assert.True(vm.MarkupTool.HasTextShortcutHint);
         Assert.True(vm.MarkupTool.HasSelectedMarkupTextDetails);
         Assert.Equal(DrawingAnnotationMarkupService.ScheduleTableAnnotationKind, vm.MarkupTool.SelectedMarkupAnnotationKind);
         Assert.Equal(DrawingAnnotationMarkupService.TextRoleCell, vm.MarkupTool.SelectedMarkupAnnotationRole);
         Assert.Equal("NAME", vm.MarkupTool.SelectedMarkupAnnotationKey);
         Assert.Equal("Direct text edit available for structured schedule, legend, and title-block text", vm.MarkupTool.SelectedMarkupTextEditSummary);
+        Assert.Equal("Shortcut: F2", vm.MarkupTool.SelectedMarkupTextShortcutHint);
         Assert.Equal("Current Value: PANEL-A", vm.MarkupTool.SelectedMarkupTextDetails);
     }
 
@@ -294,11 +296,13 @@ public class MainViewModelTests
 
         Assert.False(vm.MarkupTool.HasStructuredSelection);
         Assert.False(vm.MarkupTool.HasTextEditableSelection);
+        Assert.False(vm.MarkupTool.HasTextShortcutHint);
         Assert.False(vm.MarkupTool.HasSelectedMarkupTextDetails);
         Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupAnnotationKind);
         Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupAnnotationRole);
         Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupAnnotationKey);
         Assert.Equal("Direct text editing is currently available for structured schedule, legend, and title-block text only", vm.MarkupTool.SelectedMarkupTextEditSummary);
+        Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupTextShortcutHint);
         Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupTextDetails);
     }
 
@@ -344,6 +348,52 @@ public class MainViewModelTests
         Assert.Equal("Numeric edit available: radius", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
         Assert.Equal("Shortcut: Ctrl+Shift+G", vm.MarkupTool.SelectedMarkupGeometryShortcutHint);
         Assert.Equal("Radius: 12", vm.MarkupTool.SelectedMarkupGeometryDetails);
+    }
+
+    [Fact]
+    public void MarkupTool_SelectedRectangleMarkup_ReportsGeometryEditability()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            BoundingRect = new Rect(5, 10, 24, 12)
+        };
+        markup.Vertices.Add(new Point(5, 10));
+        markup.Vertices.Add(new Point(29, 22));
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasGeometryEditableSelection);
+        Assert.True(vm.MarkupTool.HasGeometryShortcutHint);
+        Assert.True(vm.MarkupTool.HasSelectedMarkupGeometryDetails);
+        Assert.Equal("Numeric edit available: width and height", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.Equal("Shortcut: Ctrl+Shift+G", vm.MarkupTool.SelectedMarkupGeometryShortcutHint);
+        Assert.Equal($"Width: 24{Environment.NewLine}Height: 12", vm.MarkupTool.SelectedMarkupGeometryDetails);
+    }
+
+    [Fact]
+    public void MarkupTool_SelectedStampMarkup_ReportsGeometryEditability()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Stamp,
+            BoundingRect = new Rect(100, 200, 120, 30),
+            TextContent = "APPROVED"
+        };
+        markup.Vertices.Add(new Point(160, 215));
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasGeometryEditableSelection);
+        Assert.True(vm.MarkupTool.HasGeometryShortcutHint);
+        Assert.True(vm.MarkupTool.HasSelectedMarkupGeometryDetails);
+        Assert.Equal("Numeric edit available: width and height", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.Equal("Shortcut: Ctrl+Shift+G", vm.MarkupTool.SelectedMarkupGeometryShortcutHint);
+        Assert.Equal($"Width: 120{Environment.NewLine}Height: 30", vm.MarkupTool.SelectedMarkupGeometryDetails);
     }
 
     [Fact]
@@ -400,6 +450,68 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public void MarkupTool_SelectedTwoPointDimension_ReportsGeometryEditability()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(12, 0) },
+            TextContent = "12"
+        };
+        markup.UpdateBoundingRect();
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasGeometryEditableSelection);
+        Assert.Equal("Numeric edit available: length and angle", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.Equal($"Length: 12{Environment.NewLine}Angle: 0 deg", vm.MarkupTool.SelectedMarkupGeometryDetails);
+    }
+
+    [Fact]
+    public void MarkupTool_SelectedThreePointDimension_ReportsGeometryEditability()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(12, 0), new Point(6, 3) },
+            TextContent = "12"
+        };
+        markup.UpdateBoundingRect();
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasGeometryEditableSelection);
+        Assert.Equal("Numeric edit available: length and angle", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.Equal($"Length: 12{Environment.NewLine}Angle: 0 deg", vm.MarkupTool.SelectedMarkupGeometryDetails);
+    }
+
+    [Fact]
+    public void MarkupTool_SelectedArcLengthDimension_DoesNotReportGeometryEditability()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(12, 0), new Point(6, 3) },
+            TextContent = "12"
+        };
+        markup.Metadata.Subject = "ArcLength";
+        markup.UpdateBoundingRect();
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.False(vm.MarkupTool.HasGeometryEditableSelection);
+        Assert.Equal(
+            "Numeric geometry editing is currently available for circle, arc, rectangle, stamp, hyperlink, box, panel, and line-style dimension or measurement markups only",
+            vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+    }
+
+    [Fact]
     public void MarkupTool_RefreshSelectedMarkupPresentation_UpdatesGeometryDetailsAfterEdit()
     {
         var vm = new MainViewModel();
@@ -417,6 +529,85 @@ public class MainViewModelTests
         vm.MarkupTool.RefreshSelectedMarkupPresentation();
 
         Assert.Equal("Radius: 24.25", vm.MarkupTool.SelectedMarkupGeometryDetails);
+    }
+
+    [Fact]
+    public void MarkupTool_SelectedPolylineMarkup_ReportsPathEditability()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Polyline,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(20, 5) }
+        };
+        markup.UpdateBoundingRect();
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasPathEditableSelection);
+        Assert.True(vm.MarkupTool.HasPathShortcutHint);
+        Assert.True(vm.MarkupTool.HasSelectedMarkupPathDetails);
+        Assert.Equal(
+            "Direct path edit available: drag grips to reposition points, or double-click a segment to insert a vertex",
+            vm.MarkupTool.SelectedMarkupPathEditSummary);
+        Assert.Equal("Shortcut: Delete or Backspace removes the active vertex", vm.MarkupTool.SelectedMarkupPathShortcutHint);
+        Assert.Equal(
+            $"Vertices: 3{Environment.NewLine}Minimum: 2{Environment.NewLine}Insert: Double-click a segment{Environment.NewLine}Delete: Active vertex can be removed",
+            vm.MarkupTool.SelectedMarkupPathDetails);
+    }
+
+    [Fact]
+    public void MarkupTool_SelectedDimensionMarkup_ReportsPathEditabilityWithoutInsertHint()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(12, 0), new Point(6, 3) },
+            TextContent = "12'-0\""
+        };
+        markup.UpdateBoundingRect();
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasPathEditableSelection);
+        Assert.True(vm.MarkupTool.HasPathShortcutHint);
+        Assert.Equal("Direct path edit available: drag grips to reposition points", vm.MarkupTool.SelectedMarkupPathEditSummary);
+        Assert.Equal(
+            $"Vertices: 3{Environment.NewLine}Minimum: 2{Environment.NewLine}Delete: Active vertex can be removed",
+            vm.MarkupTool.SelectedMarkupPathDetails);
+    }
+
+    [Fact]
+    public void MarkupTool_GroupedPathSelection_DisablesPathEditability()
+    {
+        var vm = new MainViewModel();
+        var selectedMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Polyline,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(20, 5) }
+        };
+        selectedMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = "group-1";
+
+        var groupedPeer = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            TextContent = "peer"
+        };
+        groupedPeer.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = "group-1";
+
+        vm.Markups.Add(selectedMarkup);
+        vm.Markups.Add(groupedPeer);
+        vm.MarkupTool.SelectedMarkup = selectedMarkup;
+
+        Assert.False(vm.MarkupTool.HasPathEditableSelection);
+        Assert.False(vm.MarkupTool.HasPathShortcutHint);
+        Assert.False(vm.MarkupTool.HasSelectedMarkupPathDetails);
+        Assert.Equal("Path editing is disabled for grouped selections", vm.MarkupTool.SelectedMarkupPathEditSummary);
+        Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupPathShortcutHint);
+        Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupPathDetails);
     }
 
     // ===== New Feature Tests =====

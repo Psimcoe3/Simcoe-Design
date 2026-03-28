@@ -407,6 +407,60 @@ public sealed class MarkupInteractionService
         return true;
     }
 
+    public bool SetBoundsGeometry(MarkupRecord markup, double width, double height)
+    {
+        if (!IsBoundsGeometryEditable(markup))
+            return false;
+
+        var bounds = GetBounds(markup);
+        if (bounds == Rect.Empty)
+            return false;
+
+        var nextWidth = Math.Max(0.1, width);
+        var nextHeight = Math.Max(0.1, height);
+        var topLeft = bounds.TopLeft;
+        var bottomRight = new Point(topLeft.X + nextWidth, topLeft.Y + nextHeight);
+
+        markup.BoundingRect = new Rect(topLeft, bottomRight);
+        markup.Vertices.Clear();
+        markup.Vertices.Add(topLeft);
+        markup.Vertices.Add(bottomRight);
+        markup.Metadata.ModifiedUtc = DateTime.UtcNow;
+        return true;
+    }
+
+    public bool SetLineGeometry(MarkupRecord markup, double length, double angleDeg)
+    {
+        if (!IsLineGeometryEditable(markup))
+            return false;
+
+        var start = markup.Vertices[0];
+        var originalEnd = markup.Vertices[1];
+        var originalMidpoint = GetMidpoint(start, originalEnd);
+        var originalAngleDeg = Math.Atan2(originalEnd.Y - start.Y, originalEnd.X - start.X) * 180.0 / Math.PI;
+        var originalLength = (originalEnd - start).Length;
+        var nextLength = Math.Max(0.1, length);
+        var nextEnd = GetPolarPoint(start, nextLength, angleDeg);
+        markup.Vertices[1] = nextEnd;
+
+        if (markup.Vertices.Count > 2)
+        {
+            var nextMidpoint = GetMidpoint(start, nextEnd);
+            var rotationDeltaDeg = NormalizeAngleDegrees(angleDeg) - NormalizeAngleDegrees(originalAngleDeg);
+            var scale = originalLength <= double.Epsilon ? 1.0 : nextLength / originalLength;
+
+            for (int i = 2; i < markup.Vertices.Count; i++)
+            {
+                var offset = markup.Vertices[i] - originalMidpoint;
+                markup.Vertices[i] = nextMidpoint + RotateAndScale(offset, rotationDeltaDeg, scale);
+            }
+        }
+
+        markup.UpdateBoundingRect();
+        markup.Metadata.ModifiedUtc = DateTime.UtcNow;
+        return true;
+    }
+
     public double SnapAngleDegrees(double angleDeg, double incrementDeg)
     {
         var normalizedAngle = NormalizeAngleDegrees(angleDeg);
@@ -547,6 +601,28 @@ public sealed class MarkupInteractionService
         };
     }
 
+    private static bool IsBoundsGeometryEditable(MarkupRecord markup)
+    {
+        return markup.Type is MarkupType.Rectangle or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel;
+    }
+
+    private static bool IsLineGeometryEditable(MarkupRecord markup)
+    {
+        if (markup.Type == MarkupType.Measurement)
+            return markup.Vertices.Count >= 2 && markup.Vertices.Count <= 3;
+
+        if (markup.Type != MarkupType.Dimension)
+            return false;
+
+        if (string.Equals(markup.Metadata.Subject, "Angular", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(markup.Metadata.Subject, "ArcLength", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return markup.Vertices.Count >= 2 && markup.Vertices.Count <= 3;
+    }
+
     private static Point TransformPoint(Point point, Rect originalBounds, Rect targetBounds)
     {
         var normalizedX = Normalize(point.X, originalBounds.X, originalBounds.Width);
@@ -598,6 +674,21 @@ public sealed class MarkupInteractionService
         return new Point(
             center.X + Math.Cos(angleRad) * radius,
             center.Y + Math.Sin(angleRad) * radius);
+    }
+
+    private static Point GetMidpoint(Point start, Point end)
+    {
+        return new Point((start.X + end.X) / 2.0, (start.Y + end.Y) / 2.0);
+    }
+
+    private static Vector RotateAndScale(Vector offset, double rotationDeg, double scale)
+    {
+        var radians = rotationDeg * Math.PI / 180.0;
+        var cos = Math.Cos(radians);
+        var sin = Math.Sin(radians);
+        return new Vector(
+            (offset.X * cos - offset.Y * sin) * scale,
+            (offset.X * sin + offset.Y * cos) * scale);
     }
 
     private static double NormalizeAngleDegrees(double angleDeg)

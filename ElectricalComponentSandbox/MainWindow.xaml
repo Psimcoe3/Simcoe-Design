@@ -852,6 +852,18 @@
                                 <StackPanel>
                                     <TextBlock Text="Text Edit" FontWeight="Bold" FontSize="11" Margin="0,0,0,4"/>
                                     <TextBlock Text="{Binding MarkupTool.SelectedMarkupTextEditSummary}" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding MarkupTool.SelectedMarkupTextShortcutHint}" Foreground="Gray" Margin="0,4,0,0">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding MarkupTool.HasTextShortcutHint}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                     <TextBlock Text="Current Value" FontWeight="SemiBold" Margin="0,6,0,2">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
@@ -870,6 +882,54 @@
                                                 <Setter Property="Visibility" Value="Collapsed"/>
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding MarkupTool.HasSelectedMarkupTextDetails}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+                            <Border DockPanel.Dock="Top"
+                                    Margin="4,0,4,6"
+                                    Padding="8"
+                                    Background="#FFF7F7F8"
+                                    BorderBrush="#FFD0D7DE"
+                                    BorderThickness="1"
+                                    Visibility="{Binding MarkupTool.SelectedMarkup, Converter={StaticResource NotNullToVisibilityConverter}}">
+                                <StackPanel>
+                                    <TextBlock Text="Path Edit" FontWeight="Bold" FontSize="11" Margin="0,0,0,4"/>
+                                    <TextBlock Text="{Binding MarkupTool.SelectedMarkupPathEditSummary}" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding MarkupTool.SelectedMarkupPathShortcutHint}" Foreground="Gray" Margin="0,4,0,0">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding MarkupTool.HasPathShortcutHint}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="Current Values" FontWeight="SemiBold" Margin="0,6,0,2">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding MarkupTool.HasSelectedMarkupPathDetails}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding MarkupTool.SelectedMarkupPathDetails}" TextWrapping="Wrap">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding MarkupTool.HasSelectedMarkupPathDetails}" Value="True">
                                                         <Setter Property="Visibility" Value="Visible"/>
                                                     </DataTrigger>
                                                 </Style.Triggers>

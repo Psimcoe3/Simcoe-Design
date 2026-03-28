@@ -66,6 +66,18 @@ public class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void BuildResizedBounds_BottomRightHandle_ClampsToMinimumSize()
+    {
+        var resized = _sut.BuildResizedBounds(
+            new Rect(10, 20, 30, 40),
+            new Point(12, 22),
+            MarkupResizeHandle.BottomRight,
+            minimumSize: 6);
+
+        Assert.Equal(new Rect(10, 20, 6, 6), resized);
+    }
+
+    [Fact]
     public void Resize_GroupedTableMarkup_ScalesVerticesBoundsAndFont()
     {
         var markup = new MarkupRecord
@@ -98,6 +110,20 @@ public class MarkupInteractionServiceTests
         };
 
         Assert.False(_sut.CanResize(new[] { resizable, nonResizable }));
+    }
+
+    [Fact]
+    public void CanResize_GroupOfResizableMarkups_ReturnsTrue()
+    {
+        var rectangle = CreateMarkup(new Rect(0, 0, 10, 10), "group-1");
+        var polygon = new MarkupRecord
+        {
+            Type = MarkupType.Polygon,
+            Vertices = { new Point(20, 20), new Point(40, 20), new Point(30, 35) }
+        };
+        polygon.UpdateBoundingRect();
+
+        Assert.True(_sut.CanResize(new[] { rectangle, polygon }));
     }
 
     [Fact]
@@ -290,6 +316,21 @@ public class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void HitTestRadiusHandle_Circle_ReturnsTrueNearHandle()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Radius = 12,
+            Vertices = { new Point(20, 20) }
+        };
+
+        var hit = _sut.HitTestRadiusHandle(new Point(31.5, 20.5), markup, tolerance: 1.0);
+
+        Assert.True(hit);
+    }
+
+    [Fact]
     public void SetArcAngle_StartHandle_KeepsEndFixed()
     {
         var markup = new MarkupRecord
@@ -388,6 +429,48 @@ public class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void Resize_Circle_ScalesCenterRadiusAndBounds()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Radius = 5,
+            Vertices = { new Point(10, 10) }
+        };
+        markup.UpdateBoundingRect();
+
+        var snapshot = _sut.Capture(markup);
+        _sut.Resize(markup, snapshot, new Rect(0, 0, 20, 20), new Rect(0, 0, 40, 40));
+
+        Assert.Equal(new Point(20, 20), markup.Vertices[0]);
+        Assert.Equal(10, markup.Radius, 6);
+        Assert.Equal(new Rect(10, 10, 20, 20), markup.BoundingRect);
+    }
+
+    [Fact]
+    public void Resize_Arc_ScalesRadiusAndPreservesAngles()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 8,
+            ArcStartDeg = 45,
+            ArcSweepDeg = -90,
+            Vertices = { new Point(20, 20) }
+        };
+        markup.UpdateBoundingRect();
+
+        var snapshot = _sut.Capture(markup);
+        _sut.Resize(markup, snapshot, new Rect(0, 0, 40, 40), new Rect(0, 0, 80, 80));
+
+        Assert.Equal(new Point(40, 40), markup.Vertices[0]);
+        Assert.Equal(16, markup.Radius, 6);
+        Assert.Equal(45, markup.ArcStartDeg, 6);
+        Assert.Equal(-90, markup.ArcSweepDeg, 6);
+        Assert.Equal(new Rect(24, 24, 32, 32), markup.BoundingRect);
+    }
+
+    [Fact]
     public void SnapAngleDegrees_RoundsToRequestedIncrement()
     {
         var snapped = _sut.SnapAngleDegrees(43, 15);
@@ -401,6 +484,102 @@ public class MarkupInteractionServiceTests
         var snapped = _sut.SnapAngleDegrees(-14, 15);
 
         Assert.Equal(345, snapped);
+    }
+
+    [Fact]
+    public void SetBoundsGeometry_UpdatesRectangleBoundsAndVertices()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            BoundingRect = new Rect(10, 20, 30, 40)
+        };
+        markup.Vertices.Add(new Point(10, 20));
+        markup.Vertices.Add(new Point(40, 60));
+
+        var result = _sut.SetBoundsGeometry(markup, 55, 25);
+
+        Assert.True(result);
+        Assert.Equal(new Rect(10, 20, 55, 25), markup.BoundingRect);
+        Assert.Equal(new Point(10, 20), markup.Vertices[0]);
+        Assert.Equal(new Point(65, 45), markup.Vertices[1]);
+    }
+
+    [Fact]
+    public void SetBoundsGeometry_UpdatesStampBoundsAndVertices()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Stamp,
+            BoundingRect = new Rect(100, 200, 120, 30)
+        };
+        markup.Vertices.Add(new Point(160, 215));
+
+        var result = _sut.SetBoundsGeometry(markup, 150, 40);
+
+        Assert.True(result);
+        Assert.Equal(new Rect(100, 200, 150, 40), markup.BoundingRect);
+        Assert.Equal(new Point(100, 200), markup.Vertices[0]);
+        Assert.Equal(new Point(250, 240), markup.Vertices[1]);
+    }
+
+    [Fact]
+    public void SetLineGeometry_UpdatesDimensionEndPointAndBounds()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(10, 10), new Point(30, 10) }
+        };
+        markup.UpdateBoundingRect();
+
+        var result = _sut.SetLineGeometry(markup, 25, 90);
+
+        Assert.True(result);
+        Assert.Equal(new Point(10, 10), markup.Vertices[0]);
+        Assert.Equal(10, markup.Vertices[1].X, 6);
+        Assert.Equal(35, markup.Vertices[1].Y, 6);
+        Assert.Equal(10, markup.BoundingRect.X, 6);
+        Assert.Equal(10, markup.BoundingRect.Y, 6);
+        Assert.Equal(0, markup.BoundingRect.Width, 6);
+        Assert.Equal(25, markup.BoundingRect.Height, 6);
+    }
+
+    [Fact]
+    public void SetLineGeometry_ThreePointDimension_RepositionsAnchor()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(5, 3) }
+        };
+        markup.UpdateBoundingRect();
+
+        var result = _sut.SetLineGeometry(markup, 24, 45);
+
+        Assert.True(result);
+        Assert.Equal(3, markup.Vertices.Count);
+        Assert.Equal(16.970562748477143, markup.Vertices[1].X, 6);
+        Assert.Equal(16.97056274847714, markup.Vertices[1].Y, 6);
+        Assert.Equal(3.3941125496954285, markup.Vertices[2].X, 6);
+        Assert.Equal(13.57645019878171, markup.Vertices[2].Y, 6);
+    }
+
+    [Fact]
+    public void SetLineGeometry_ArcLengthDimension_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(5, 3) }
+        };
+        markup.Metadata.Subject = "ArcLength";
+        markup.UpdateBoundingRect();
+
+        var result = _sut.SetLineGeometry(markup, 24, 45);
+
+        Assert.False(result);
+        Assert.Equal(new Point(10, 0), markup.Vertices[1]);
     }
 
     private static MarkupRecord CreateMarkup(Rect rect, string groupId)

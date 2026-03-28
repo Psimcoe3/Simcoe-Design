@@ -7,6 +7,14 @@ using ElectricalComponentSandbox.Services;
 
 namespace ElectricalComponentSandbox;
 
+internal enum MarkupHandleOverlayMode
+{
+    None,
+    DirectGeometry,
+    Vertices,
+    Resize
+}
+
 public partial class MainWindow
 {
     private bool _isDraggingMarkupArcAngle = false;
@@ -201,7 +209,7 @@ public partial class MainWindow
         {
             if (showFeedbackIfUnsupported)
             {
-                MessageBox.Show("Select a single circle or arc markup first.", "Edit Geometry",
+                MessageBox.Show("Select a single circle, arc, rectangle, stamp, hyperlink, box, panel, dimension, or measurement markup first.", "Edit Geometry",
                     MessageBoxButton.OK, MessageBoxImage.Information);
             }
 
@@ -213,7 +221,7 @@ public partial class MainWindow
         {
             if (showFeedbackIfUnsupported)
             {
-                MessageBox.Show("Numeric geometry editing is available for a single selected circle or arc markup.", "Edit Geometry",
+                MessageBox.Show("Numeric geometry editing is available for a single selected circle, arc, rectangle, stamp, hyperlink, box, panel, dimension, or measurement markup.", "Edit Geometry",
                     MessageBoxButton.OK, MessageBoxImage.Information);
             }
 
@@ -222,10 +230,111 @@ public partial class MainWindow
 
         return selectedMarkup.Type switch
         {
+            MarkupType.Rectangle or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel => TryEditSelectedBoundsGeometry(selectedMarkup),
             MarkupType.Circle => TryEditSelectedCircleGeometry(selectedMarkup),
             MarkupType.Arc => TryEditSelectedArcGeometry(selectedMarkup),
+            MarkupType.Dimension or MarkupType.Measurement => TryEditSelectedLineGeometry(selectedMarkup, showFeedbackIfUnsupported),
             _ => ShowUnsupportedGeometryEditMessage(showFeedbackIfUnsupported)
         };
+    }
+
+    private bool TryEditSelectedLineGeometry(MarkupRecord markup, bool showFeedbackIfUnsupported)
+    {
+        if (markup.Vertices.Count != 2)
+        {
+            if (showFeedbackIfUnsupported)
+            {
+                MessageBox.Show("Numeric geometry editing for dimensions and measurements is currently available for line-style markups only. Angular and arc-length dimension variants are excluded.", "Edit Geometry",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        var start = markup.Vertices[0];
+        var end = markup.Vertices[1];
+        var delta = end - start;
+        var length = delta.Length;
+        var angleDeg = Math.Atan2(delta.Y, delta.X) * 180.0 / Math.PI;
+        var input = PromptInput(
+            $"Edit {markup.TypeDisplayText} Geometry",
+            "Enter length and optional angle. The first point stays fixed.\n\nExamples:\nlength=24\nangle=30",
+            BuildLineGeometryDefaultValue(length, angleDeg));
+        if (input == null)
+            return true;
+
+        if (!TryParseMarkupGeometryAssignments(input, out var values, out var errorMessage))
+        {
+            MessageBox.Show(errorMessage, $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return true;
+        }
+
+        if (!TryGetAssignment(values, "length", length, out var nextLength) || nextLength <= 0)
+        {
+            MessageBox.Show("Length must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return true;
+        }
+
+        if (!TryGetAssignment(values, "angle", angleDeg, out var nextAngleDeg))
+        {
+            MessageBox.Show("Angle must be numeric.", $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return true;
+        }
+
+        var before = _markupInteractionService.Capture(markup);
+        if (!_markupInteractionService.SetLineGeometry(markup, nextLength, nextAngleDeg))
+            return false;
+
+        return CommitMarkupGeometryEdit(
+            markup,
+            before,
+            $"Edit {markup.TypeDisplayText.ToLowerInvariant()} geometry",
+            FormattableString.Invariant($"Type: {markup.TypeDisplayText}, Length: {nextLength:0.##}, Angle: {nextAngleDeg:0.##}"));
+    }
+
+    private bool TryEditSelectedBoundsGeometry(MarkupRecord markup)
+    {
+        var bounds = markup.BoundingRect != Rect.Empty
+            ? markup.BoundingRect
+            : new Rect(markup.Vertices[0], markup.Vertices[1]);
+        var input = PromptInput(
+            $"Edit {markup.TypeDisplayText} Geometry",
+            "Enter width and height. The markup's top-left corner stays fixed.\n\nExamples:\nwidth=24\nheight=12",
+            string.Join(Environment.NewLine, new[]
+            {
+                FormattableString.Invariant($"width={bounds.Width:0.##}"),
+                FormattableString.Invariant($"height={bounds.Height:0.##}")
+            }));
+        if (input == null)
+            return true;
+
+        if (!TryParseMarkupGeometryAssignments(input, out var values, out var errorMessage))
+        {
+            MessageBox.Show(errorMessage, $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return true;
+        }
+
+        if (!TryGetAssignment(values, "width", bounds.Width, out var width) || width <= 0)
+        {
+            MessageBox.Show("Width must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return true;
+        }
+
+        if (!TryGetAssignment(values, "height", bounds.Height, out var height) || height <= 0)
+        {
+            MessageBox.Show("Height must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return true;
+        }
+
+        var before = _markupInteractionService.Capture(markup);
+        if (!_markupInteractionService.SetBoundsGeometry(markup, width, height))
+            return false;
+
+        return CommitMarkupGeometryEdit(
+            markup,
+            before,
+            $"Edit {markup.TypeDisplayText.ToLowerInvariant()} geometry",
+            FormattableString.Invariant($"Type: {markup.TypeDisplayText}, Width: {markup.BoundingRect.Width:0.##}, Height: {markup.BoundingRect.Height:0.##}"));
     }
 
     private bool TryEditSelectedCircleGeometry(MarkupRecord markup)
@@ -317,7 +426,7 @@ public partial class MainWindow
     {
         if (showFeedbackIfUnsupported)
         {
-            MessageBox.Show("Numeric geometry editing is currently available for circle and arc markups only.", "Edit Geometry",
+            MessageBox.Show("Numeric geometry editing is currently available for circle, arc, rectangle, stamp, hyperlink, box, panel, and line-style dimension or measurement markups only. Angular and arc-length dimension variants remain excluded.", "Edit Geometry",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
@@ -332,6 +441,15 @@ public partial class MainWindow
             FormattableString.Invariant($"radius={markup.Radius:0.##}"),
             FormattableString.Invariant($"start={NormalizeMarkupAngle(markup.ArcStartDeg):0.##}"),
             FormattableString.Invariant($"end={endAngle:0.##}")
+        });
+    }
+
+    private static string BuildLineGeometryDefaultValue(double length, double angleDeg)
+    {
+        return string.Join(Environment.NewLine, new[]
+        {
+            FormattableString.Invariant($"length={length:0.##}"),
+            FormattableString.Invariant($"angle={NormalizeMarkupAngle(angleDeg):0.##}")
         });
     }
 
@@ -824,6 +942,11 @@ public partial class MainWindow
         var canEditVertices = selectionSet.Count == 1 && _markupInteractionService.CanEditVertices(selectedMarkup);
         var canEditArcAngles = selectionSet.Count == 1 && _markupInteractionService.CanEditArcAngles(selectedMarkup);
         var canEditRadius = selectionSet.Count == 1 && _markupInteractionService.CanEditRadius(selectedMarkup);
+        var handleMode = GetMarkupHandleOverlayMode(
+            canEditArcAngles,
+            canEditRadius,
+            canEditVertices,
+            _markupInteractionService.CanResize(selectionSet));
 
         var highlightStyle = new RenderStyle
         {
@@ -834,7 +957,7 @@ public partial class MainWindow
 
         renderer.DrawRect(bounds, highlightStyle);
 
-        if (canEditArcAngles)
+        if (handleMode == MarkupHandleOverlayMode.DirectGeometry && canEditArcAngles)
         {
             foreach (var handle in new[] { MarkupArcAngleHandle.Start, MarkupArcAngleHandle.End })
             {
@@ -849,7 +972,7 @@ public partial class MainWindow
             }
         }
 
-        if (canEditRadius)
+        if (handleMode == MarkupHandleOverlayMode.DirectGeometry && canEditRadius)
         {
             renderer.DrawGrip(
                 _markupInteractionService.GetRadiusHandlePoint(selectedMarkup),
@@ -861,10 +984,7 @@ public partial class MainWindow
             }
         }
 
-        if (canEditArcAngles || canEditRadius)
-            return;
-
-        if (canEditVertices)
+        if (handleMode == MarkupHandleOverlayMode.Vertices)
         {
             var points = _markupInteractionService.GetVertexHandlePoints(selectedMarkup);
             for (int i = 0; i < points.Count; i++)
@@ -874,7 +994,7 @@ public partial class MainWindow
                     hot: _isDraggingMarkupVertex && i == _activeMarkupVertexIndex);
             }
         }
-        else if (_markupInteractionService.CanResize(selectionSet))
+        else if (handleMode == MarkupHandleOverlayMode.Resize)
         {
             foreach (var handle in Enum.GetValues<MarkupResizeHandle>())
             {
@@ -886,6 +1006,24 @@ public partial class MainWindow
                     hot: _isResizingMarkup && handle == _activeMarkupResizeHandle);
             }
         }
+    }
+
+    internal static MarkupHandleOverlayMode GetMarkupHandleOverlayMode(
+        bool canEditArcAngles,
+        bool canEditRadius,
+        bool canEditVertices,
+        bool canResize)
+    {
+        if (canEditArcAngles || canEditRadius)
+            return MarkupHandleOverlayMode.DirectGeometry;
+
+        if (canEditVertices)
+            return MarkupHandleOverlayMode.Vertices;
+
+        if (canResize)
+            return MarkupHandleOverlayMode.Resize;
+
+        return MarkupHandleOverlayMode.None;
     }
 
     private double GetMarkupHitTolerance()
