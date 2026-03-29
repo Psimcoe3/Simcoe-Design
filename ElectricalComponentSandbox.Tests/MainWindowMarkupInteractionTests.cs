@@ -36,6 +36,32 @@ public class MainWindowMarkupInteractionTests
         return result!;
     }
 
+    private static T RunWithSelectedMarkupWindow<T>(
+        MarkupRecord markup,
+        Func<MainWindow, MainViewModel, MarkupRecord, T> action,
+        Action<MainViewModel>? configureViewModel = null)
+    {
+        return RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            configureViewModel?.Invoke(viewModel);
+
+            markup.UpdateBoundingRect();
+            viewModel.Markups.Add(markup);
+            viewModel.MarkupTool.SelectedMarkup = markup;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                return action(window, viewModel, markup);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
     [Fact]
     public void GetMarkupHandleOverlayMode_PrefersDirectGeometryOverVerticesAndResize()
     {
@@ -114,26 +140,14 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DirectVertexDragForTesting_LineStyleDimension_UsesPolarSnapAndSupportsUndo()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel
-            {
-                SnapToGrid = false,
-                IsPolarActive = true,
-                PolarIncrementDeg = 30
-            };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(0, 0), new Point(10, 0), new Point(30, 20) },
                 Metadata = new MarkupMetadata { Subject = "Diameter" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, viewModel, markup) =>
             {
                 var began = window.BeginSelectedMarkupVertexDragForTesting(new Point(10, 0));
                 window.UpdateDraggedMarkupVertexPreviewForTesting(new Point(18, 6));
@@ -143,12 +157,13 @@ public class MainWindowMarkupInteractionTests
                 viewModel.Undo();
                 var undoneState = (markup.Vertices[1], markup.Vertices[2]);
                 return (began, editedState, undoneState);
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.SnapToGrid = false;
+                viewModel.IsPolarActive = true;
+                viewModel.PolarIncrementDeg = 30;
+            });
 
         Assert.True(outcome.began);
         Assert.Equal(16.431676725154983, outcome.editedState.Item1.X, 3);
@@ -161,25 +176,14 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DirectRadiusDragForTesting_Circle_UsesGridSnapAndSupportsUndo()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel
-            {
-                SnapToGrid = true,
-                GridSize = 1.0
-            };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Circle,
                 Vertices = { new Point(0, 0) },
                 Radius = 10
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, viewModel, markup) =>
             {
                 var began = window.BeginSelectedMarkupRadiusDragForTesting(new Point(10, 0));
                 window.UpdateDraggedMarkupRadiusPreviewForTesting(new Point(11, 11));
@@ -189,12 +193,12 @@ public class MainWindowMarkupInteractionTests
                 viewModel.Undo();
                 var undoneRadius = markup.Radius;
                 return (began, editedRadius, undoneRadius);
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.SnapToGrid = true;
+                viewModel.GridSize = 1.0;
+            });
 
         Assert.True(outcome.began);
         Assert.Equal(28.284271247461902, outcome.editedRadius, 6);
@@ -204,27 +208,16 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DirectArcAngleDragForTesting_ArcStartHandle_UsesPolarSnapAndSupportsUndo()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel
-            {
-                IsPolarActive = true,
-                PolarIncrementDeg = 30
-            };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Arc,
                 Vertices = { new Point(0, 0) },
                 Radius = 10,
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, viewModel, markup) =>
             {
                 var began = window.BeginSelectedMarkupArcAngleDragForTesting(new Point(10, 0));
                 window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(8, 6));
@@ -234,12 +227,12 @@ public class MainWindowMarkupInteractionTests
                 viewModel.Undo();
                 var undoneState = (markup.ArcStartDeg, markup.ArcSweepDeg);
                 return (began, editedState, undoneState);
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.IsPolarActive = true;
+                viewModel.PolarIncrementDeg = 30;
+            });
 
         Assert.True(outcome.began);
         Assert.Equal(30, outcome.editedState.Item1, 6);
@@ -251,27 +244,16 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DirectRadiusDragForTesting_Arc_UsesGridSnapAndSupportsUndo()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel
-            {
-                SnapToGrid = true,
-                GridSize = 1.0
-            };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Arc,
                 Vertices = { new Point(0, 0) },
                 Radius = 10,
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, viewModel, markup) =>
             {
                 var began = window.BeginSelectedMarkupRadiusDragForTesting(new Point(7.0710678118654755, 7.0710678118654755));
                 window.UpdateDraggedMarkupRadiusPreviewForTesting(new Point(11, 11));
@@ -281,12 +263,12 @@ public class MainWindowMarkupInteractionTests
                 viewModel.Undo();
                 var undoneState = (markup.Radius, markup.ArcStartDeg, markup.ArcSweepDeg);
                 return (began, editedState, undoneState);
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.SnapToGrid = true;
+                viewModel.GridSize = 1.0;
+            });
 
         Assert.True(outcome.began);
         Assert.Equal(28.284271247461902, outcome.editedState.Item1, 6);
@@ -300,27 +282,16 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DirectArcAngleDragForTesting_ArcEndHandle_UsesPolarSnapAndSupportsUndo()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel
-            {
-                IsPolarActive = true,
-                PolarIncrementDeg = 30
-            };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Arc,
                 Vertices = { new Point(0, 0) },
                 Radius = 10,
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, viewModel, markup) =>
             {
                 var began = window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
                 window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(6, 8));
@@ -330,12 +301,12 @@ public class MainWindowMarkupInteractionTests
                 viewModel.Undo();
                 var undoneState = (markup.ArcStartDeg, markup.ArcSweepDeg);
                 return (began, editedState, undoneState);
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.IsPolarActive = true;
+                viewModel.PolarIncrementDeg = 30;
+            });
 
         Assert.True(outcome.began);
         Assert.Equal(0, outcome.editedState.Item1, 6);
@@ -344,32 +315,134 @@ public class MainWindowMarkupInteractionTests
         Assert.Equal(90, outcome.undoneState.Item2, 6);
     }
 
+
+    [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_Circle_UpdatesGeometryAndSupportsUndo()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Circle,
+                Vertices = { new Point(20, 20) },
+                Radius = 5
+            },
+            (window, viewModel, markup) =>
+            {
+                var edited = window.ExecuteEditMarkupGeometryCommandForTesting("12");
+                var editedState = (markup.Radius, markup.BoundingRect);
+
+                viewModel.Undo();
+                var undoneState = (markup.Radius, markup.BoundingRect);
+                return (edited, editedState, undoneState);
+            });
+
+        Assert.True(outcome.edited);
+        Assert.Equal(12, outcome.editedState.Item1, 6);
+        Assert.Equal(new Rect(8, 8, 24, 24), outcome.editedState.Item2);
+        Assert.Equal(5, outcome.undoneState.Item1, 6);
+        Assert.Equal(new Rect(15, 15, 10, 10), outcome.undoneState.Item2);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_Arc_UpdatesGeometryAndSupportsUndo()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Arc,
+                Vertices = { new Point(0, 0) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90
+            },
+            (window, viewModel, markup) =>
+            {
+                var edited = window.ExecuteEditMarkupGeometryCommandForTesting("radius=12\nstart=30\nend=150");
+                var editedState = (markup.Radius, markup.ArcStartDeg, markup.ArcSweepDeg);
+
+                viewModel.Undo();
+                var undoneState = (markup.Radius, markup.ArcStartDeg, markup.ArcSweepDeg);
+                return (edited, editedState, undoneState);
+            });
+
+        Assert.True(outcome.edited);
+        Assert.Equal(12, outcome.editedState.Item1, 6);
+        Assert.Equal(30, outcome.editedState.Item2, 6);
+        Assert.Equal(120, outcome.editedState.Item3, 6);
+        Assert.Equal(10, outcome.undoneState.Item1, 6);
+        Assert.Equal(0, outcome.undoneState.Item2, 6);
+        Assert.Equal(90, outcome.undoneState.Item3, 6);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_Circle_InvalidRadius_DoesNotChangeGeometry()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Circle,
+                Vertices = { new Point(20, 20) },
+                Radius = 5
+            },
+            (window, viewModel, markup) =>
+            {
+                var handled = window.ExecuteEditMarkupGeometryCommandForTesting("radius=0");
+                var stateAfterCommand = (markup.Radius, markup.BoundingRect);
+
+                viewModel.Undo();
+                var stateAfterUndo = (markup.Radius, markup.BoundingRect);
+                return (handled, stateAfterCommand, stateAfterUndo);
+            });
+
+        Assert.True(outcome.handled);
+        Assert.Equal(5, outcome.stateAfterCommand.Item1, 6);
+        Assert.Equal(new Rect(15, 15, 10, 10), outcome.stateAfterCommand.Item2);
+        Assert.Equal(outcome.stateAfterCommand, outcome.stateAfterUndo);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_Arc_InvalidRadius_DoesNotChangeGeometry()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Arc,
+                Vertices = { new Point(0, 0) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90
+            },
+            (window, viewModel, markup) =>
+            {
+                var handled = window.ExecuteEditMarkupGeometryCommandForTesting("radius=0\nstart=30");
+                var stateAfterCommand = (markup.Radius, markup.ArcStartDeg, markup.ArcSweepDeg);
+
+                viewModel.Undo();
+                var stateAfterUndo = (markup.Radius, markup.ArcStartDeg, markup.ArcSweepDeg);
+                return (handled, stateAfterCommand, stateAfterUndo);
+            });
+
+        Assert.True(outcome.handled);
+        Assert.Equal(10, outcome.stateAfterCommand.Item1, 6);
+        Assert.Equal(0, outcome.stateAfterCommand.Item2, 6);
+        Assert.Equal(90, outcome.stateAfterCommand.Item3, 6);
+        Assert.Equal(outcome.stateAfterCommand, outcome.stateAfterUndo);
+    }
+
     [Fact]
     public void BeginSelectedMarkupVertexInsertionForTesting_InsertableSelection_EntersPendingMode()
     {
-        var pending = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var pending = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Polyline,
                 Vertices = { new Point(0, 0), new Point(10, 0), new Point(20, 0) }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
                 return window.BeginSelectedMarkupVertexInsertionForTesting() &&
                        window.IsPendingMarkupVertexInsertionForTesting;
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.True(pending);
     }
@@ -377,29 +450,17 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void BeginSelectedMarkupVertexInsertionForTesting_NonInsertableSelection_DoesNotEnterPendingMode()
     {
-        var pending = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var pending = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(0, 0), new Point(10, 0) }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
                 var began = window.BeginSelectedMarkupVertexInsertionForTesting();
                 return began || window.IsPendingMarkupVertexInsertionForTesting;
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.False(pending);
     }
@@ -407,30 +468,18 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void HandlePendingMarkupVertexInsertionClickForTesting_SegmentHit_InsertsVertexAndClearsPendingMode()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Polyline,
                 Vertices = { new Point(0, 0), new Point(30, 0) }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, markup) =>
             {
                 var began = window.BeginSelectedMarkupVertexInsertionForTesting();
                 var inserted = window.HandlePendingMarkupVertexInsertionClickForTesting(new Point(15, 0));
                 return (began, inserted, window.IsPendingMarkupVertexInsertionForTesting, markup.Vertices.Count, window.ActiveMarkupVertexIndexForTesting, markup.Vertices[1]);
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.True(outcome.began);
         Assert.True(outcome.inserted);
@@ -443,32 +492,20 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void HandlePendingMarkupVertexInsertionClickForTesting_MissAndCancel_KeepThenClearPendingMode()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Polyline,
                 Vertices = { new Point(0, 0), new Point(10, 0) }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, markup) =>
             {
                 var began = window.BeginSelectedMarkupVertexInsertionForTesting();
                 var inserted = window.HandlePendingMarkupVertexInsertionClickForTesting(new Point(200, 200));
                 var pendingAfterMiss = window.IsPendingMarkupVertexInsertionForTesting;
                 window.CancelPendingMarkupVertexInsertionForTesting();
                 return (began, inserted, pendingAfterMiss, window.IsPendingMarkupVertexInsertionForTesting, markup.Vertices.Count);
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.True(outcome.began);
         Assert.False(outcome.inserted);
@@ -518,29 +555,17 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void ExecuteInsertVertexCommandForTesting_InsertableSelection_EntersPendingMode()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Polyline,
                 Vertices = { new Point(0, 0), new Point(10, 0), new Point(20, 0) }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, markup) =>
             {
                 var enteredPendingMode = window.ExecuteInsertVertexCommandForTesting();
                 return (enteredPendingMode, window.IsPendingMarkupVertexInsertionForTesting, markup.Vertices.Count, window.ActiveMarkupVertexIndexForTesting);
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.True(outcome.enteredPendingMode);
         Assert.True(outcome.Item2);
@@ -625,10 +650,8 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void ExecuteEditMarkupGeometryCommandForTesting_AngularDimension_UpdatesGeometryAndSupportsUndo()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 12), new Point(10, 10) },
@@ -636,13 +659,8 @@ public class MainWindowMarkupInteractionTests
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90,
                 Metadata = new MarkupMetadata { Subject = "Angular" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, viewModel, markup) =>
             {
                 var edited = window.ExecuteEditMarkupGeometryCommandForTesting("angle=60\nradius=14");
                 var editedState = (
@@ -661,12 +679,7 @@ public class MainWindowMarkupInteractionTests
                     markup.ArcSweepDeg);
 
                 return (edited, editedState, undoneState);
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.True(outcome.edited);
         Assert.Equal(6, outcome.editedState.Item1.X, 6);
@@ -687,10 +700,8 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DirectArcAngleDragForTesting_AngularDimension_UpdatesGeometryAndSupportsUndo()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10), new Point(8, 8) },
@@ -698,13 +709,8 @@ public class MainWindowMarkupInteractionTests
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90,
                 Metadata = new MarkupMetadata { Subject = "Angular" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, viewModel, markup) =>
             {
                 var began = window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
                 window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(10, 10));
@@ -714,12 +720,7 @@ public class MainWindowMarkupInteractionTests
                 viewModel.Undo();
                 var undoneState = (markup.Vertices[2], markup.ArcSweepDeg);
                 return (began, editedState, undoneState);
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.True(outcome.began);
         Assert.Equal(7.0710678118654755, outcome.editedState.Item1.X, 6);
@@ -732,14 +733,8 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DirectArcAngleDragForTesting_AngularDimension_UsesPolarSnapAndSupportsUndo()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel
-            {
-                IsPolarActive = true,
-                PolarIncrementDeg = 30
-            };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10), new Point(8, 8) },
@@ -747,13 +742,8 @@ public class MainWindowMarkupInteractionTests
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90,
                 Metadata = new MarkupMetadata { Subject = "Angular" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, viewModel, markup) =>
             {
                 var began = window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
                 window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(6, 8));
@@ -763,12 +753,12 @@ public class MainWindowMarkupInteractionTests
                 viewModel.Undo();
                 var undoneState = (markup.Vertices[2], markup.ArcSweepDeg);
                 return (began, editedState, undoneState);
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.IsPolarActive = true;
+                viewModel.PolarIncrementDeg = 30;
+            });
 
         Assert.True(outcome.began);
         Assert.Equal(5, outcome.editedState.Item1.X, 6);
@@ -781,13 +771,8 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void ExecuteEditMarkupGeometryCommandForTesting_ArcLengthDimension_UpdatesGeometryAndSupportsUndo()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel
-            {
-                SnapToGrid = false
-            };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
@@ -795,13 +780,8 @@ public class MainWindowMarkupInteractionTests
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90,
                 Metadata = new MarkupMetadata { Subject = "ArcLength" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, viewModel, markup) =>
             {
                 var edited = window.ExecuteEditMarkupGeometryCommandForTesting("arclength=6.283185307179586\nradius=12");
                 var editedState = (
@@ -822,12 +802,11 @@ public class MainWindowMarkupInteractionTests
                     markup.ArcSweepDeg);
 
                 return (edited, editedState, undoneState);
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.SnapToGrid = false;
+            });
 
         Assert.True(outcome.edited);
         Assert.Equal(new Point(12, 0), outcome.editedState.Item1);
@@ -850,10 +829,8 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DirectRadiusDragForTesting_ArcLengthDimension_UpdatesGeometryAndSupportsUndo()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel { SnapToGrid = false };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
@@ -861,13 +838,8 @@ public class MainWindowMarkupInteractionTests
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90,
                 Metadata = new MarkupMetadata { Subject = "ArcLength" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, viewModel, markup) =>
             {
                 var began = window.BeginSelectedMarkupRadiusDragForTesting(new Point(7.0710678118654755, 7.0710678118654755));
                 window.UpdateDraggedMarkupRadiusPreviewForTesting(new Point(8.48528137423857, 8.48528137423857));
@@ -877,12 +849,11 @@ public class MainWindowMarkupInteractionTests
                 viewModel.Undo();
                 var undoneState = (markup.Vertices[1], markup.Radius, markup.ArcSweepDeg);
                 return (began, editedState, undoneState);
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.SnapToGrid = false;
+            });
 
         Assert.True(outcome.began);
         Assert.Equal(3.105828541230249, outcome.editedState.Item1.X, 6);
@@ -897,14 +868,8 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DirectRadiusDragForTesting_AngularDimension_UsesGridSnapAndSupportsUndo()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel
-            {
-                SnapToGrid = true,
-                GridSize = 1.0
-            };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10), new Point(8, 8) },
@@ -912,13 +877,8 @@ public class MainWindowMarkupInteractionTests
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90,
                 Metadata = new MarkupMetadata { Subject = "Angular" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, viewModel, markup) =>
             {
                 var began = window.BeginSelectedMarkupRadiusDragForTesting(new Point(5.656854249492381, 5.65685424949238));
                 window.UpdateDraggedMarkupRadiusPreviewForTesting(new Point(11, 11));
@@ -928,12 +888,12 @@ public class MainWindowMarkupInteractionTests
                 viewModel.Undo();
                 var undoneState = (markup.Radius, markup.ArcSweepDeg);
                 return (began, editedState, undoneState);
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.SnapToGrid = true;
+                viewModel.GridSize = 1.0;
+            });
 
         Assert.True(outcome.began);
         Assert.Equal(28.284271247461902, outcome.editedState.Item1, 6);
@@ -945,14 +905,8 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DirectRadiusDragForTesting_ArcLengthDimension_UsesGridSnapAndSupportsUndo()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel
-            {
-                SnapToGrid = true,
-                GridSize = 1.0
-            };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
@@ -960,13 +914,8 @@ public class MainWindowMarkupInteractionTests
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90,
                 Metadata = new MarkupMetadata { Subject = "ArcLength" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, viewModel, markup) =>
             {
                 var began = window.BeginSelectedMarkupRadiusDragForTesting(new Point(7.0710678118654755, 7.0710678118654755));
                 window.UpdateDraggedMarkupRadiusPreviewForTesting(new Point(11, 11));
@@ -976,12 +925,12 @@ public class MainWindowMarkupInteractionTests
                 viewModel.Undo();
                 var undoneState = (markup.Radius, markup.ArcSweepDeg);
                 return (began, editedState, undoneState);
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.SnapToGrid = true;
+                viewModel.GridSize = 1.0;
+            });
 
         Assert.True(outcome.began);
         Assert.Equal(28.284271247461902, outcome.editedState.Item1, 6);
@@ -993,10 +942,8 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DirectArcAngleDragForTesting_ArcLengthDimension_UpdatesGeometryAndSupportsUndo()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
@@ -1004,13 +951,8 @@ public class MainWindowMarkupInteractionTests
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90,
                 Metadata = new MarkupMetadata { Subject = "ArcLength" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, viewModel, markup) =>
             {
                 var began = window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
                 window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(-10, 0));
@@ -1020,12 +962,7 @@ public class MainWindowMarkupInteractionTests
                 viewModel.Undo();
                 var undoneState = (markup.Vertices[1], markup.ArcSweepDeg);
                 return (began, editedState, undoneState);
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.True(outcome.began);
         Assert.Equal(-10, outcome.editedState.Item1.X, 6);
@@ -1038,14 +975,8 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DirectArcAngleDragForTesting_ArcLengthDimension_UsesPolarSnapAndSupportsUndo()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel
-            {
-                IsPolarActive = true,
-                PolarIncrementDeg = 30
-            };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
@@ -1053,13 +984,8 @@ public class MainWindowMarkupInteractionTests
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90,
                 Metadata = new MarkupMetadata { Subject = "ArcLength" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, viewModel, markup) =>
             {
                 var began = window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
                 window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(6, 8));
@@ -1069,12 +995,12 @@ public class MainWindowMarkupInteractionTests
                 viewModel.Undo();
                 var undoneState = (markup.Vertices[1], markup.ArcSweepDeg);
                 return (began, editedState, undoneState);
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.IsPolarActive = true;
+                viewModel.PolarIncrementDeg = 30;
+            });
 
         Assert.True(outcome.began);
         Assert.Equal(5, outcome.editedState.Item1.X, 6);
@@ -1087,34 +1013,26 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DrawSelectedMarkupOverlayForTesting_LineStyleVertexDrag_RendersGeometryReadout()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel { SnapToGrid = false };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(0, 0), new Point(12, 0), new Point(30, 20) },
                 Metadata = new MarkupMetadata { Subject = "Diameter" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var renderer = new OverlayRecordingRenderer();
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
+                var renderer = new OverlayRecordingRenderer();
                 window.BeginSelectedMarkupVertexDragForTesting(new Point(12, 0));
                 window.UpdateDraggedMarkupVertexPreviewForTesting(new Point(18, 0));
                 window.DrawSelectedMarkupOverlayForTesting(renderer);
                 window.FinishMarkupVertexDragForTesting();
                 return renderer.LastTextBoxText;
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.SnapToGrid = false;
+            });
 
         Assert.Equal("Diameter 18  Angle 0 deg", outcome);
     }
@@ -1122,38 +1040,27 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DrawSelectedMarkupOverlayForTesting_CircleRadiusDrag_RendersRadiusReadout()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel
-            {
-                SnapToGrid = true,
-                GridSize = 1.0
-            };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Circle,
                 Vertices = { new Point(0, 0) },
                 Radius = 10
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var renderer = new OverlayRecordingRenderer();
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
+                var renderer = new OverlayRecordingRenderer();
                 window.BeginSelectedMarkupRadiusDragForTesting(new Point(10, 0));
                 window.UpdateDraggedMarkupRadiusPreviewForTesting(new Point(11, 11));
                 window.DrawSelectedMarkupOverlayForTesting(renderer);
                 window.FinishMarkupRadiusDragForTesting();
                 return renderer.LastTextBoxText;
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.SnapToGrid = true;
+                viewModel.GridSize = 1.0;
+            });
 
         Assert.Equal("Radius 28.28", outcome);
     }
@@ -1161,40 +1068,29 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DrawSelectedMarkupOverlayForTesting_ArcStartAngleDrag_RendersSnapReadout()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel
-            {
-                IsPolarActive = true,
-                PolarIncrementDeg = 30
-            };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Arc,
                 Vertices = { new Point(0, 0) },
                 Radius = 10,
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var renderer = new OverlayRecordingRenderer();
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
+                var renderer = new OverlayRecordingRenderer();
                 window.BeginSelectedMarkupArcAngleDragForTesting(new Point(10, 0));
                 window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(8, 6));
                 window.DrawSelectedMarkupOverlayForTesting(renderer);
                 window.FinishMarkupArcAngleDragForTesting();
                 return renderer.LastTextBoxText;
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.IsPolarActive = true;
+                viewModel.PolarIncrementDeg = 30;
+            });
 
         Assert.Equal("Start 30 deg  End 90 deg  Sweep 60 deg  Snap 30 deg", outcome);
     }
@@ -1202,40 +1098,29 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DrawSelectedMarkupOverlayForTesting_ArcRadiusDrag_RendersRadiusReadout()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel
-            {
-                SnapToGrid = true,
-                GridSize = 1.0
-            };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Arc,
                 Vertices = { new Point(0, 0) },
                 Radius = 10,
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var renderer = new OverlayRecordingRenderer();
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
+                var renderer = new OverlayRecordingRenderer();
                 window.BeginSelectedMarkupRadiusDragForTesting(new Point(7.0710678118654755, 7.0710678118654755));
                 window.UpdateDraggedMarkupRadiusPreviewForTesting(new Point(11, 11));
                 window.DrawSelectedMarkupOverlayForTesting(renderer);
                 window.FinishMarkupRadiusDragForTesting();
                 return renderer.LastTextBoxText;
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.SnapToGrid = true;
+                viewModel.GridSize = 1.0;
+            });
 
         Assert.Equal("Radius 28.28", outcome);
     }
@@ -1243,40 +1128,29 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DrawSelectedMarkupOverlayForTesting_ArcEndAngleDrag_RendersSnapReadout()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel
-            {
-                IsPolarActive = true,
-                PolarIncrementDeg = 30
-            };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Arc,
                 Vertices = { new Point(0, 0) },
                 Radius = 10,
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var renderer = new OverlayRecordingRenderer();
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
+                var renderer = new OverlayRecordingRenderer();
                 window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
                 window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(6, 8));
                 window.DrawSelectedMarkupOverlayForTesting(renderer);
                 window.FinishMarkupArcAngleDragForTesting();
                 return renderer.LastTextBoxText;
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.IsPolarActive = true;
+                viewModel.PolarIncrementDeg = 30;
+            });
 
         Assert.Equal("Start 0 deg  End 60 deg  Sweep 60 deg  Snap 30 deg", outcome);
     }
@@ -1284,10 +1158,8 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DrawSelectedMarkupOverlayForTesting_ArcLengthAngleDrag_RendersArcLengthReadout()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
@@ -1295,26 +1167,16 @@ public class MainWindowMarkupInteractionTests
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90,
                 Metadata = new MarkupMetadata { Subject = "ArcLength" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var renderer = new OverlayRecordingRenderer();
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
+                var renderer = new OverlayRecordingRenderer();
                 window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
                 window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(-10, 0));
                 window.DrawSelectedMarkupOverlayForTesting(renderer);
                 window.FinishMarkupArcAngleDragForTesting();
                 return renderer.LastTextBoxText;
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.Equal("Arc Length 31.42  Sweep 180 deg  Radius 10", outcome);
     }
@@ -1322,14 +1184,8 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DrawSelectedMarkupOverlayForTesting_AngularAngleDrag_RendersSnapReadout()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel
-            {
-                IsPolarActive = true,
-                PolarIncrementDeg = 30
-            };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10), new Point(8, 8) },
@@ -1337,26 +1193,21 @@ public class MainWindowMarkupInteractionTests
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90,
                 Metadata = new MarkupMetadata { Subject = "Angular" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var renderer = new OverlayRecordingRenderer();
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
+                var renderer = new OverlayRecordingRenderer();
                 window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
                 window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(6, 8));
                 window.DrawSelectedMarkupOverlayForTesting(renderer);
                 window.FinishMarkupArcAngleDragForTesting();
                 return renderer.LastTextBoxText;
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.IsPolarActive = true;
+                viewModel.PolarIncrementDeg = 30;
+            });
 
         Assert.Equal("Angle 60 deg  Radius 8  Snap 30 deg", outcome);
     }
@@ -1364,14 +1215,8 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DrawSelectedMarkupOverlayForTesting_ArcLengthAngleDrag_RendersSnapReadout()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel
-            {
-                IsPolarActive = true,
-                PolarIncrementDeg = 30
-            };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
@@ -1379,26 +1224,21 @@ public class MainWindowMarkupInteractionTests
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90,
                 Metadata = new MarkupMetadata { Subject = "ArcLength" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var renderer = new OverlayRecordingRenderer();
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
+                var renderer = new OverlayRecordingRenderer();
                 window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
                 window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(6, 8));
                 window.DrawSelectedMarkupOverlayForTesting(renderer);
                 window.FinishMarkupArcAngleDragForTesting();
                 return renderer.LastTextBoxText;
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.IsPolarActive = true;
+                viewModel.PolarIncrementDeg = 30;
+            });
 
         Assert.Equal("Arc Length 10.47  Sweep 60 deg  Radius 10  Snap 30 deg", outcome);
     }
@@ -1406,14 +1246,8 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DrawSelectedMarkupOverlayForTesting_AngularRadiusDrag_RendersRadiusReadout()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel
-            {
-                SnapToGrid = true,
-                GridSize = 1.0
-            };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10), new Point(8, 8) },
@@ -1421,26 +1255,21 @@ public class MainWindowMarkupInteractionTests
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90,
                 Metadata = new MarkupMetadata { Subject = "Angular" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var renderer = new OverlayRecordingRenderer();
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
+                var renderer = new OverlayRecordingRenderer();
                 window.BeginSelectedMarkupRadiusDragForTesting(new Point(5.656854249492381, 5.65685424949238));
                 window.UpdateDraggedMarkupRadiusPreviewForTesting(new Point(11, 11));
                 window.DrawSelectedMarkupOverlayForTesting(renderer);
                 window.FinishMarkupRadiusDragForTesting();
                 return renderer.LastTextBoxText;
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.SnapToGrid = true;
+                viewModel.GridSize = 1.0;
+            });
 
         Assert.Equal("Radius 28.28", outcome);
     }
@@ -1448,14 +1277,8 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DrawSelectedMarkupOverlayForTesting_ArcLengthRadiusDrag_RendersRadiusReadout()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel
-            {
-                SnapToGrid = true,
-                GridSize = 1.0
-            };
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
@@ -1463,26 +1286,21 @@ public class MainWindowMarkupInteractionTests
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90,
                 Metadata = new MarkupMetadata { Subject = "ArcLength" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var renderer = new OverlayRecordingRenderer();
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
+                var renderer = new OverlayRecordingRenderer();
                 window.BeginSelectedMarkupRadiusDragForTesting(new Point(7.0710678118654755, 7.0710678118654755));
                 window.UpdateDraggedMarkupRadiusPreviewForTesting(new Point(11, 11));
                 window.DrawSelectedMarkupOverlayForTesting(renderer);
                 window.FinishMarkupRadiusDragForTesting();
                 return renderer.LastTextBoxText;
-            }
-            finally
+            },
+            viewModel =>
             {
-                window.Close();
-            }
-        });
+                viewModel.SnapToGrid = true;
+                viewModel.GridSize = 1.0;
+            });
 
         Assert.Equal("Radius 28.28", outcome);
     }
@@ -1490,10 +1308,8 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DrawSelectedMarkupOverlayForTesting_AngularRadiusDrag_MarksRadiusGripHot()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10), new Point(8, 8) },
@@ -1501,25 +1317,15 @@ public class MainWindowMarkupInteractionTests
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90,
                 Metadata = new MarkupMetadata { Subject = "Angular" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var renderer = new OverlayRecordingRenderer();
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
+                var renderer = new OverlayRecordingRenderer();
                 var began = window.BeginSelectedMarkupRadiusDragForTesting(new Point(5.656854249492381, 5.65685424949238));
                 window.DrawSelectedMarkupOverlayForTesting(renderer);
                 window.FinishMarkupRadiusDragForTesting();
                 return (began, renderer.HotGripPoints.ToArray());
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.True(outcome.began);
         Assert.Single(outcome.Item2);
@@ -1530,10 +1336,8 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DrawSelectedMarkupOverlayForTesting_AngularAngleDrag_MarksAngleGripHot()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10), new Point(8, 8) },
@@ -1541,25 +1345,15 @@ public class MainWindowMarkupInteractionTests
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90,
                 Metadata = new MarkupMetadata { Subject = "Angular" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var renderer = new OverlayRecordingRenderer();
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
+                var renderer = new OverlayRecordingRenderer();
                 var began = window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
                 window.DrawSelectedMarkupOverlayForTesting(renderer);
                 window.FinishMarkupArcAngleDragForTesting();
                 return (began, renderer.HotGripPoints.ToArray());
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.True(outcome.began);
         Assert.Single(outcome.Item2);
@@ -1570,33 +1364,21 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DrawSelectedMarkupOverlayForTesting_CircleRadiusDrag_MarksRadiusGripHot()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Circle,
                 Vertices = { new Point(0, 0) },
                 Radius = 10
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var renderer = new OverlayRecordingRenderer();
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
+                var renderer = new OverlayRecordingRenderer();
                 var began = window.BeginSelectedMarkupRadiusDragForTesting(new Point(10, 0));
                 window.DrawSelectedMarkupOverlayForTesting(renderer);
                 window.FinishMarkupRadiusDragForTesting();
                 return (began, renderer.HotGripPoints.ToArray());
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.True(outcome.began);
         Assert.Single(outcome.Item2);
@@ -1607,35 +1389,23 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DrawSelectedMarkupOverlayForTesting_ArcStartAngleDrag_MarksStartGripHot()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Arc,
                 Vertices = { new Point(0, 0) },
                 Radius = 10,
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var renderer = new OverlayRecordingRenderer();
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
+                var renderer = new OverlayRecordingRenderer();
                 var began = window.BeginSelectedMarkupArcAngleDragForTesting(new Point(10, 0));
                 window.DrawSelectedMarkupOverlayForTesting(renderer);
                 window.FinishMarkupArcAngleDragForTesting();
                 return (began, renderer.HotGripPoints.ToArray());
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.True(outcome.began);
         Assert.Single(outcome.Item2);
@@ -1645,35 +1415,23 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DrawSelectedMarkupOverlayForTesting_ArcRadiusDrag_MarksRadiusGripHot()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Arc,
                 Vertices = { new Point(0, 0) },
                 Radius = 10,
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var renderer = new OverlayRecordingRenderer();
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
+                var renderer = new OverlayRecordingRenderer();
                 var began = window.BeginSelectedMarkupRadiusDragForTesting(new Point(7.0710678118654755, 7.0710678118654755));
                 window.DrawSelectedMarkupOverlayForTesting(renderer);
                 window.FinishMarkupRadiusDragForTesting();
                 return (began, renderer.HotGripPoints.ToArray());
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.True(outcome.began);
         Assert.Single(outcome.Item2);
@@ -1684,35 +1442,23 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DrawSelectedMarkupOverlayForTesting_ArcEndAngleDrag_MarksEndGripHot()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Arc,
                 Vertices = { new Point(0, 0) },
                 Radius = 10,
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var renderer = new OverlayRecordingRenderer();
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
+                var renderer = new OverlayRecordingRenderer();
                 var began = window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
                 window.DrawSelectedMarkupOverlayForTesting(renderer);
                 window.FinishMarkupArcAngleDragForTesting();
                 return (began, renderer.HotGripPoints.ToArray());
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.True(outcome.began);
         Assert.Single(outcome.Item2);
@@ -1723,10 +1469,8 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DrawSelectedMarkupOverlayForTesting_ArcLengthRadiusDrag_MarksRadiusGripHot()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
@@ -1734,25 +1478,15 @@ public class MainWindowMarkupInteractionTests
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90,
                 Metadata = new MarkupMetadata { Subject = "ArcLength" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var renderer = new OverlayRecordingRenderer();
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
+                var renderer = new OverlayRecordingRenderer();
                 var began = window.BeginSelectedMarkupRadiusDragForTesting(new Point(7.0710678118654755, 7.0710678118654755));
                 window.DrawSelectedMarkupOverlayForTesting(renderer);
                 window.FinishMarkupRadiusDragForTesting();
                 return (began, renderer.HotGripPoints.ToArray());
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.True(outcome.began);
         Assert.Single(outcome.Item2);
@@ -1763,10 +1497,8 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void DrawSelectedMarkupOverlayForTesting_ArcLengthAngleDrag_MarksAngleGripHot()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Dimension,
                 Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
@@ -1774,25 +1506,15 @@ public class MainWindowMarkupInteractionTests
                 ArcStartDeg = 0,
                 ArcSweepDeg = 90,
                 Metadata = new MarkupMetadata { Subject = "ArcLength" }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var renderer = new OverlayRecordingRenderer();
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
+                var renderer = new OverlayRecordingRenderer();
                 var began = window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
                 window.DrawSelectedMarkupOverlayForTesting(renderer);
                 window.FinishMarkupArcAngleDragForTesting();
                 return (began, renderer.HotGripPoints.ToArray());
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.True(outcome.began);
         Assert.Single(outcome.Item2);
@@ -1840,30 +1562,18 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void ExecuteEscapeShortcutForTesting_PendingInsertMode_CancelsPendingInsertion()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Polyline,
                 Vertices = { new Point(0, 0), new Point(10, 0) }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, viewModel, markup) =>
             {
                 var began = window.BeginSelectedMarkupVertexInsertionForTesting();
                 var cancelled = window.ExecuteEscapeShortcutForTesting();
                 return (began, cancelled, window.IsPendingMarkupVertexInsertionForTesting, markup.Vertices.Count, ReferenceEquals(viewModel.MarkupTool.SelectedMarkup, markup));
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.True(outcome.began);
         Assert.True(outcome.cancelled);
@@ -1875,29 +1585,17 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void ExecuteEscapeShortcutForTesting_NoActiveInteraction_ReturnsFalse()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Polyline,
                 Vertices = { new Point(0, 0), new Point(10, 0) }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, viewModel, markup) =>
             {
                 var cancelled = window.ExecuteEscapeShortcutForTesting();
                 return (cancelled, window.IsPendingMarkupVertexInsertionForTesting, markup.Vertices.Count, ReferenceEquals(viewModel.MarkupTool.SelectedMarkup, markup));
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.False(outcome.cancelled);
         Assert.False(outcome.Item2);
@@ -1908,30 +1606,18 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void ExecuteDeleteVertexCommandForTesting_WithActiveGrip_DeletesVertex()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Polyline,
                 Vertices = { new Point(0, 0), new Point(10, 0), new Point(20, 0) }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, markup) =>
             {
                 window.SetActiveMarkupVertexIndexForTesting(1);
                 var deleted = window.ExecuteDeleteVertexCommandForTesting();
                 return (deleted, markup.Vertices.Count, window.ActiveMarkupVertexIndexForTesting, markup.Vertices[1]);
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.True(outcome.deleted);
         Assert.Equal(2, outcome.Item2);
@@ -1942,30 +1628,18 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void TryDeleteSelectedMarkupVertexForTesting_WithActiveGrip_DeletesVertexAndClampsSelection()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Polyline,
                 Vertices = { new Point(0, 0), new Point(10, 0), new Point(20, 0) }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, markup) =>
             {
                 window.SetActiveMarkupVertexIndexForTesting(1);
                 var deleted = window.TryDeleteSelectedMarkupVertexForTesting();
                 return (deleted, markup.Vertices.Count, window.ActiveMarkupVertexIndexForTesting, markup.Vertices[1]);
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.True(outcome.deleted);
         Assert.Equal(2, outcome.Count);
@@ -1976,28 +1650,16 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void TryDeleteSelectedMarkupVertexForTesting_WithoutActiveGrip_ReturnsFalse()
     {
-        var deleted = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var deleted = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Polyline,
                 Vertices = { new Point(0, 0), new Point(10, 0), new Point(20, 0) }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, _) =>
             {
                 return window.TryDeleteSelectedMarkupVertexForTesting();
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.False(deleted);
     }
@@ -2005,29 +1667,17 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void TryDeleteSelectedMarkupVertexForTesting_MinimumVertexSelection_ReturnsFalse()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Polyline,
                 Vertices = { new Point(0, 0), new Point(10, 0) }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, _, markup) =>
             {
                 window.SetActiveMarkupVertexIndexForTesting(1);
                 return (window.TryDeleteSelectedMarkupVertexForTesting(), markup.Vertices.Count);
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.False(outcome.Item1);
         Assert.Equal(2, outcome.Count);
@@ -2078,30 +1728,18 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void ExecuteDeleteShortcutForTesting_WithActiveGrip_PrefersVertexDeletionOverMarkupDeletion()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Polyline,
                 Vertices = { new Point(0, 0), new Point(10, 0), new Point(20, 0) }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, viewModel, markup) =>
             {
                 window.SetActiveMarkupVertexIndexForTesting(1);
                 var usedVertexDelete = window.ExecuteDeleteShortcutForTesting();
                 return (usedVertexDelete, viewModel.Markups.Count, markup.Vertices.Count, ReferenceEquals(viewModel.MarkupTool.SelectedMarkup, markup));
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.True(outcome.usedVertexDelete);
         Assert.Equal(1, outcome.Item2);
@@ -2112,29 +1750,17 @@ public class MainWindowMarkupInteractionTests
     [Fact]
     public void ExecuteDeleteShortcutForTesting_WithoutActiveGrip_FallsBackToMarkupDeletion()
     {
-        var outcome = RunOnSta(() =>
-        {
-            var viewModel = new MainViewModel();
-            var markup = new MarkupRecord
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
             {
                 Type = MarkupType.Polyline,
                 Vertices = { new Point(0, 0), new Point(10, 0), new Point(20, 0) }
-            };
-            markup.UpdateBoundingRect();
-            viewModel.Markups.Add(markup);
-            viewModel.MarkupTool.SelectedMarkup = markup;
-
-            var window = new MainWindow(viewModel);
-            try
+            },
+            (window, viewModel, _) =>
             {
                 var usedVertexDelete = window.ExecuteDeleteShortcutForTesting();
                 return (usedVertexDelete, viewModel.Markups.Count, viewModel.MarkupTool.SelectedMarkup is null);
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
+            });
 
         Assert.False(outcome.usedVertexDelete);
         Assert.Equal(0, outcome.Count);

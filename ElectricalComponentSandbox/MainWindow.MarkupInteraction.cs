@@ -404,11 +404,11 @@ public partial class MainWindow
 
         return selectedMarkup.Type switch
         {
-            MarkupType.Rectangle or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel => TryEditSelectedBoundsGeometry(selectedMarkup, input),
-            MarkupType.Circle => TryEditSelectedCircleGeometry(selectedMarkup, input),
-            MarkupType.Arc => TryEditSelectedArcGeometry(selectedMarkup, input),
-            MarkupType.Dimension or MarkupType.Measurement when IsArcLengthDimension(selectedMarkup) => TryEditSelectedArcLengthGeometry(selectedMarkup, input),
-            MarkupType.Dimension or MarkupType.Measurement when IsAngularDimension(selectedMarkup) => TryEditSelectedAngularGeometry(selectedMarkup, input),
+            MarkupType.Rectangle or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel => TryEditSelectedBoundsGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
+            MarkupType.Circle => TryEditSelectedCircleGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
+            MarkupType.Arc => TryEditSelectedArcGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
+            MarkupType.Dimension or MarkupType.Measurement when IsArcLengthDimension(selectedMarkup) => TryEditSelectedArcLengthGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
+            MarkupType.Dimension or MarkupType.Measurement when IsAngularDimension(selectedMarkup) => TryEditSelectedAngularGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
             MarkupType.Dimension or MarkupType.Measurement => TryEditSelectedLineGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
             _ => ShowUnsupportedGeometryEditMessage(showFeedbackIfUnsupported)
         };
@@ -482,11 +482,11 @@ public partial class MainWindow
         return CommitMarkupAppearanceEdit(selectedMarkup, before);
     }
 
-    private bool TryEditSelectedLineGeometry(MarkupRecord markup, string input, bool showFeedbackIfUnsupported)
+    private bool TryEditSelectedLineGeometry(MarkupRecord markup, string input, bool showValidationFeedback)
     {
         if (markup.Vertices.Count < 2 || markup.Vertices.Count > 3)
         {
-            if (showFeedbackIfUnsupported)
+            if (showValidationFeedback)
             {
                 MessageBox.Show("Numeric geometry editing for dimensions and measurements is currently available for line-style markups with 2 or 3 points. Angular dimensions use angle/radius semantics, and arc-length dimensions use arc length/radius semantics.", "Edit Geometry",
                     MessageBoxButton.OK, MessageBoxImage.Information);
@@ -504,19 +504,19 @@ public partial class MainWindow
         var lengthLabel = GetLineGeometryLengthLabel(markup);
         if (!TryParseMarkupGeometryAssignments(input, out var values, out var errorMessage))
         {
-            MessageBox.Show(errorMessage, $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowGeometryValidationWarning(showValidationFeedback, errorMessage, $"Edit {markup.TypeDisplayText} Geometry");
             return true;
         }
 
         if (!TryGetLineGeometryLengthAssignment(values, input, markup, length, out var nextLength) || nextLength <= 0)
         {
-            MessageBox.Show($"{lengthLabel} must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowGeometryValidationWarning(showValidationFeedback, $"{lengthLabel} must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry");
             return true;
         }
 
         if (!TryGetAssignment(values, "angle", angleDeg, out var nextAngleDeg))
         {
-            MessageBox.Show("Angle must be numeric.", $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowGeometryValidationWarning(showValidationFeedback, "Angle must be numeric.", $"Edit {markup.TypeDisplayText} Geometry");
             return true;
         }
 
@@ -531,26 +531,26 @@ public partial class MainWindow
             FormattableString.Invariant($"Type: {markup.TypeDisplayText}, {lengthLabel}: {nextLength:0.##}, Angle: {nextAngleDeg:0.##}"));
     }
 
-    private bool TryEditSelectedAngularGeometry(MarkupRecord markup, string input)
+    private bool TryEditSelectedAngularGeometry(MarkupRecord markup, string input, bool showValidationFeedback)
     {
         if (markup.Vertices.Count < 3)
             return false;
 
         if (!TryParseMarkupGeometryAssignments(input, out var values, out var errorMessage))
         {
-            MessageBox.Show(errorMessage, $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowGeometryValidationWarning(showValidationFeedback, errorMessage, $"Edit {markup.TypeDisplayText} Geometry");
             return true;
         }
 
         if (!TryGetAssignment(values, "angle", Math.Abs(markup.ArcSweepDeg), out var nextAngleDeg) || nextAngleDeg <= 0)
         {
-            MessageBox.Show("Angle must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowGeometryValidationWarning(showValidationFeedback, "Angle must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry");
             return true;
         }
 
         if (!TryGetAssignment(values, "radius", markup.Radius, out var nextRadius) || nextRadius <= 0)
         {
-            MessageBox.Show("Radius must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowGeometryValidationWarning(showValidationFeedback, "Radius must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry");
             return true;
         }
 
@@ -565,27 +565,27 @@ public partial class MainWindow
             FormattableString.Invariant($"Type: {markup.TypeDisplayText}, Angle: {Math.Abs(markup.ArcSweepDeg):0.##}, Radius: {markup.Radius:0.##}"));
     }
 
-    private bool TryEditSelectedArcLengthGeometry(MarkupRecord markup, string input)
+    private bool TryEditSelectedArcLengthGeometry(MarkupRecord markup, string input, bool showValidationFeedback)
     {
         if (markup.Vertices.Count < 3)
             return false;
 
         if (!TryParseMarkupGeometryAssignments(input, out var values, out var errorMessage))
         {
-            MessageBox.Show(errorMessage, $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowGeometryValidationWarning(showValidationFeedback, errorMessage, $"Edit {markup.TypeDisplayText} Geometry");
             return true;
         }
 
         var currentArcLength = Math.Abs(markup.ArcSweepDeg) * Math.PI / 180.0 * markup.Radius;
         if (!TryGetAssignment(values, "arclength", currentArcLength, out var nextArcLength) || nextArcLength <= 0)
         {
-            MessageBox.Show("Arc length must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowGeometryValidationWarning(showValidationFeedback, "Arc length must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry");
             return true;
         }
 
         if (!TryGetAssignment(values, "radius", markup.Radius, out var nextRadius) || nextRadius <= 0)
         {
-            MessageBox.Show("Radius must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowGeometryValidationWarning(showValidationFeedback, "Radius must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry");
             return true;
         }
 
@@ -600,7 +600,7 @@ public partial class MainWindow
             FormattableString.Invariant($"Type: {markup.TypeDisplayText}, Arc Length: {nextArcLength:0.##}, Radius: {markup.Radius:0.##}, Sweep: {markup.ArcSweepDeg:0.##}"));
     }
 
-    private bool TryEditSelectedBoundsGeometry(MarkupRecord markup, string input)
+    private bool TryEditSelectedBoundsGeometry(MarkupRecord markup, string input, bool showValidationFeedback)
     {
         var bounds = markup.BoundingRect != Rect.Empty
             ? markup.BoundingRect
@@ -608,19 +608,19 @@ public partial class MainWindow
 
         if (!TryParseMarkupGeometryAssignments(input, out var values, out var errorMessage))
         {
-            MessageBox.Show(errorMessage, $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowGeometryValidationWarning(showValidationFeedback, errorMessage, $"Edit {markup.TypeDisplayText} Geometry");
             return true;
         }
 
         if (!TryGetAssignment(values, "width", bounds.Width, out var width) || width <= 0)
         {
-            MessageBox.Show("Width must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowGeometryValidationWarning(showValidationFeedback, "Width must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry");
             return true;
         }
 
         if (!TryGetAssignment(values, "height", bounds.Height, out var height) || height <= 0)
         {
-            MessageBox.Show("Height must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowGeometryValidationWarning(showValidationFeedback, "Height must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry");
             return true;
         }
 
@@ -635,17 +635,23 @@ public partial class MainWindow
             FormattableString.Invariant($"Type: {markup.TypeDisplayText}, Width: {markup.BoundingRect.Width:0.##}, Height: {markup.BoundingRect.Height:0.##}"));
     }
 
-    private bool TryEditSelectedCircleGeometry(MarkupRecord markup, string input)
+    private bool TryEditSelectedCircleGeometry(MarkupRecord markup, string input, bool showValidationFeedback)
     {
         if (!TryParseMarkupGeometryAssignments(input, out var values, out var errorMessage))
         {
-            MessageBox.Show(errorMessage, "Edit Circle Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowGeometryValidationWarning(showValidationFeedback, errorMessage, "Edit Circle Geometry");
             return true;
         }
 
         if (!TryGetAssignmentOrScalar(values, input, "radius", markup.Radius, out var radius))
         {
-            MessageBox.Show("Enter a numeric radius value.", "Edit Circle Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowGeometryValidationWarning(showValidationFeedback, "Enter a numeric radius value.", "Edit Circle Geometry");
+            return true;
+        }
+
+        if (radius <= 0)
+        {
+            ShowGeometryValidationWarning(showValidationFeedback, "Radius must be a positive number.", "Edit Circle Geometry");
             return true;
         }
 
@@ -654,23 +660,23 @@ public partial class MainWindow
         return CommitMarkupGeometryEdit(markup, before, "Edit circle geometry", $"Type: {markup.TypeDisplayText}, Radius: {markup.Radius:0.##}");
     }
 
-    private bool TryEditSelectedArcGeometry(MarkupRecord markup, string input)
+    private bool TryEditSelectedArcGeometry(MarkupRecord markup, string input, bool showValidationFeedback)
     {
         if (!TryParseMarkupGeometryAssignments(input, out var values, out var errorMessage))
         {
-            MessageBox.Show(errorMessage, "Edit Arc Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowGeometryValidationWarning(showValidationFeedback, errorMessage, "Edit Arc Geometry");
             return true;
         }
 
         if (!TryGetAssignment(values, "radius", markup.Radius, out var radius) || radius <= 0)
         {
-            MessageBox.Show("Radius must be a positive number.", "Edit Arc Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowGeometryValidationWarning(showValidationFeedback, "Radius must be a positive number.", "Edit Arc Geometry");
             return true;
         }
 
         if (!TryGetAssignment(values, "start", markup.ArcStartDeg, out var startAngleDeg))
         {
-            MessageBox.Show("Start angle must be numeric.", "Edit Arc Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowGeometryValidationWarning(showValidationFeedback, "Start angle must be numeric.", "Edit Arc Geometry");
             return true;
         }
 
@@ -704,6 +710,14 @@ public partial class MainWindow
         QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
         ActionLogService.Instance.Log(LogCategory.Edit, "Markup geometry edited", logDetails);
         return true;
+    }
+
+    private static void ShowGeometryValidationWarning(bool showValidationFeedback, string message, string title)
+    {
+        if (!showValidationFeedback)
+            return;
+
+        MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private bool CommitMarkupAppearanceEdit(MarkupRecord markup, MarkupGeometrySnapshot before)
