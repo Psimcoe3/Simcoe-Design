@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using ElectricalComponentSandbox.Markup.Models;
 using ElectricalComponentSandbox.Rendering;
 using ElectricalComponentSandbox.Services;
@@ -19,6 +20,7 @@ public partial class MainWindow
 {
     private bool _isDraggingMarkupArcAngle = false;
     private readonly MarkupInteractionService _markupInteractionService = new();
+    private bool _isPendingMarkupVertexInsertion = false;
     private bool _isDraggingMarkup = false;
     private bool _isDraggingMarkupRadius = false;
     private bool _isDraggingMarkupVertex = false;
@@ -37,6 +39,36 @@ public partial class MainWindow
     private MarkupGeometrySnapshot? _markupRadiusStartSnapshot;
     private MarkupRecord? _vertexDraggedMarkup;
     private MarkupGeometrySnapshot? _markupVertexStartSnapshot;
+
+    internal bool IsPendingMarkupVertexInsertionForTesting => _isPendingMarkupVertexInsertion;
+    internal int ActiveMarkupVertexIndexForTesting => _activeMarkupVertexIndex;
+    internal bool BeginSelectedMarkupVertexInsertionForTesting(bool showFeedbackIfUnsupported = false)
+        => TryBeginSelectedMarkupVertexInsertion(showFeedbackIfUnsupported);
+    internal void CancelPendingMarkupVertexInsertionForTesting(bool logCancellation = false)
+        => CancelPendingMarkupVertexInsertion(logCancellation);
+    internal void SetActiveMarkupVertexIndexForTesting(int index) => _activeMarkupVertexIndex = index;
+    internal bool HandlePendingMarkupVertexInsertionClickForTesting(Point canvasPoint)
+    {
+        if (!_isPendingMarkupVertexInsertion)
+            return false;
+
+        if (!TryInsertMarkupVertex(canvasPoint))
+            return false;
+
+        CancelPendingMarkupVertexInsertion(logCancellation: false);
+        return true;
+    }
+    internal bool TryDeleteSelectedMarkupVertexForTesting(bool showFeedbackIfUnsupported = false)
+        => TryDeleteSelectedMarkupVertex(showFeedbackIfUnsupported);
+    internal bool ExecuteDeleteShortcutForTesting()
+    {
+        if (DeleteSelectedMarkupVertex())
+            return true;
+
+        DeleteComponent_Click(this, new RoutedEventArgs());
+        return false;
+    }
+    internal void SelectMarkupOnCanvasForTesting(MarkupRecord markup) => SelectMarkupOnCanvas(markup);
 
     private bool TryStartMarkupArcAngleDrag(Point canvasPoint)
     {
@@ -120,6 +152,62 @@ public partial class MainWindow
         return true;
     }
 
+    private bool TryBeginSelectedMarkupVertexInsertion(bool showFeedbackIfUnsupported)
+    {
+        if (_viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup)
+        {
+            if (showFeedbackIfUnsupported)
+            {
+                MessageBox.Show("Select a path-based markup first.", "Insert Vertex",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        var selectionSet = _markupInteractionService.GetSelectionSet(selectedMarkup, _viewModel.Markups);
+        if (selectionSet.Count != 1)
+        {
+            if (showFeedbackIfUnsupported)
+            {
+                MessageBox.Show("Vertex insertion is available for a single selected path markup only.", "Insert Vertex",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        if (!_markupInteractionService.CanInsertVertices(selectedMarkup))
+        {
+            if (showFeedbackIfUnsupported)
+            {
+                MessageBox.Show("The selected markup type does not support vertex insertion.", "Insert Vertex",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        _isPendingMarkupVertexInsertion = true;
+        _activeMarkupVertexIndex = -1;
+        UpdatePlanCanvasCursor();
+        SkiaBackground.RequestRedraw();
+        return true;
+    }
+
+    private void CancelPendingMarkupVertexInsertion(bool logCancellation = true)
+    {
+        if (!_isPendingMarkupVertexInsertion)
+            return;
+
+        _isPendingMarkupVertexInsertion = false;
+        if (logCancellation)
+            ActionLogService.Instance.Log(LogCategory.Edit, "Markup vertex insertion cancelled", "Pending segment pick cleared");
+
+        UpdatePlanCanvasCursor();
+        SkiaBackground.RequestRedraw();
+    }
+
     private bool DeleteSelectedMarkupVertex()
     {
         if (_viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup || _activeMarkupVertexIndex < 0)
@@ -143,6 +231,56 @@ public partial class MainWindow
         QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
         ActionLogService.Instance.Log(LogCategory.Edit, "Markup vertex deleted", $"Type: {selectedMarkup.TypeDisplayText}");
         return true;
+    }
+
+    private bool TryDeleteSelectedMarkupVertex(bool showFeedbackIfUnsupported)
+    {
+        if (_viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup)
+        {
+            if (showFeedbackIfUnsupported)
+            {
+                MessageBox.Show("Select a path-based markup first.", "Delete Vertex",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        var selectionSet = _markupInteractionService.GetSelectionSet(selectedMarkup, _viewModel.Markups);
+        if (selectionSet.Count != 1)
+        {
+            if (showFeedbackIfUnsupported)
+            {
+                MessageBox.Show("Vertex deletion is available for a single selected path markup only.", "Delete Vertex",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        if (!_markupInteractionService.CanDeleteVertex(selectedMarkup))
+        {
+            if (showFeedbackIfUnsupported)
+            {
+                MessageBox.Show("The selected markup is already at its minimum vertex count.", "Delete Vertex",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        if (_activeMarkupVertexIndex < 0)
+        {
+            if (showFeedbackIfUnsupported)
+            {
+                MessageBox.Show("Click a vertex grip first, then delete it.", "Delete Vertex",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        return DeleteSelectedMarkupVertex();
     }
 
     private bool TryEditStructuredMarkupText(Point canvasPoint)
@@ -238,6 +376,74 @@ public partial class MainWindow
         };
     }
 
+    private bool TryEditSelectedMarkupAppearance(bool showFeedbackIfUnsupported)
+    {
+        if (_viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup)
+        {
+            if (showFeedbackIfUnsupported)
+            {
+                MessageBox.Show("Select a single markup first.", "Edit Appearance",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        var selectionSet = _markupInteractionService.GetSelectionSet(selectedMarkup, _viewModel.Markups);
+        if (selectionSet.Count != 1)
+        {
+            if (showFeedbackIfUnsupported)
+            {
+                MessageBox.Show("Appearance editing is available for a single selected markup only.", "Edit Appearance",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        var input = PromptInput(
+            $"Edit {selectedMarkup.TypeDisplayText} Appearance",
+            BuildMarkupAppearancePrompt(selectedMarkup),
+            BuildMarkupAppearanceDefaultValue(selectedMarkup));
+        if (input == null)
+            return true;
+
+        return TryEditSelectedMarkupAppearance(input, showFeedbackIfUnsupported);
+    }
+
+    private bool TryEditSelectedMarkupAppearance(string input, bool showFeedbackIfUnsupported)
+    {
+        if (_viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup)
+            return false;
+
+        var selectionSet = _markupInteractionService.GetSelectionSet(selectedMarkup, _viewModel.Markups);
+        if (selectionSet.Count != 1)
+            return false;
+
+        if (!TryParseMarkupAppearanceAssignments(input, out var values, out var errorMessage))
+        {
+            if (showFeedbackIfUnsupported)
+            {
+                MessageBox.Show(errorMessage, $"Edit {selectedMarkup.TypeDisplayText} Appearance", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
+            return true;
+        }
+
+        var before = _markupInteractionService.Capture(selectedMarkup);
+        if (!ApplyMarkupAppearanceAssignments(selectedMarkup, values, out errorMessage))
+        {
+            if (showFeedbackIfUnsupported)
+            {
+                MessageBox.Show(errorMessage, $"Edit {selectedMarkup.TypeDisplayText} Appearance", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
+            return true;
+        }
+
+        return CommitMarkupAppearanceEdit(selectedMarkup, before);
+    }
+
     private bool TryEditSelectedLineGeometry(MarkupRecord markup, bool showFeedbackIfUnsupported)
     {
         if (markup.Vertices.Count != 2)
@@ -256,10 +462,12 @@ public partial class MainWindow
         var delta = end - start;
         var length = delta.Length;
         var angleDeg = Math.Atan2(delta.Y, delta.X) * 180.0 / Math.PI;
+        var lengthKey = GetLineGeometryLengthKey(markup);
+        var lengthLabel = GetLineGeometryLengthLabel(markup);
         var input = PromptInput(
             $"Edit {markup.TypeDisplayText} Geometry",
-            "Enter length and optional angle. The first point stays fixed.\n\nExamples:\nlength=24\nangle=30",
-            BuildLineGeometryDefaultValue(length, angleDeg));
+            $"Enter {lengthLabel.ToLowerInvariant()} and optional angle. The first point stays fixed.\n\nExamples:\n{lengthKey}=24\nangle=30",
+            BuildLineGeometryDefaultValue(lengthKey, length, angleDeg));
         if (input == null)
             return true;
 
@@ -269,9 +477,9 @@ public partial class MainWindow
             return true;
         }
 
-        if (!TryGetAssignment(values, "length", length, out var nextLength) || nextLength <= 0)
+        if (!TryGetLineGeometryLengthAssignment(values, input, markup, length, out var nextLength) || nextLength <= 0)
         {
-            MessageBox.Show("Length must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show($"{lengthLabel} must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
             return true;
         }
 
@@ -289,7 +497,7 @@ public partial class MainWindow
             markup,
             before,
             $"Edit {markup.TypeDisplayText.ToLowerInvariant()} geometry",
-            FormattableString.Invariant($"Type: {markup.TypeDisplayText}, Length: {nextLength:0.##}, Angle: {nextAngleDeg:0.##}"));
+            FormattableString.Invariant($"Type: {markup.TypeDisplayText}, {lengthLabel}: {nextLength:0.##}, Angle: {nextAngleDeg:0.##}"));
     }
 
     private bool TryEditSelectedBoundsGeometry(MarkupRecord markup)
@@ -422,6 +630,307 @@ public partial class MainWindow
         return true;
     }
 
+    private bool CommitMarkupAppearanceEdit(MarkupRecord markup, MarkupGeometrySnapshot before)
+    {
+        var after = _markupInteractionService.Capture(markup);
+        if (MarkupSnapshotsEqual(before, after))
+            return true;
+
+        _viewModel.UndoRedo.Execute(new MarkupGeometryChangeAction(
+            "Edit appearance for",
+            _markupInteractionService,
+            markup,
+            before,
+            after));
+        _viewModel.MarkupTool.RefreshSelectedMarkupPresentation();
+        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+        ActionLogService.Instance.Log(LogCategory.Edit, "Markup appearance edited",
+            $"Type: {markup.TypeDisplayText}, Stroke: {markup.Appearance.StrokeColor}, Width: {markup.Appearance.StrokeWidth:0.##}, Opacity: {markup.Appearance.Opacity:0.##}");
+        return true;
+    }
+
+    private static string BuildMarkupAppearancePrompt(MarkupRecord markup)
+    {
+        var fields = new List<string>
+        {
+            "stroke=#AARRGGBB or #RRGGBB",
+            "width=number",
+            "opacity=0-1 or 0-100"
+        };
+
+        if (SupportsMarkupFillAppearance(markup))
+            fields.Add("fill=#AARRGGBB or none");
+
+        if (SupportsMarkupFontAppearance(markup))
+        {
+            fields.Add("font=family name");
+            fields.Add("fontsize=number");
+        }
+
+        if (SupportsMarkupDashAppearance(markup))
+            fields.Add("dash=csv lengths, e.g. 6,3");
+
+        return "Enter one or more appearance values as key=value pairs.\n\n" + string.Join(Environment.NewLine, fields);
+    }
+
+    private static string BuildMarkupAppearanceDefaultValue(MarkupRecord markup)
+    {
+        var lines = new List<string>
+        {
+            $"stroke={markup.Appearance.StrokeColor}",
+            FormattableString.Invariant($"width={markup.Appearance.StrokeWidth:0.##}"),
+            FormattableString.Invariant($"opacity={markup.Appearance.Opacity:0.##}")
+        };
+
+        if (SupportsMarkupFillAppearance(markup))
+            lines.Add($"fill={markup.Appearance.FillColor}");
+
+        if (SupportsMarkupFontAppearance(markup))
+        {
+            lines.Add($"font={markup.Appearance.FontFamily}");
+            lines.Add(FormattableString.Invariant($"fontsize={markup.Appearance.FontSize:0.##}"));
+        }
+
+        if (SupportsMarkupDashAppearance(markup) && !string.IsNullOrWhiteSpace(markup.Appearance.DashArray))
+            lines.Add($"dash={markup.Appearance.DashArray}");
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static bool TryParseMarkupAppearanceAssignments(string input, out Dictionary<string, string> values, out string errorMessage)
+    {
+        values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        errorMessage = string.Empty;
+
+        var tokens = input.Split(new[] { '\r', '\n', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var token in tokens)
+        {
+            var separatorIndex = token.IndexOf('=');
+            if (separatorIndex < 0)
+            {
+                errorMessage = "Use key=value pairs such as stroke=#FF0000 or opacity=0.8.";
+                return false;
+            }
+
+            var key = token[..separatorIndex].Trim();
+            var valueText = token[(separatorIndex + 1)..].Trim();
+            if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(valueText))
+            {
+                errorMessage = "Use key=value pairs such as stroke=#FF0000 or opacity=0.8.";
+                return false;
+            }
+
+            values[key] = valueText;
+        }
+
+        return true;
+    }
+
+    private bool ApplyMarkupAppearanceAssignments(MarkupRecord markup, Dictionary<string, string> values, out string errorMessage)
+    {
+        errorMessage = string.Empty;
+        var changed = false;
+
+        if (values.TryGetValue("stroke", out var strokeText))
+        {
+            if (!TryNormalizeMarkupColor(strokeText, allowNone: false, out var strokeColor))
+            {
+                errorMessage = "Stroke color must be a valid WPF color such as #FF0000 or #FFFF0000.";
+                return false;
+            }
+
+            markup.Appearance.StrokeColor = strokeColor;
+            changed = true;
+        }
+
+        if (values.TryGetValue("width", out var widthText))
+        {
+            if (!TryParseMarkupGeometryNumber(widthText, out var width) || width <= 0)
+            {
+                errorMessage = "Width must be a positive number.";
+                return false;
+            }
+
+            markup.Appearance.StrokeWidth = width;
+            changed = true;
+        }
+
+        if (values.TryGetValue("fill", out var fillText))
+        {
+            if (!TryNormalizeMarkupColor(fillText, allowNone: true, out var fillColor))
+            {
+                errorMessage = "Fill color must be a valid WPF color or 'none'.";
+                return false;
+            }
+
+            markup.Appearance.FillColor = fillColor;
+            changed = true;
+        }
+
+        if (values.TryGetValue("opacity", out var opacityText))
+        {
+            if (!TryParseMarkupGeometryNumber(opacityText, out var opacity))
+            {
+                errorMessage = "Opacity must be numeric.";
+                return false;
+            }
+
+            if (opacity > 1.0 && opacity <= 100.0)
+                opacity /= 100.0;
+
+            if (opacity < 0.0 || opacity > 1.0)
+            {
+                errorMessage = "Opacity must be between 0 and 1, or between 0 and 100 for percent input.";
+                return false;
+            }
+
+            markup.Appearance.Opacity = opacity;
+            changed = true;
+        }
+
+        if (values.TryGetValue("font", out var fontFamily) || values.TryGetValue("fontfamily", out fontFamily))
+        {
+            if (string.IsNullOrWhiteSpace(fontFamily))
+            {
+                errorMessage = "Font family cannot be empty.";
+                return false;
+            }
+
+            markup.Appearance.FontFamily = fontFamily.Trim();
+            changed = true;
+        }
+
+        if (values.TryGetValue("fontsize", out var fontSizeText))
+        {
+            if (!TryParseMarkupGeometryNumber(fontSizeText, out var fontSize) || fontSize <= 0)
+            {
+                errorMessage = "Font size must be a positive number.";
+                return false;
+            }
+
+            markup.Appearance.FontSize = fontSize;
+            changed = true;
+        }
+
+        if (values.TryGetValue("dash", out var dashText))
+        {
+            if (!TryNormalizeDashPattern(dashText, out var dashPattern))
+            {
+                errorMessage = "Dash must be a comma-separated list of positive numbers, or 'solid'.";
+                return false;
+            }
+
+            markup.Appearance.DashArray = dashPattern;
+            changed = true;
+        }
+
+        if (!changed)
+        {
+            errorMessage = "Enter at least one appearance assignment.";
+            return false;
+        }
+
+        if (SupportsMarkupFontAppearance(markup) && values.ContainsKey("fontsize"))
+        {
+            var anchor = markup.Vertices.Count > 0 ? markup.Vertices[0] : markup.BoundingRect.Location;
+            var align = GetMarkupTextAlign(markup);
+            markup.BoundingRect = EstimateMarkupTextBounds(anchor, markup.TextContent, markup.Appearance.FontSize, align);
+        }
+
+        markup.Metadata.ModifiedUtc = DateTime.UtcNow;
+        return true;
+    }
+
+    private static bool TryNormalizeMarkupColor(string input, bool allowNone, out string normalized)
+    {
+        if (allowNone && string.Equals(input, "none", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = "#00000000";
+            return true;
+        }
+
+        try
+        {
+            var parsed = (Color)ColorConverter.ConvertFromString(input)!;
+            normalized = parsed.ToString(CultureInfo.InvariantCulture);
+            return true;
+        }
+        catch
+        {
+            normalized = string.Empty;
+            return false;
+        }
+    }
+
+    private static bool TryNormalizeDashPattern(string input, out string normalized)
+    {
+        if (string.IsNullOrWhiteSpace(input) || string.Equals(input, "solid", StringComparison.OrdinalIgnoreCase) || string.Equals(input, "none", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = string.Empty;
+            return true;
+        }
+
+        var parts = input.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 0)
+        {
+            normalized = string.Empty;
+            return false;
+        }
+
+        var values = new List<string>(parts.Length);
+        foreach (var part in parts)
+        {
+            if (!TryParseMarkupGeometryNumber(part, out var length) || length <= 0)
+            {
+                normalized = string.Empty;
+                return false;
+            }
+
+            values.Add(length.ToString("0.##", CultureInfo.InvariantCulture));
+        }
+
+        normalized = string.Join(',', values);
+        return true;
+    }
+
+    private static bool SupportsMarkupFillAppearance(MarkupRecord markup)
+    {
+        return markup.Type switch
+        {
+            MarkupType.Polygon => true,
+            MarkupType.Rectangle => true,
+            MarkupType.Circle => true,
+            MarkupType.Arc => true,
+            MarkupType.Text => true,
+            MarkupType.Box => true,
+            MarkupType.Panel => true,
+            MarkupType.Callout => true,
+            MarkupType.Stamp => true,
+            MarkupType.Hatch => true,
+            MarkupType.Hyperlink => true,
+            _ => false
+        };
+    }
+
+    private static bool SupportsMarkupFontAppearance(MarkupRecord markup)
+    {
+        return markup.Type switch
+        {
+            MarkupType.Text => true,
+            MarkupType.Callout => true,
+            MarkupType.LeaderNote => true,
+            MarkupType.Stamp => true,
+            MarkupType.Dimension => true,
+            MarkupType.Measurement => true,
+            _ => false
+        };
+    }
+
+    private static bool SupportsMarkupDashAppearance(MarkupRecord markup)
+    {
+        return markup.Type != MarkupType.Text && markup.Type != MarkupType.Stamp;
+    }
+
     private static bool ShowUnsupportedGeometryEditMessage(bool showFeedbackIfUnsupported)
     {
         if (showFeedbackIfUnsupported)
@@ -444,13 +953,43 @@ public partial class MainWindow
         });
     }
 
-    private static string BuildLineGeometryDefaultValue(double length, double angleDeg)
+    private static string BuildLineGeometryDefaultValue(string lengthKey, double length, double angleDeg)
     {
         return string.Join(Environment.NewLine, new[]
         {
-            FormattableString.Invariant($"length={length:0.##}"),
+            FormattableString.Invariant($"{lengthKey}={length:0.##}"),
             FormattableString.Invariant($"angle={NormalizeMarkupAngle(angleDeg):0.##}")
         });
+    }
+
+    private static bool TryGetLineGeometryLengthAssignment(Dictionary<string, double> values, string input, MarkupRecord markup, double fallbackValue, out double value)
+    {
+        if (TryGetAssignment(values, GetLineGeometryLengthKey(markup), fallbackValue, out value))
+            return true;
+
+        return TryGetAssignment(values, "length", fallbackValue, out value);
+    }
+
+    private static string GetLineGeometryLengthKey(MarkupRecord markup)
+    {
+        if (string.Equals(markup.Metadata.Subject, "Radial", StringComparison.OrdinalIgnoreCase))
+            return "radius";
+
+        if (string.Equals(markup.Metadata.Subject, "Diameter", StringComparison.OrdinalIgnoreCase))
+            return "diameter";
+
+        return "length";
+    }
+
+    private static string GetLineGeometryLengthLabel(MarkupRecord markup)
+    {
+        if (string.Equals(markup.Metadata.Subject, "Radial", StringComparison.OrdinalIgnoreCase))
+            return "Radius";
+
+        if (string.Equals(markup.Metadata.Subject, "Diameter", StringComparison.OrdinalIgnoreCase))
+            return "Diameter";
+
+        return "Length";
     }
 
     private static bool TryParseMarkupGeometryAssignments(string input, out Dictionary<string, double> values, out string errorMessage)
@@ -905,7 +1444,10 @@ public partial class MainWindow
     private void SelectMarkupOnCanvas(MarkupRecord markup)
     {
         if (!ReferenceEquals(_viewModel.MarkupTool.SelectedMarkup, markup))
+        {
             _activeMarkupVertexIndex = -1;
+            CancelPendingMarkupVertexInsertion(logCancellation: false);
+        }
 
         _selectedSketchPrimitive = null;
         _viewModel.SelectedComponentIds.Clear();
@@ -917,6 +1459,7 @@ public partial class MainWindow
 
     private void ClearMarkupSelection()
     {
+        CancelPendingMarkupVertexInsertion(logCancellation: false);
         _activeMarkupVertexIndex = -1;
         _isDraggingMarkupArcAngle = false;
         _activeMarkupArcAngleHandle = MarkupArcAngleHandle.None;
@@ -1202,7 +1745,12 @@ public partial class MainWindow
             left.ArcStartDeg != right.ArcStartDeg ||
             left.ArcSweepDeg != right.ArcSweepDeg ||
             left.FontSize != right.FontSize ||
-            left.StrokeWidth != right.StrokeWidth)
+            left.StrokeWidth != right.StrokeWidth ||
+            !string.Equals(left.StrokeColor, right.StrokeColor, StringComparison.Ordinal) ||
+            !string.Equals(left.FillColor, right.FillColor, StringComparison.Ordinal) ||
+            left.Opacity != right.Opacity ||
+            !string.Equals(left.FontFamily, right.FontFamily, StringComparison.Ordinal) ||
+            !string.Equals(left.DashArray, right.DashArray, StringComparison.Ordinal))
             return false;
 
         for (int i = 0; i < left.Vertices.Count; i++)

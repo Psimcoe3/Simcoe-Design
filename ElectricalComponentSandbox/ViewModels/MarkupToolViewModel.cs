@@ -270,8 +270,50 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
     public string SelectedMarkupPathShortcutHint =>
         HasPathShortcutHint
-            ? "Shortcut: Delete or Backspace removes the active vertex"
+            ? "Shortcut: Delete or Backspace removes the active vertex after selecting a grip"
             : string.Empty;
+
+    public bool HasPathVertexDeleteCandidate =>
+        _selectedMarkup is { } markup &&
+        GetSelectionSet(markup).Count == 1 &&
+        CanDeleteVertex(markup);
+
+    public bool HasPathVertexInsertCandidate =>
+        _selectedMarkup is { } markup &&
+        GetSelectionSet(markup).Count == 1 &&
+        CanInsertVertices(markup);
+
+    public string SelectedMarkupPathInsertSummary
+    {
+        get
+        {
+            if (_selectedMarkup == null)
+                return string.Empty;
+
+            if (HasPathVertexInsertCandidate)
+                return "Click Insert Vertex, then click a segment on the canvas";
+
+            return GetSelectionSet(_selectedMarkup).Count > 1
+                ? "Vertex insertion is disabled for grouped selections"
+                : "Vertex insertion is currently available for polyline, polygon, callout, leader note, and revision cloud markups only";
+        }
+    }
+
+    public string SelectedMarkupPathDeleteSummary
+    {
+        get
+        {
+            if (_selectedMarkup == null)
+                return string.Empty;
+
+            if (HasPathVertexDeleteCandidate)
+                return "Select a vertex grip, then delete it from the keyboard or command surface";
+
+            return GetSelectionSet(_selectedMarkup).Count > 1
+                ? "Vertex deletion is disabled for grouped selections"
+                : "Vertex deletion is unavailable when the selected path is already at its minimum vertex count";
+        }
+    }
 
     public bool HasSelectedMarkupPathDetails => HasPathEditableSelection;
 
@@ -289,7 +331,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
             };
 
             if (CanInsertVertices(_selectedMarkup))
-                lines.Add("Insert: Double-click a segment");
+                lines.Add("Insert: Double-click a segment or use Insert Vertex");
 
             lines.Add(CanDeleteVertex(_selectedMarkup)
                 ? "Delete: Active vertex can be removed"
@@ -305,6 +347,63 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         (markup.Type is MarkupType.Circle or MarkupType.Arc or MarkupType.Rectangle or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel ||
          IsLineGeometryEditable(markup));
 
+    public bool HasAppearanceEditableSelection =>
+        _selectedMarkup is { } markup &&
+        GetSelectionSet(markup).Count == 1;
+
+    public string SelectedMarkupAppearanceEditSummary
+    {
+        get
+        {
+            if (_selectedMarkup == null)
+                return string.Empty;
+
+            if (!HasAppearanceEditableSelection)
+                return "Appearance editing is disabled for grouped selections";
+
+            return GetSelectedMarkupAppearanceCapabilities(_selectedMarkup);
+        }
+    }
+
+    public bool HasAppearanceShortcutHint => HasAppearanceEditableSelection;
+
+    public string SelectedMarkupAppearanceShortcutHint =>
+        HasAppearanceEditableSelection
+            ? "Shortcut: Ctrl+Shift+A"
+            : string.Empty;
+
+    public bool HasSelectedMarkupAppearanceDetails => HasAppearanceEditableSelection;
+
+    public string SelectedMarkupAppearanceDetails
+    {
+        get
+        {
+            if (_selectedMarkup == null || !HasAppearanceEditableSelection)
+                return string.Empty;
+
+            var lines = new List<string>
+            {
+                $"Stroke: {_selectedMarkup.Appearance.StrokeColor}",
+                $"Width: {FormatGeometryValue(_selectedMarkup.Appearance.StrokeWidth)}",
+                $"Opacity: {FormatOpacityValue(_selectedMarkup.Appearance.Opacity)}"
+            };
+
+            if (SupportsFillAppearance(_selectedMarkup))
+                lines.Add($"Fill: {_selectedMarkup.Appearance.FillColor}");
+
+            if (SupportsFontAppearance(_selectedMarkup))
+            {
+                lines.Add($"Font: {_selectedMarkup.Appearance.FontFamily}");
+                lines.Add($"Font Size: {FormatGeometryValue(_selectedMarkup.Appearance.FontSize)}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(_selectedMarkup.Appearance.DashArray))
+                lines.Add($"Dash: {_selectedMarkup.Appearance.DashArray}");
+
+            return string.Join(Environment.NewLine, lines);
+        }
+    }
+
     public string SelectedMarkupGeometryEditSummary
     {
         get
@@ -318,7 +417,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
                 {
                     MarkupType.Circle => "Numeric edit available: radius",
                     MarkupType.Arc => "Numeric edit available: radius, start, end, or sweep",
-                    MarkupType.Dimension or MarkupType.Measurement => "Numeric edit available: length and angle",
+                    MarkupType.Dimension or MarkupType.Measurement => GetLineGeometrySummary(_selectedMarkup),
                     MarkupType.Rectangle or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel => "Numeric edit available: width and height",
                     _ => string.Empty
                 };
@@ -354,6 +453,25 @@ public class MarkupToolViewModel : INotifyPropertyChanged
                 var delta = _selectedMarkup.Vertices[1] - _selectedMarkup.Vertices[0];
                 var length = delta.Length;
                 var angle = NormalizeMarkupAngle(Math.Atan2(delta.Y, delta.X) * 180.0 / Math.PI);
+
+                if (IsRadialDimension(_selectedMarkup))
+                {
+                    return string.Join(Environment.NewLine, new[]
+                    {
+                        $"Radius: {FormatGeometryValue(length)}",
+                        $"Angle: {FormatGeometryValue(angle)} deg"
+                    });
+                }
+
+                if (IsDiameterDimension(_selectedMarkup))
+                {
+                    return string.Join(Environment.NewLine, new[]
+                    {
+                        $"Diameter: {FormatGeometryValue(length)}",
+                        $"Angle: {FormatGeometryValue(angle)} deg"
+                    });
+                }
+
                 return string.Join(Environment.NewLine, new[]
                 {
                     $"Length: {FormatGeometryValue(length)}",
@@ -492,9 +610,19 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(SelectedMarkupPathEditSummary));
         OnPropertyChanged(nameof(HasPathShortcutHint));
         OnPropertyChanged(nameof(SelectedMarkupPathShortcutHint));
+        OnPropertyChanged(nameof(HasPathVertexInsertCandidate));
+        OnPropertyChanged(nameof(SelectedMarkupPathInsertSummary));
+        OnPropertyChanged(nameof(HasPathVertexDeleteCandidate));
+        OnPropertyChanged(nameof(SelectedMarkupPathDeleteSummary));
         OnPropertyChanged(nameof(HasSelectedMarkupPathDetails));
         OnPropertyChanged(nameof(SelectedMarkupPathDetails));
         OnPropertyChanged(nameof(HasGeometryEditableSelection));
+        OnPropertyChanged(nameof(HasAppearanceEditableSelection));
+        OnPropertyChanged(nameof(SelectedMarkupAppearanceEditSummary));
+        OnPropertyChanged(nameof(HasAppearanceShortcutHint));
+        OnPropertyChanged(nameof(SelectedMarkupAppearanceShortcutHint));
+        OnPropertyChanged(nameof(HasSelectedMarkupAppearanceDetails));
+        OnPropertyChanged(nameof(SelectedMarkupAppearanceDetails));
         OnPropertyChanged(nameof(SelectedMarkupGeometryEditSummary));
         OnPropertyChanged(nameof(HasGeometryShortcutHint));
         OnPropertyChanged(nameof(SelectedMarkupGeometryShortcutHint));
@@ -633,6 +761,73 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         return value.ToString("0.##", CultureInfo.CurrentCulture);
     }
 
+    private static string FormatOpacityValue(double value)
+    {
+        return value.ToString("0.##", CultureInfo.CurrentCulture);
+    }
+
+    private static string GetSelectedMarkupAppearanceCapabilities(MarkupRecord markup)
+    {
+        var capabilities = new List<string>
+        {
+            "stroke color",
+            "width",
+            "opacity"
+        };
+
+        if (SupportsFillAppearance(markup))
+            capabilities.Add("fill");
+
+        if (SupportsFontAppearance(markup))
+        {
+            capabilities.Add("font family");
+            capabilities.Add("font size");
+        }
+
+        if (SupportsDashAppearance(markup))
+            capabilities.Add("dash pattern");
+
+        return $"Appearance edit available: {string.Join(", ", capabilities)}";
+    }
+
+    private static bool SupportsFillAppearance(MarkupRecord markup)
+    {
+        return markup.Type switch
+        {
+            MarkupType.Polygon => true,
+            MarkupType.Rectangle => true,
+            MarkupType.Circle => true,
+            MarkupType.Arc => true,
+            MarkupType.Text => true,
+            MarkupType.Box => true,
+            MarkupType.Panel => true,
+            MarkupType.Callout => true,
+            MarkupType.Stamp => true,
+            MarkupType.Hatch => true,
+            MarkupType.Hyperlink => true,
+            _ => false
+        };
+    }
+
+    private static bool SupportsFontAppearance(MarkupRecord markup)
+    {
+        return markup.Type switch
+        {
+            MarkupType.Text => true,
+            MarkupType.Callout => true,
+            MarkupType.LeaderNote => true,
+            MarkupType.Stamp => true,
+            MarkupType.Dimension => true,
+            MarkupType.Measurement => true,
+            _ => false
+        };
+    }
+
+    private static bool SupportsDashAppearance(MarkupRecord markup)
+    {
+        return markup.Type != MarkupType.Text && markup.Type != MarkupType.Stamp;
+    }
+
     private static bool CanEditPath(MarkupRecord markup)
     {
         return markup.Type switch
@@ -697,6 +892,23 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
         return markup.Vertices.Count >= 2 && markup.Vertices.Count <= 3;
     }
+
+    private static string GetLineGeometrySummary(MarkupRecord markup)
+    {
+        if (IsRadialDimension(markup))
+            return "Numeric edit available: radius and angle";
+
+        if (IsDiameterDimension(markup))
+            return "Numeric edit available: diameter and angle";
+
+        return "Numeric edit available: length and angle";
+    }
+
+    private static bool IsRadialDimension(MarkupRecord markup)
+        => markup.Type == MarkupType.Dimension && string.Equals(markup.Metadata.Subject, "Radial", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsDiameterDimension(MarkupRecord markup)
+        => markup.Type == MarkupType.Dimension && string.Equals(markup.Metadata.Subject, "Diameter", StringComparison.OrdinalIgnoreCase);
 
     private void OnCountsChanged()
     {

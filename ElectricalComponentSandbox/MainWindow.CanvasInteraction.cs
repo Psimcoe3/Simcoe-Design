@@ -436,6 +436,15 @@ public partial class MainWindow
             return;
         }
 
+        if (_isPendingMarkupVertexInsertion)
+        {
+            if (TryInsertMarkupVertex(pos))
+                CancelPendingMarkupVertexInsertion(logCancellation: false);
+
+            e.Handled = true;
+            return;
+        }
+
         if (e.ClickCount == 2 && TryEditStructuredMarkupText(pos))
         {
             e.Handled = true;
@@ -972,6 +981,7 @@ public partial class MainWindow
         }
 
         PlanCanvas.Cursor = (_isSketchLineMode || _isSketchRectangleMode || _isDrawingConduit || _pendingPlacementComponent != null)
+            || _isPendingMarkupVertexInsertion
             ? Cursors.Cross
             : Cursors.Arrow;
     }

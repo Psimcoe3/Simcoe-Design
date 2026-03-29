@@ -566,6 +566,48 @@ public class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void SetLineGeometry_RadialDimension_RepositionsRadiusPointAndAnchor()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(13, 3) },
+            Metadata = new MarkupMetadata { Subject = "Radial" }
+        };
+        markup.UpdateBoundingRect();
+
+        var result = _sut.SetLineGeometry(markup, 20, 90);
+
+        Assert.True(result);
+        Assert.Equal(new Point(0, 0), markup.Vertices[0]);
+        Assert.Equal(0, markup.Vertices[1].X, 6);
+        Assert.Equal(20, markup.Vertices[1].Y, 6);
+        Assert.Equal(-6, markup.Vertices[2].X, 6);
+        Assert.Equal(26, markup.Vertices[2].Y, 6);
+    }
+
+    [Fact]
+    public void SetLineGeometry_DiameterDimension_RepositionsSpanAndAnchor()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(-10, 0), new Point(10, 0), new Point(13, 3) },
+            Metadata = new MarkupMetadata { Subject = "Diameter" }
+        };
+        markup.UpdateBoundingRect();
+
+        var result = _sut.SetLineGeometry(markup, 24, 90);
+
+        Assert.True(result);
+        Assert.Equal(new Point(-10, 0), markup.Vertices[0]);
+        Assert.Equal(-10, markup.Vertices[1].X, 6);
+        Assert.Equal(24, markup.Vertices[1].Y, 6);
+        Assert.Equal(-13.6, markup.Vertices[2].X, 6);
+        Assert.Equal(27.6, markup.Vertices[2].Y, 6);
+    }
+
+    [Fact]
     public void SetLineGeometry_ArcLengthDimension_ReturnsFalse()
     {
         var markup = new MarkupRecord

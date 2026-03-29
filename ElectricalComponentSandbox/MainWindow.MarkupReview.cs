@@ -10,14 +10,47 @@ public partial class MainWindow
 {
     // ── Markup Review Workflow ───────────────────────────────────────────────
 
+    internal bool ExecuteEditMarkupAppearanceCommandForTesting(string input)
+        => TryEditSelectedMarkupAppearance(input, showFeedbackIfUnsupported: false);
+
+    internal bool ExecuteInsertVertexCommandForTesting()
+    {
+        var wasPending = _isPendingMarkupVertexInsertion;
+        InsertSelectedMarkupVertex_Click(this, new RoutedEventArgs());
+        return !wasPending && _isPendingMarkupVertexInsertion;
+    }
+
+    internal bool ExecuteDeleteVertexCommandForTesting()
+    {
+        var selectedMarkup = _viewModel.MarkupTool.SelectedMarkup;
+        var previousVertexCount = selectedMarkup?.Vertices.Count ?? -1;
+        DeleteSelectedMarkupVertex_Click(this, new RoutedEventArgs());
+        return selectedMarkup != null && selectedMarkup.Vertices.Count < previousVertexCount;
+    }
+
     private void EditSelectedMarkupGeometry_Click(object sender, RoutedEventArgs e)
     {
         TryEditSelectedMarkupGeometry(showFeedbackIfUnsupported: true);
     }
 
+    private void EditSelectedMarkupAppearance_Click(object sender, RoutedEventArgs e)
+    {
+        TryEditSelectedMarkupAppearance(showFeedbackIfUnsupported: true);
+    }
+
     private void EditSelectedStructuredMarkup_Click(object sender, RoutedEventArgs e)
     {
         TryEditSelectedStructuredMarkupText(showFeedbackIfUnsupported: true);
+    }
+
+    private void InsertSelectedMarkupVertex_Click(object sender, RoutedEventArgs e)
+    {
+        TryBeginSelectedMarkupVertexInsertion(showFeedbackIfUnsupported: true);
+    }
+
+    private void DeleteSelectedMarkupVertex_Click(object sender, RoutedEventArgs e)
+    {
+        TryDeleteSelectedMarkupVertex(showFeedbackIfUnsupported: true);
     }
 
     private void MarkupListView_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)

@@ -13,6 +13,14 @@ public class MainWindowShortcutTests
     }
 
     [Fact]
+    public void IsEditSelectedMarkupAppearanceShortcut_MatchesCtrlShiftAOnly()
+    {
+        Assert.True(MainWindow.IsEditSelectedMarkupAppearanceShortcut(Key.A, ModifierKeys.Control | ModifierKeys.Shift));
+        Assert.False(MainWindow.IsEditSelectedMarkupAppearanceShortcut(Key.A, ModifierKeys.Control));
+        Assert.False(MainWindow.IsEditSelectedMarkupAppearanceShortcut(Key.G, ModifierKeys.Control | ModifierKeys.Shift));
+    }
+
+    [Fact]
     public void IsEditSelectedStructuredMarkupTextShortcut_MatchesF2OnlyWithoutModifiers()
     {
         Assert.True(MainWindow.IsEditSelectedStructuredMarkupTextShortcut(Key.F2, ModifierKeys.None));

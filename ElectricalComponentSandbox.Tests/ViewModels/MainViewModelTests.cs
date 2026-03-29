@@ -490,6 +490,46 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public void MarkupTool_SelectedRadialDimension_ReportsRadialGeometryEditability()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(12, 0), new Point(15, 3) },
+            Metadata = new MarkupMetadata { Subject = "Radial" }
+        };
+        markup.UpdateBoundingRect();
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasGeometryEditableSelection);
+        Assert.Equal("Numeric edit available: radius and angle", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.Equal($"Radius: 12{Environment.NewLine}Angle: 0 deg", vm.MarkupTool.SelectedMarkupGeometryDetails);
+    }
+
+    [Fact]
+    public void MarkupTool_SelectedDiameterDimension_ReportsDiameterGeometryEditability()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(-6, 0), new Point(6, 0), new Point(9, 3) },
+            Metadata = new MarkupMetadata { Subject = "Diameter" }
+        };
+        markup.UpdateBoundingRect();
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasGeometryEditableSelection);
+        Assert.Equal("Numeric edit available: diameter and angle", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.Equal($"Diameter: 12{Environment.NewLine}Angle: 0 deg", vm.MarkupTool.SelectedMarkupGeometryDetails);
+    }
+
+    [Fact]
     public void MarkupTool_SelectedArcLengthDimension_DoesNotReportGeometryEditability()
     {
         var vm = new MainViewModel();
@@ -532,6 +572,107 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public void MarkupTool_SelectedTextMarkup_ReportsAppearanceEditability()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            TextContent = "PANEL-A",
+            BoundingRect = new Rect(10, 10, 40, 12),
+            Appearance = new MarkupAppearance
+            {
+                StrokeColor = "#FF112233",
+                StrokeWidth = 1.5,
+                FillColor = "#40112233",
+                Opacity = 0.75,
+                FontFamily = "Consolas",
+                FontSize = 14,
+                DashArray = string.Empty
+            }
+        };
+        markup.Vertices.Add(new Point(10, 22));
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasAppearanceEditableSelection);
+        Assert.True(vm.MarkupTool.HasAppearanceShortcutHint);
+        Assert.True(vm.MarkupTool.HasSelectedMarkupAppearanceDetails);
+        Assert.Equal("Appearance edit available: stroke color, width, opacity, fill, font family, font size", vm.MarkupTool.SelectedMarkupAppearanceEditSummary);
+        Assert.Equal("Shortcut: Ctrl+Shift+A", vm.MarkupTool.SelectedMarkupAppearanceShortcutHint);
+        Assert.Equal(
+            $"Stroke: #FF112233{Environment.NewLine}Width: 1.5{Environment.NewLine}Opacity: 0.75{Environment.NewLine}Fill: #40112233{Environment.NewLine}Font: Consolas{Environment.NewLine}Font Size: 14",
+            vm.MarkupTool.SelectedMarkupAppearanceDetails);
+    }
+
+    [Fact]
+    public void MarkupTool_GroupedAppearanceSelection_DisablesAppearanceEditability()
+    {
+        var vm = new MainViewModel();
+        var selectedMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Vertices = { new Point(0, 0), new Point(10, 10) }
+        };
+        selectedMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = "group-1";
+        selectedMarkup.UpdateBoundingRect();
+
+        var groupedPeer = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            TextContent = "peer"
+        };
+        groupedPeer.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = "group-1";
+
+        vm.Markups.Add(selectedMarkup);
+        vm.Markups.Add(groupedPeer);
+        vm.MarkupTool.SelectedMarkup = selectedMarkup;
+
+        Assert.False(vm.MarkupTool.HasAppearanceEditableSelection);
+        Assert.False(vm.MarkupTool.HasAppearanceShortcutHint);
+        Assert.False(vm.MarkupTool.HasSelectedMarkupAppearanceDetails);
+        Assert.Equal("Appearance editing is disabled for grouped selections", vm.MarkupTool.SelectedMarkupAppearanceEditSummary);
+        Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupAppearanceShortcutHint);
+        Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupAppearanceDetails);
+    }
+
+    [Fact]
+    public void MarkupTool_RefreshSelectedMarkupPresentation_UpdatesAppearanceDetailsAfterEdit()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Polyline,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(20, 5) },
+            Appearance = new MarkupAppearance
+            {
+                StrokeColor = "#FF0000",
+                StrokeWidth = 2,
+                FillColor = "#00000000",
+                Opacity = 1,
+                FontFamily = "Arial",
+                FontSize = 10,
+                DashArray = string.Empty
+            }
+        };
+        markup.UpdateBoundingRect();
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        markup.Appearance.StrokeColor = "#FF00AA00";
+        markup.Appearance.StrokeWidth = 3.5;
+        markup.Appearance.Opacity = 0.6;
+        markup.Appearance.DashArray = "6,3";
+        vm.MarkupTool.RefreshSelectedMarkupPresentation();
+
+        Assert.Equal(
+            $"Stroke: #FF00AA00{Environment.NewLine}Width: 3.5{Environment.NewLine}Opacity: 0.6{Environment.NewLine}Dash: 6,3",
+            vm.MarkupTool.SelectedMarkupAppearanceDetails);
+    }
+
+    [Fact]
     public void MarkupTool_SelectedPolylineMarkup_ReportsPathEditability()
     {
         var vm = new MainViewModel();
@@ -547,13 +688,17 @@ public class MainViewModelTests
 
         Assert.True(vm.MarkupTool.HasPathEditableSelection);
         Assert.True(vm.MarkupTool.HasPathShortcutHint);
+        Assert.True(vm.MarkupTool.HasPathVertexInsertCandidate);
+        Assert.True(vm.MarkupTool.HasPathVertexDeleteCandidate);
         Assert.True(vm.MarkupTool.HasSelectedMarkupPathDetails);
         Assert.Equal(
             "Direct path edit available: drag grips to reposition points, or double-click a segment to insert a vertex",
             vm.MarkupTool.SelectedMarkupPathEditSummary);
-        Assert.Equal("Shortcut: Delete or Backspace removes the active vertex", vm.MarkupTool.SelectedMarkupPathShortcutHint);
+        Assert.Equal("Click Insert Vertex, then click a segment on the canvas", vm.MarkupTool.SelectedMarkupPathInsertSummary);
+        Assert.Equal("Shortcut: Delete or Backspace removes the active vertex after selecting a grip", vm.MarkupTool.SelectedMarkupPathShortcutHint);
+        Assert.Equal("Select a vertex grip, then delete it from the keyboard or command surface", vm.MarkupTool.SelectedMarkupPathDeleteSummary);
         Assert.Equal(
-            $"Vertices: 3{Environment.NewLine}Minimum: 2{Environment.NewLine}Insert: Double-click a segment{Environment.NewLine}Delete: Active vertex can be removed",
+            $"Vertices: 3{Environment.NewLine}Minimum: 2{Environment.NewLine}Insert: Double-click a segment or use Insert Vertex{Environment.NewLine}Delete: Active vertex can be removed",
             vm.MarkupTool.SelectedMarkupPathDetails);
     }
 
@@ -573,8 +718,11 @@ public class MainViewModelTests
         vm.MarkupTool.SelectedMarkup = markup;
 
         Assert.True(vm.MarkupTool.HasPathEditableSelection);
+        Assert.False(vm.MarkupTool.HasPathVertexInsertCandidate);
         Assert.True(vm.MarkupTool.HasPathShortcutHint);
+        Assert.True(vm.MarkupTool.HasPathVertexDeleteCandidate);
         Assert.Equal("Direct path edit available: drag grips to reposition points", vm.MarkupTool.SelectedMarkupPathEditSummary);
+        Assert.Equal("Vertex insertion is currently available for polyline, polygon, callout, leader note, and revision cloud markups only", vm.MarkupTool.SelectedMarkupPathInsertSummary);
         Assert.Equal(
             $"Vertices: 3{Environment.NewLine}Minimum: 2{Environment.NewLine}Delete: Active vertex can be removed",
             vm.MarkupTool.SelectedMarkupPathDetails);
@@ -604,10 +752,34 @@ public class MainViewModelTests
 
         Assert.False(vm.MarkupTool.HasPathEditableSelection);
         Assert.False(vm.MarkupTool.HasPathShortcutHint);
+        Assert.False(vm.MarkupTool.HasPathVertexInsertCandidate);
+        Assert.False(vm.MarkupTool.HasPathVertexDeleteCandidate);
         Assert.False(vm.MarkupTool.HasSelectedMarkupPathDetails);
         Assert.Equal("Path editing is disabled for grouped selections", vm.MarkupTool.SelectedMarkupPathEditSummary);
+        Assert.Equal("Vertex insertion is disabled for grouped selections", vm.MarkupTool.SelectedMarkupPathInsertSummary);
         Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupPathShortcutHint);
+        Assert.Equal("Vertex deletion is disabled for grouped selections", vm.MarkupTool.SelectedMarkupPathDeleteSummary);
         Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupPathDetails);
+    }
+
+    [Fact]
+    public void MarkupTool_SelectedMinimumVertexPath_DisablesVertexDeletionCandidate()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Polyline,
+            Vertices = { new Point(0, 0), new Point(10, 0) }
+        };
+        markup.UpdateBoundingRect();
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasPathEditableSelection);
+        Assert.False(vm.MarkupTool.HasPathShortcutHint);
+        Assert.False(vm.MarkupTool.HasPathVertexDeleteCandidate);
+        Assert.Equal("Vertex deletion is unavailable when the selected path is already at its minimum vertex count", vm.MarkupTool.SelectedMarkupPathDeleteSummary);
     }
 
     // ===== New Feature Tests =====

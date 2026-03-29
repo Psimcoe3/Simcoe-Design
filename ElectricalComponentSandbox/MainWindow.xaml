@@ -103,6 +103,19 @@
                           InputGestureText="F2"
                           IsEnabled="{Binding MarkupTool.HasTextEditableSelection}"
                           ToolTip="{Binding MarkupTool.SelectedMarkupTextEditSummary}"/>
+                <MenuItem Header="Edit Selected Appearance..."
+                          Click="EditSelectedMarkupAppearance_Click"
+                          InputGestureText="Ctrl+Shift+A"
+                          IsEnabled="{Binding MarkupTool.HasAppearanceEditableSelection}"
+                          ToolTip="{Binding MarkupTool.SelectedMarkupAppearanceEditSummary}"/>
+                <MenuItem Header="Insert Vertex"
+                          Click="InsertSelectedMarkupVertex_Click"
+                          IsEnabled="{Binding MarkupTool.HasPathVertexInsertCandidate}"
+                          ToolTip="{Binding MarkupTool.SelectedMarkupPathInsertSummary}"/>
+                <MenuItem Header="Delete Active Vertex"
+                          Click="DeleteSelectedMarkupVertex_Click"
+                          IsEnabled="{Binding MarkupTool.HasPathVertexDeleteCandidate}"
+                          ToolTip="{Binding MarkupTool.SelectedMarkupPathDeleteSummary}"/>
                 <MenuItem Header="Duplicate Selected" Click="DuplicateComponent_Click" InputGestureText="Ctrl+D"/>
                 <MenuItem Header="Rectangular Array..." Click="RectangularArray_Click"/>
                 <MenuItem Header="Polar Array..." Click="PolarArray_Click"/>
@@ -385,6 +398,18 @@
                                           Click="EditSelectedStructuredMarkup_Click"
                                           IsEnabled="{Binding MarkupTool.HasTextEditableSelection}"
                                           ToolTip="{Binding MarkupTool.SelectedMarkupTextEditSummary}"/>
+                                <MenuItem Header="Edit Selected Appearance..."
+                                          Click="EditSelectedMarkupAppearance_Click"
+                                          IsEnabled="{Binding MarkupTool.HasAppearanceEditableSelection}"
+                                          ToolTip="{Binding MarkupTool.SelectedMarkupAppearanceEditSummary}"/>
+                                <MenuItem Header="Insert Vertex"
+                                          Click="InsertSelectedMarkupVertex_Click"
+                                          IsEnabled="{Binding MarkupTool.HasPathVertexInsertCandidate}"
+                                          ToolTip="{Binding MarkupTool.SelectedMarkupPathInsertSummary}"/>
+                                <MenuItem Header="Delete Active Vertex"
+                                          Click="DeleteSelectedMarkupVertex_Click"
+                                          IsEnabled="{Binding MarkupTool.HasPathVertexDeleteCandidate}"
+                                          ToolTip="{Binding MarkupTool.SelectedMarkupPathDeleteSummary}"/>
                                 <Separator/>
                                 <MenuItem x:Name="MobileThemeIosMenuItem" Header="Theme: iOS" IsCheckable="True" Click="MobileThemeIosMenuItem_Click"/>
                                 <MenuItem x:Name="MobileThemeAndroidMenuItem" Header="Theme: Android" IsCheckable="True" Click="MobileThemeAndroidMenuItem_Click"/>
@@ -837,6 +862,24 @@
                                     Margin="0,0,6,4"
                                     IsEnabled="{Binding MarkupTool.HasTextEditableSelection}"
                                     ToolTip="{Binding MarkupTool.SelectedMarkupTextEditSummary}"/>
+                                <Button Content="Edit Appearance"
+                                    Click="EditSelectedMarkupAppearance_Click"
+                                    Padding="8,2"
+                                    Margin="0,0,6,4"
+                                    IsEnabled="{Binding MarkupTool.HasAppearanceEditableSelection}"
+                                    ToolTip="{Binding MarkupTool.SelectedMarkupAppearanceEditSummary}"/>
+                                <Button Content="Insert Vertex"
+                                    Click="InsertSelectedMarkupVertex_Click"
+                                    Padding="8,2"
+                                    Margin="0,0,6,4"
+                                    IsEnabled="{Binding MarkupTool.HasPathVertexInsertCandidate}"
+                                    ToolTip="{Binding MarkupTool.SelectedMarkupPathInsertSummary}"/>
+                                <Button Content="Delete Vertex"
+                                        Click="DeleteSelectedMarkupVertex_Click"
+                                        Padding="8,2"
+                                        Margin="0,0,6,4"
+                                        IsEnabled="{Binding MarkupTool.HasPathVertexDeleteCandidate}"
+                                        ToolTip="{Binding MarkupTool.SelectedMarkupPathDeleteSummary}"/>
                                 <Button Content="Resolve" Command="{Binding MarkupTool.ApproveSelectedCommand}" Padding="8,2" Margin="0,0,6,4"/>
                                 <Button Content="Void" Command="{Binding MarkupTool.RejectSelectedCommand}" Padding="8,2" Margin="0,0,6,4"/>
                                 <Button Content="Delete" Click="DeleteComponent_Click" Padding="8,2" Margin="0,0,6,4"/>
@@ -882,6 +925,54 @@
                                                 <Setter Property="Visibility" Value="Collapsed"/>
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding MarkupTool.HasSelectedMarkupTextDetails}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+                            <Border DockPanel.Dock="Top"
+                                    Margin="4,0,4,6"
+                                    Padding="8"
+                                    Background="#FFF7F7F8"
+                                    BorderBrush="#FFD0D7DE"
+                                    BorderThickness="1"
+                                    Visibility="{Binding MarkupTool.SelectedMarkup, Converter={StaticResource NotNullToVisibilityConverter}}">
+                                <StackPanel>
+                                    <TextBlock Text="Appearance Edit" FontWeight="Bold" FontSize="11" Margin="0,0,0,4"/>
+                                    <TextBlock Text="{Binding MarkupTool.SelectedMarkupAppearanceEditSummary}" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding MarkupTool.SelectedMarkupAppearanceShortcutHint}" Foreground="Gray" Margin="0,4,0,0">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding MarkupTool.HasAppearanceShortcutHint}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="Current Values" FontWeight="SemiBold" Margin="0,6,0,2">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding MarkupTool.HasSelectedMarkupAppearanceDetails}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding MarkupTool.SelectedMarkupAppearanceDetails}" TextWrapping="Wrap">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding MarkupTool.HasSelectedMarkupAppearanceDetails}" Value="True">
                                                         <Setter Property="Visibility" Value="Visible"/>
                                                     </DataTrigger>
                                                 </Style.Triggers>

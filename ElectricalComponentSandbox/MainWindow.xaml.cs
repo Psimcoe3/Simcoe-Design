@@ -217,6 +217,9 @@ public partial class MainWindow : Window
 
     private void PolarAngle_Changed(object sender, SelectionChangedEventArgs e)
     {
+        if (_viewModel == null)
+            return;
+
         if (PolarAngleCombo.SelectedItem is not ComboBoxItem item) return;
         var text = item.Content?.ToString()?.TrimEnd('°');
         if (double.TryParse(text, System.Globalization.NumberStyles.Any,

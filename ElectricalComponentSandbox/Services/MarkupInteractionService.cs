@@ -538,8 +538,13 @@ public sealed class MarkupInteractionService
             Radius = markup.Radius,
             ArcStartDeg = markup.ArcStartDeg,
             ArcSweepDeg = markup.ArcSweepDeg,
+            StrokeColor = markup.Appearance.StrokeColor,
             StrokeWidth = markup.Appearance.StrokeWidth,
+            FillColor = markup.Appearance.FillColor,
+            Opacity = markup.Appearance.Opacity,
+            FontFamily = markup.Appearance.FontFamily,
             FontSize = markup.Appearance.FontSize,
+            DashArray = markup.Appearance.DashArray,
             ModifiedUtc = markup.Metadata.ModifiedUtc
         };
     }
@@ -552,8 +557,13 @@ public sealed class MarkupInteractionService
         markup.Radius = snapshot.Radius;
         markup.ArcStartDeg = snapshot.ArcStartDeg;
         markup.ArcSweepDeg = snapshot.ArcSweepDeg;
+        markup.Appearance.StrokeColor = snapshot.StrokeColor;
         markup.Appearance.StrokeWidth = snapshot.StrokeWidth;
+        markup.Appearance.FillColor = snapshot.FillColor;
+        markup.Appearance.Opacity = snapshot.Opacity;
+        markup.Appearance.FontFamily = snapshot.FontFamily;
         markup.Appearance.FontSize = snapshot.FontSize;
+        markup.Appearance.DashArray = snapshot.DashArray;
         markup.Metadata.ModifiedUtc = snapshot.ModifiedUtc;
     }
 
@@ -733,7 +743,12 @@ public sealed class MarkupGeometrySnapshot
     public double Radius { get; init; }
     public double ArcStartDeg { get; init; }
     public double ArcSweepDeg { get; init; }
+    public string StrokeColor { get; init; } = string.Empty;
     public double StrokeWidth { get; init; }
+    public string FillColor { get; init; } = string.Empty;
+    public double Opacity { get; init; }
+    public string FontFamily { get; init; } = string.Empty;
     public double FontSize { get; init; }
+    public string DashArray { get; init; } = string.Empty;
     public DateTime ModifiedUtc { get; init; }
 }

@@ -13,8 +13,14 @@ public partial class MainWindow
     internal static bool IsEditSelectedMarkupGeometryShortcut(Key key, ModifierKeys modifiers)
         => modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && key == Key.G;
 
+    internal static bool IsEditSelectedMarkupAppearanceShortcut(Key key, ModifierKeys modifiers)
+        => modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && key == Key.A;
+
     internal static bool IsEditSelectedStructuredMarkupTextShortcut(Key key, ModifierKeys modifiers)
         => modifiers == ModifierKeys.None && key == Key.F2;
+
+    internal bool ExecuteEscapeShortcutForTesting()
+        => TryCancelActiveInteraction(this, new RoutedEventArgs());
 
     private void ApplyProperties_Click(object sender, RoutedEventArgs e)
     {
@@ -121,6 +127,11 @@ public partial class MainWindow
                 TryEditSelectedMarkupGeometry(showFeedbackIfUnsupported: true);
                 e.Handled = true;
             }
+            else if (IsEditSelectedMarkupAppearanceShortcut(e.Key, modifiers))
+            {
+                TryEditSelectedMarkupAppearance(showFeedbackIfUnsupported: true);
+                e.Handled = true;
+            }
 
             return;
         }
@@ -201,56 +212,70 @@ public partial class MainWindow
             SkiaBackground.RequestRedraw();
             e.Handled = true;
         }
-        else if (IsCancelActiveInteractionShortcut(e.Key, modifiers))
+        else if (IsCancelActiveInteractionShortcut(e.Key, modifiers) && TryCancelActiveInteraction(sender, e))
         {
-            if (_isPdfCalibrationMode)
-            {
-                CancelPdfCalibrationMode();
-                e.Handled = true;
-            }
-            else if (_isFreehandDrawing)
-            {
-                FinishFreehandConduit();
-                e.Handled = true;
-            }
-            else if (_isSketchLineMode || _isSketchRectangleMode)
-            {
-                ExitSketchModes();
-                Update2DCanvas();
-                e.Handled = true;
-            }
-            else if (_isDrawingConduit)
-            {
-                FinishDrawingConduit();
-                e.Handled = true;
-            }
-            else if (_isEditingConduitPath)
-            {
-                ToggleEditConduitPath_Click(sender, e);
-                e.Handled = true;
-            }
-            else if (_pendingPlacementComponent != null)
-            {
-                CancelPendingPlacement();
-                e.Handled = true;
-            }
-            else if (_isPdfCalibrationMode)
-            {
-                CancelPdfCalibrationMode();
-                e.Handled = true;
-            }
-            else if (_isAddingCustomDimension)
-            {
-                CancelCustomDimensionMode();
-                UpdateCustomDimensionUiState();
-                e.Handled = true;
-            }
+            e.Handled = true;
         }
     }
 
     internal static bool IsDeleteSelectedMarkupOrComponentShortcut(Key key, ModifierKeys modifiers)
     {
         return modifiers == ModifierKeys.None && (key == Key.Delete || key == Key.Back);
+    }
+
+    private bool TryCancelActiveInteraction(object sender, RoutedEventArgs e)
+    {
+        if (_isPdfCalibrationMode)
+        {
+            CancelPdfCalibrationMode();
+            return true;
+        }
+
+        if (_isFreehandDrawing)
+        {
+            FinishFreehandConduit();
+            return true;
+        }
+
+        if (_isSketchLineMode || _isSketchRectangleMode)
+        {
+            ExitSketchModes();
+            Update2DCanvas();
+            return true;
+        }
+
+        if (_isDrawingConduit)
+        {
+            FinishDrawingConduit();
+            return true;
+        }
+
+        if (_isEditingConduitPath)
+        {
+            ToggleEditConduitPath_Click(sender, e);
+            return true;
+        }
+
+        if (_pendingPlacementComponent != null)
+        {
+            CancelPendingPlacement();
+            return true;
+        }
+
+        if (_isPendingMarkupVertexInsertion)
+        {
+            CancelPendingMarkupVertexInsertion();
+            return true;
+        }
+
+        if (_isAddingCustomDimension)
+        {
+            CancelCustomDimensionMode();
+            UpdateCustomDimensionUiState();
+            return true;
+        }
+
+        return false;
     }
 
     internal static bool IsCancelActiveInteractionShortcut(Key key, ModifierKeys modifiers)
