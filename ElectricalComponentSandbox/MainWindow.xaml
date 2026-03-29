@@ -1092,15 +1092,15 @@
                                     <TextBlock Text="Structured Annotation" FontWeight="Bold" FontSize="11" Margin="0,0,0,4"/>
                                     <TextBlock Margin="0,0,0,2">
                                         <Run Text="Kind: " FontWeight="SemiBold"/>
-                                        <Run Text="{Binding MarkupTool.SelectedMarkupAnnotationKind}"/>
+                                            <Run Text="{Binding MarkupTool.SelectedMarkupAnnotationKind, Mode=OneWay}"/>
                                     </TextBlock>
                                     <TextBlock Margin="0,0,0,2">
                                         <Run Text="Role: " FontWeight="SemiBold"/>
-                                        <Run Text="{Binding MarkupTool.SelectedMarkupAnnotationRole}"/>
+                                            <Run Text="{Binding MarkupTool.SelectedMarkupAnnotationRole, Mode=OneWay}"/>
                                     </TextBlock>
                                     <TextBlock>
                                         <Run Text="Key: " FontWeight="SemiBold"/>
-                                        <Run Text="{Binding MarkupTool.SelectedMarkupAnnotationKey}"/>
+                                            <Run Text="{Binding MarkupTool.SelectedMarkupAnnotationKey, Mode=OneWay}"/>
                                     </TextBlock>
                                 </StackPanel>
                             </Border>

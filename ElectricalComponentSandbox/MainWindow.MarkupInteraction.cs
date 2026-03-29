@@ -1429,8 +1429,9 @@ public partial class MainWindow
             _mobileSelectionCandidate = false;
         }
 
+        var snappedPoint = ApplyDrawingSnap(canvasPoint);
         var center = _markupInteractionService.GetRadiusPivotPoint(_radiusDraggedMarkup);
-        var radius = (canvasPoint - center).Length;
+        var radius = (snappedPoint - center).Length;
         _markupInteractionService.SetRadius(_radiusDraggedMarkup, radius);
         _lastMousePosition = canvasPoint;
         SkiaBackground.RequestRedraw();
