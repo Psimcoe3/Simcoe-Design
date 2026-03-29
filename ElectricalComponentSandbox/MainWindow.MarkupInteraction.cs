@@ -368,7 +368,7 @@ public partial class MainWindow
         {
             if (showFeedbackIfUnsupported)
             {
-                MessageBox.Show("Select a single circle, arc, rectangle, stamp, hyperlink, box, panel, dimension, or measurement markup first.", "Edit Geometry",
+                MessageBox.Show("Select a single polyline, polygon, circle, arc, rectangle, stamp, hyperlink, box, panel, dimension, or measurement markup first.", "Edit Geometry",
                     MessageBoxButton.OK, MessageBoxImage.Information);
             }
 
@@ -395,7 +395,7 @@ public partial class MainWindow
         {
             if (showFeedbackIfUnsupported)
             {
-                MessageBox.Show("Numeric geometry editing is available for a single selected circle, arc, rectangle, stamp, hyperlink, box, panel, dimension, or measurement markup.", "Edit Geometry",
+                MessageBox.Show("Numeric geometry editing is available for a single selected polyline, polygon, circle, arc, rectangle, stamp, hyperlink, box, panel, dimension, or measurement markup.", "Edit Geometry",
                     MessageBoxButton.OK, MessageBoxImage.Information);
             }
 
@@ -407,6 +407,7 @@ public partial class MainWindow
             MarkupType.Rectangle or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel => TryEditSelectedBoundsGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
             MarkupType.Circle => TryEditSelectedCircleGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
             MarkupType.Arc => TryEditSelectedArcGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
+            MarkupType.Polyline or MarkupType.Polygon => TryEditSelectedPolylineGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
             MarkupType.Dimension or MarkupType.Measurement when IsArcLengthDimension(selectedMarkup) => TryEditSelectedArcLengthGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
             MarkupType.Dimension or MarkupType.Measurement when IsAngularDimension(selectedMarkup) => TryEditSelectedAngularGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
             MarkupType.Dimension or MarkupType.Measurement => TryEditSelectedLineGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
@@ -598,6 +599,63 @@ public partial class MainWindow
             before,
             $"Edit {markup.TypeDisplayText.ToLowerInvariant()} geometry",
             FormattableString.Invariant($"Type: {markup.TypeDisplayText}, Arc Length: {nextArcLength:0.##}, Radius: {markup.Radius:0.##}, Sweep: {markup.ArcSweepDeg:0.##}"));
+    }
+
+    private bool TryEditSelectedPolylineGeometry(MarkupRecord markup, string input, bool showValidationFeedback)
+    {
+        if (!TryParseMarkupGeometryAssignments(input, out var values, out var errorMessage))
+        {
+            ShowGeometryValidationWarning(showValidationFeedback, errorMessage, $"Edit {markup.TypeDisplayText} Geometry");
+            return true;
+        }
+
+        var minCount = markup.Type == MarkupType.Polygon ? 3 : 2;
+        if (!TryExtractVertices(values, minCount, out var vertices, out errorMessage))
+        {
+            ShowGeometryValidationWarning(showValidationFeedback, errorMessage, $"Edit {markup.TypeDisplayText} Geometry");
+            return true;
+        }
+
+        var before = _markupInteractionService.Capture(markup);
+        if (!_markupInteractionService.SetPolylineGeometry(markup, vertices))
+            return false;
+
+        return CommitMarkupGeometryEdit(
+            markup,
+            before,
+            $"Edit {markup.TypeDisplayText.ToLowerInvariant()} geometry",
+            FormattableString.Invariant($"Type: {markup.TypeDisplayText}, Vertices: {vertices.Count}"));
+    }
+
+    private static bool TryExtractVertices(Dictionary<string, double> values, int minimumCount, out List<Point> vertices, out string errorMessage)
+    {
+        vertices = new List<Point>();
+        errorMessage = string.Empty;
+
+        for (int i = 1; ; i++)
+        {
+            var hasX = values.TryGetValue($"x{i}", out var x);
+            var hasY = values.TryGetValue($"y{i}", out var y);
+
+            if (!hasX && !hasY)
+                break;
+
+            if (hasX != hasY)
+            {
+                errorMessage = $"Vertex {i} is incomplete — both x{i} and y{i} are required.";
+                return false;
+            }
+
+            vertices.Add(new Point(x, y));
+        }
+
+        if (vertices.Count < minimumCount)
+        {
+            errorMessage = $"At least {minimumCount} vertices are required (x1, y1, x2, y2, …).";
+            return false;
+        }
+
+        return true;
     }
 
     private bool TryEditSelectedBoundsGeometry(MarkupRecord markup, string input, bool showValidationFeedback)
@@ -1025,11 +1083,23 @@ public partial class MainWindow
     {
         if (showFeedbackIfUnsupported)
         {
-            MessageBox.Show("Numeric geometry editing is currently available for circle, arc, rectangle, stamp, hyperlink, box, panel, angular dimension, arc-length dimension, and line-style dimension or measurement markups.", "Edit Geometry",
+            MessageBox.Show("Numeric geometry editing is currently available for polyline, polygon, circle, arc, rectangle, stamp, hyperlink, box, panel, angular dimension, arc-length dimension, and line-style dimension or measurement markups.", "Edit Geometry",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         return false;
+    }
+
+    private static string BuildPolylineGeometryDefaultValue(MarkupRecord markup)
+    {
+        var lines = new List<string>(markup.Vertices.Count * 2);
+        for (int i = 0; i < markup.Vertices.Count; i++)
+        {
+            lines.Add(FormattableString.Invariant($"x{i + 1}={markup.Vertices[i].X:0.##}"));
+            lines.Add(FormattableString.Invariant($"y{i + 1}={markup.Vertices[i].Y:0.##}"));
+        }
+
+        return string.Join(Environment.NewLine, lines);
     }
 
     private static string BuildBoundsGeometryDefaultValue(MarkupRecord markup)
@@ -1090,6 +1160,13 @@ public partial class MainWindow
                 title = "Edit Arc Geometry";
                 prompt = "Enter radius, start angle, and either end or sweep.\n\nExamples:\nradius=12\nstart=30\nend=150\n\nor\nradius=12\nstart=30\nsweep=120";
                 defaultValue = BuildArcGeometryDefaultValue(markup);
+                return true;
+            case MarkupType.Polyline:
+            case MarkupType.Polygon:
+                var minVerts = markup.Type == MarkupType.Polygon ? 3 : 2;
+                title = $"Edit {markup.TypeDisplayText} Geometry";
+                prompt = $"Enter vertex coordinates as x1=…, y1=…, x2=…, y2=…, etc. At least {minVerts} vertices are required.\n\nExamples:\nx1=10\ny1=20\nx2=30\ny2=40";
+                defaultValue = BuildPolylineGeometryDefaultValue(markup);
                 return true;
             case MarkupType.Dimension:
             case MarkupType.Measurement:

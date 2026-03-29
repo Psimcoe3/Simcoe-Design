@@ -137,7 +137,7 @@ public sealed class CanvasInteractionController
             {
                 _isDraggingGrip = true;
                 _gripComponentId = gripHit.Id;
-                _gripPointIndex = 0; // TODO: encode grip index in ShadowNode
+                _gripPointIndex = gripHit.GripIndex;
                 _gripDragStart = docPos;
                 return;
             }

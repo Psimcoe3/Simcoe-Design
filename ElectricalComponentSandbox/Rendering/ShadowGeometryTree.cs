@@ -24,6 +24,7 @@ public sealed class ShadowGeometryTree
     {
         public string Id { get; init; } = string.Empty;
         public ShadowNodeKind Kind { get; init; }
+        public int GripIndex { get; init; }
         public Rect BoundingRect { get; init; }
         public IReadOnlyList<Point>? PathPoints { get; init; }
         public object? Source { get; init; }   // original Component / MarkupRecord

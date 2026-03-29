@@ -532,6 +532,22 @@ public sealed class MarkupInteractionService
         return true;
     }
 
+    public bool SetPolylineGeometry(MarkupRecord markup, List<Point> vertices)
+    {
+        if (!IsPolylineGeometryEditable(markup))
+            return false;
+
+        var minCount = markup.Type == MarkupType.Polygon ? 3 : 2;
+        if (vertices.Count < minCount)
+            return false;
+
+        markup.Vertices.Clear();
+        markup.Vertices.AddRange(vertices);
+        markup.UpdateBoundingRect();
+        markup.Metadata.ModifiedUtc = DateTime.UtcNow;
+        return true;
+    }
+
     public bool SetBoundsGeometry(MarkupRecord markup, double width, double height)
     {
         if (!IsBoundsGeometryEditable(markup))
@@ -807,6 +823,12 @@ public sealed class MarkupInteractionService
     private static bool IsBoundsGeometryEditable(MarkupRecord markup)
     {
         return markup.Type is MarkupType.Rectangle or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel;
+    }
+
+    internal static bool IsPolylineGeometryEditable(MarkupRecord markup)
+    {
+        return markup.Type is MarkupType.Polyline or MarkupType.Polygon &&
+               markup.Vertices.Count >= 2;
     }
 
     private static bool IsLineGeometryEditable(MarkupRecord markup)
