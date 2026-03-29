@@ -577,6 +577,25 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public void MarkupTool_UnsupportedSelection_IncludesArcLengthInAvailabilitySummary()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            TextContent = "NOTE",
+            BoundingRect = new Rect(0, 0, 20, 10)
+        };
+        markup.Vertices.Add(new Point(0, 10));
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.False(vm.MarkupTool.HasGeometryEditableSelection);
+        Assert.Contains("arc-length dimension", vm.MarkupTool.SelectedMarkupGeometryEditSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MarkupTool_RefreshSelectedMarkupPresentation_UpdatesGeometryDetailsAfterEdit()
     {
         var vm = new MainViewModel();

@@ -47,6 +47,27 @@ public partial class MainWindow
     internal void CancelPendingMarkupVertexInsertionForTesting(bool logCancellation = false)
         => CancelPendingMarkupVertexInsertion(logCancellation);
     internal void SetActiveMarkupVertexIndexForTesting(int index) => _activeMarkupVertexIndex = index;
+    internal bool BeginSelectedMarkupArcAngleDragForTesting(Point canvasPoint)
+        => TryStartMarkupArcAngleDrag(canvasPoint);
+    internal bool BeginSelectedMarkupRadiusDragForTesting(Point canvasPoint)
+        => TryStartMarkupRadiusDrag(canvasPoint);
+    internal void UpdateDraggedMarkupArcAnglePreviewForTesting(Point canvasPoint)
+        => UpdateDraggedMarkupArcAnglePreview(canvasPoint);
+    internal void UpdateDraggedMarkupRadiusPreviewForTesting(Point canvasPoint)
+        => UpdateDraggedMarkupRadiusPreview(canvasPoint);
+    internal bool BeginSelectedMarkupVertexDragForTesting(Point canvasPoint)
+        => TryStartMarkupVertexDrag(canvasPoint);
+    internal void UpdateDraggedMarkupVertexPreviewForTesting(Point canvasPoint)
+        => UpdateDraggedMarkupVertexPreview(canvasPoint);
+    internal void FinishMarkupArcAngleDragForTesting() => FinishMarkupArcAngleDrag();
+    internal void FinishMarkupRadiusDragForTesting() => FinishMarkupRadiusDrag();
+    internal void FinishMarkupVertexDragForTesting() => FinishMarkupVertexDrag();
+    internal static bool IsLineGeometryReadoutEligibleForTesting(MarkupRecord markup, int activeVertexIndex)
+        => IsLineGeometryReadoutEligible(markup, activeVertexIndex);
+    internal static string BuildLineGeometryReadoutForTesting(MarkupRecord markup)
+        => BuildLineGeometryReadout(markup);
+    internal void DrawSelectedMarkupOverlayForTesting(ICanvas2DRenderer renderer)
+        => DrawSelectedMarkupOverlay(renderer);
     internal bool HandlePendingMarkupVertexInsertionClickForTesting(Point canvasPoint)
     {
         if (!_isPendingMarkupVertexInsertion)
@@ -463,11 +484,11 @@ public partial class MainWindow
 
     private bool TryEditSelectedLineGeometry(MarkupRecord markup, string input, bool showFeedbackIfUnsupported)
     {
-        if (markup.Vertices.Count != 2)
+        if (markup.Vertices.Count < 2 || markup.Vertices.Count > 3)
         {
             if (showFeedbackIfUnsupported)
             {
-                MessageBox.Show("Numeric geometry editing for dimensions and measurements is currently available for line-style markups. Angular dimensions use angle/radius semantics, and arc-length variants remain excluded.", "Edit Geometry",
+                MessageBox.Show("Numeric geometry editing for dimensions and measurements is currently available for line-style markups with 2 or 3 points. Angular dimensions use angle/radius semantics, and arc-length dimensions use arc length/radius semantics.", "Edit Geometry",
                     MessageBoxButton.OK, MessageBoxImage.Information);
             }
 
@@ -1141,6 +1162,44 @@ public partial class MainWindow
         return "Length";
     }
 
+    private static bool IsLineGeometryReadoutEligible(MarkupRecord markup, int activeVertexIndex)
+    {
+        if (activeVertexIndex < 0 || activeVertexIndex > 1)
+            return false;
+
+        if (markup.Type is not MarkupType.Dimension and not MarkupType.Measurement)
+            return false;
+
+        if (markup.Vertices.Count < 2 || markup.Vertices.Count > 3)
+            return false;
+
+        return !IsAngularDimension(markup) && !IsArcLengthDimension(markup);
+    }
+
+    private Point GetConstrainedLineGeometryDragPoint(MarkupRecord markup, int activeVertexIndex, Point canvasPoint)
+    {
+        var snappedPoint = ApplyDrawingSnap(canvasPoint);
+        var fixedPoint = activeVertexIndex == 0 ? markup.Vertices[1] : markup.Vertices[0];
+        var snapIncrementDeg = GetMarkupAngleSnapIncrement();
+        if (snapIncrementDeg <= 0)
+            return snappedPoint;
+
+        return ConstrainToAngleIncrement(fixedPoint, snappedPoint, snapIncrementDeg);
+    }
+
+    private static string BuildLineGeometryReadout(MarkupRecord markup)
+    {
+        if (markup.Vertices.Count < 2)
+            return string.Empty;
+
+        var start = markup.Vertices[0];
+        var end = markup.Vertices[1];
+        var delta = end - start;
+        var length = delta.Length;
+        var angleDeg = NormalizeMarkupAngle(Math.Atan2(delta.Y, delta.X) * 180.0 / Math.PI);
+        return FormattableString.Invariant($"{GetLineGeometryLengthLabel(markup)} {length:0.##}  Angle {angleDeg:0.##} deg");
+    }
+
     private static bool IsAngularDimension(MarkupRecord markup)
     {
         return markup.Type == MarkupType.Dimension &&
@@ -1370,7 +1429,7 @@ public partial class MainWindow
             _mobileSelectionCandidate = false;
         }
 
-        var center = _radiusDraggedMarkup.Vertices[0];
+        var center = _markupInteractionService.GetRadiusPivotPoint(_radiusDraggedMarkup);
         var radius = (canvasPoint - center).Length;
         _markupInteractionService.SetRadius(_radiusDraggedMarkup, radius);
         _lastMousePosition = canvasPoint;
@@ -1389,13 +1448,8 @@ public partial class MainWindow
             _mobileSelectionCandidate = false;
         }
 
-        var center = _arcAngleDraggedMarkup.Vertices[0];
-        var angleDeg = Math.Atan2(canvasPoint.Y - center.Y, canvasPoint.X - center.X) * 180.0 / Math.PI;
         var snapIncrementDeg = GetMarkupAngleSnapIncrement();
-        if (snapIncrementDeg > 0)
-            angleDeg = _markupInteractionService.SnapAngleDegrees(angleDeg, snapIncrementDeg);
-
-        _markupInteractionService.SetArcAngle(_arcAngleDraggedMarkup, _activeMarkupArcAngleHandle, angleDeg);
+        _markupInteractionService.SetArcAngleFromPoint(_arcAngleDraggedMarkup, _activeMarkupArcAngleHandle, canvasPoint, snapIncrementDeg);
         _lastMousePosition = canvasPoint;
         SkiaBackground.RequestRedraw();
     }
@@ -1412,7 +1466,29 @@ public partial class MainWindow
             _mobileSelectionCandidate = false;
         }
 
-        _markupInteractionService.MoveVertex(_vertexDraggedMarkup, _activeMarkupVertexIndex, canvasPoint);
+        if (IsLineGeometryReadoutEligible(_vertexDraggedMarkup, _activeMarkupVertexIndex))
+        {
+            var constrainedPoint = GetConstrainedLineGeometryDragPoint(_vertexDraggedMarkup, _activeMarkupVertexIndex, canvasPoint);
+            if (_activeMarkupVertexIndex == 0)
+            {
+                _markupInteractionService.SetLineGeometryByEndpoints(
+                    _vertexDraggedMarkup,
+                    constrainedPoint,
+                    _vertexDraggedMarkup.Vertices[1]);
+            }
+            else
+            {
+                _markupInteractionService.SetLineGeometryByEndpoints(
+                    _vertexDraggedMarkup,
+                    _vertexDraggedMarkup.Vertices[0],
+                    constrainedPoint);
+            }
+        }
+        else
+        {
+            _markupInteractionService.MoveVertex(_vertexDraggedMarkup, _activeMarkupVertexIndex, canvasPoint);
+        }
+
         _lastMousePosition = canvasPoint;
         SkiaBackground.RequestRedraw();
     }
@@ -1663,7 +1739,7 @@ public partial class MainWindow
 
         if (handleMode == MarkupHandleOverlayMode.DirectGeometry && canEditArcAngles)
         {
-            foreach (var handle in new[] { MarkupArcAngleHandle.Start, MarkupArcAngleHandle.End })
+            foreach (var handle in _markupInteractionService.GetArcAngleHandles(selectedMarkup))
             {
                 renderer.DrawGrip(
                     _markupInteractionService.GetArcAngleHandlePoint(selectedMarkup, handle),
@@ -1696,6 +1772,11 @@ public partial class MainWindow
                 renderer.DrawGrip(
                     points[i],
                     hot: _isDraggingMarkupVertex && i == _activeMarkupVertexIndex);
+            }
+
+            if (_isDraggingMarkupVertex && IsLineGeometryReadoutEligible(selectedMarkup, _activeMarkupVertexIndex))
+            {
+                DrawMarkupLineGeometryReadout(renderer, selectedMarkup, points[_activeMarkupVertexIndex]);
             }
         }
         else if (handleMode == MarkupHandleOverlayMode.Resize)
@@ -1755,13 +1836,29 @@ public partial class MainWindow
     {
         var activeHandlePoint = _markupInteractionService.GetArcAngleHandlePoint(markup, _activeMarkupArcAngleHandle);
         var anchor = GetMarkupReadoutAnchor(renderer, activeHandlePoint, markup.BoundingRect);
-        var endAngle = NormalizeMarkupAngle(markup.ArcStartDeg + markup.ArcSweepDeg);
         var snapIncrementDeg = GetMarkupAngleSnapIncrement();
-        var readout = FormattableString.Invariant(
-            $"Start {NormalizeMarkupAngle(markup.ArcStartDeg):0.#} deg  End {endAngle:0.#} deg  Sweep {markup.ArcSweepDeg:0.#} deg") +
-            (snapIncrementDeg > 0
-                ? FormattableString.Invariant($"  Snap {snapIncrementDeg:0.#} deg")
-                : string.Empty);
+        string readout;
+
+        if (IsAngularDimension(markup))
+        {
+            readout = FormattableString.Invariant(
+                $"Angle {Math.Abs(markup.ArcSweepDeg):0.#} deg  Radius {markup.Radius:0.##}");
+        }
+        else if (IsArcLengthDimension(markup))
+        {
+            var arcLength = Math.Abs(markup.ArcSweepDeg) * Math.PI / 180.0 * markup.Radius;
+            readout = FormattableString.Invariant(
+                $"Arc Length {arcLength:0.##}  Sweep {markup.ArcSweepDeg:0.#} deg  Radius {markup.Radius:0.##}");
+        }
+        else
+        {
+            var endAngle = NormalizeMarkupAngle(markup.ArcStartDeg + markup.ArcSweepDeg);
+            readout = FormattableString.Invariant(
+                $"Start {NormalizeMarkupAngle(markup.ArcStartDeg):0.#} deg  End {endAngle:0.#} deg  Sweep {markup.ArcSweepDeg:0.#} deg");
+        }
+
+        if (snapIncrementDeg > 0)
+            readout += FormattableString.Invariant($"  Snap {snapIncrementDeg:0.#} deg");
 
         renderer.DrawTextBox(anchor, readout, new RenderStyle
         {
@@ -1785,6 +1882,19 @@ public partial class MainWindow
         }, boxFill: "#F2EFF6FF", padding: 6.0);
     }
 
+    private void DrawMarkupLineGeometryReadout(ICanvas2DRenderer renderer, MarkupRecord markup, Point handlePoint)
+    {
+        var anchor = GetMarkupReadoutAnchor(renderer, handlePoint, markup.BoundingRect);
+        var readout = BuildLineGeometryReadout(markup);
+
+        renderer.DrawTextBox(anchor, readout, new RenderStyle
+        {
+            StrokeColor = "#FF111827",
+            FontSize = 12.0,
+            Bold = true
+        }, boxFill: "#F6EFF6FF", padding: 6.0);
+    }
+
     private static Point GetMarkupReadoutAnchor(ICanvas2DRenderer renderer, Point handlePoint, Rect bounds)
     {
         var offset = Math.Max(12.0 / Math.Max(renderer.Zoom, 0.1), 2.0);
@@ -1798,6 +1908,25 @@ public partial class MainWindow
         }
 
         return new Point(x, y);
+    }
+
+    private static Point ConstrainToAngleIncrement(Point anchor, Point target, double incrementDeg)
+    {
+        if (incrementDeg <= 0)
+            return target;
+
+        var dx = target.X - anchor.X;
+        var dy = target.Y - anchor.Y;
+        var dist = Math.Sqrt(dx * dx + dy * dy);
+        if (dist < 1)
+            return target;
+
+        var angleDeg = Math.Atan2(dy, dx) * 180.0 / Math.PI;
+        var snappedAngleDeg = Math.Round(angleDeg / incrementDeg) * incrementDeg;
+        var radians = snappedAngleDeg * Math.PI / 180.0;
+        return new Point(
+            anchor.X + dist * Math.Cos(radians),
+            anchor.Y + dist * Math.Sin(radians));
     }
 
     private static double NormalizeMarkupAngle(double angleDeg)

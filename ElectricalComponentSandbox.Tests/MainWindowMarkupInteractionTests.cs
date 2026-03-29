@@ -1,5 +1,7 @@
 using System.Windows;
 using ElectricalComponentSandbox.Markup.Models;
+using ElectricalComponentSandbox.Markup.Services;
+using ElectricalComponentSandbox.Rendering;
 using ElectricalComponentSandbox.Services;
 using ElectricalComponentSandbox.ViewModels;
 
@@ -80,6 +82,80 @@ public class MainWindowMarkupInteractionTests
             canResize: false);
 
         Assert.Equal(MarkupHandleOverlayMode.None, mode);
+    }
+
+    [Fact]
+    public void IsLineGeometryReadoutEligibleForTesting_RequiresEndpointDragOnLineStyleGeometry()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(12, 0), new Point(15, 3) },
+            Metadata = new MarkupMetadata { Subject = "Diameter" }
+        };
+
+        Assert.True(MainWindow.IsLineGeometryReadoutEligibleForTesting(markup, activeVertexIndex: 1));
+        Assert.False(MainWindow.IsLineGeometryReadoutEligibleForTesting(markup, activeVertexIndex: 2));
+    }
+
+    [Fact]
+    public void BuildLineGeometryReadoutForTesting_UsesSemanticLengthLabel()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(-6, 0), new Point(6, 0), new Point(9, 3) },
+            Metadata = new MarkupMetadata { Subject = "Diameter" }
+        };
+
+        Assert.Equal("Diameter 12  Angle 0 deg", MainWindow.BuildLineGeometryReadoutForTesting(markup));
+    }
+
+    [Fact]
+    public void DirectVertexDragForTesting_LineStyleDimension_UsesPolarSnapAndSupportsUndo()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel
+            {
+                SnapToGrid = false,
+                IsPolarActive = true,
+                PolarIncrementDeg = 30
+            };
+            var markup = new MarkupRecord
+            {
+                Type = MarkupType.Dimension,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(30, 20) },
+                Metadata = new MarkupMetadata { Subject = "Diameter" }
+            };
+            markup.UpdateBoundingRect();
+            viewModel.Markups.Add(markup);
+            viewModel.MarkupTool.SelectedMarkup = markup;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var began = window.BeginSelectedMarkupVertexDragForTesting(new Point(10, 0));
+                window.UpdateDraggedMarkupVertexPreviewForTesting(new Point(18, 6));
+                window.FinishMarkupVertexDragForTesting();
+                var editedState = (markup.Vertices[1], markup.Vertices[2]);
+
+                viewModel.Undo();
+                var undoneState = (markup.Vertices[1], markup.Vertices[2]);
+                return (began, editedState, undoneState);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.began);
+        Assert.Equal(16.431676725154983, outcome.editedState.Item1.X, 3);
+        Assert.Equal(9.486832980505136, outcome.editedState.Item1.Y, 3);
+        Assert.NotEqual(new Point(30, 20), outcome.editedState.Item2);
+        Assert.Equal(new Point(10, 0), outcome.undoneState.Item1);
+        Assert.Equal(new Point(30, 20), outcome.undoneState.Item2);
     }
 
     [Fact]
@@ -423,6 +499,51 @@ public class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void DirectArcAngleDragForTesting_AngularDimension_UpdatesGeometryAndSupportsUndo()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var markup = new MarkupRecord
+            {
+                Type = MarkupType.Dimension,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10), new Point(8, 8) },
+                Radius = 8,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90,
+                Metadata = new MarkupMetadata { Subject = "Angular" }
+            };
+            markup.UpdateBoundingRect();
+            viewModel.Markups.Add(markup);
+            viewModel.MarkupTool.SelectedMarkup = markup;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var began = window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
+                window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(10, 10));
+                window.FinishMarkupArcAngleDragForTesting();
+                var editedState = (markup.Vertices[2], markup.ArcSweepDeg);
+
+                viewModel.Undo();
+                var undoneState = (markup.Vertices[2], markup.ArcSweepDeg);
+                return (began, editedState, undoneState);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.began);
+        Assert.Equal(7.0710678118654755, outcome.editedState.Item1.X, 6);
+        Assert.Equal(7.0710678118654755, outcome.editedState.Item1.Y, 6);
+        Assert.Equal(45, outcome.editedState.Item2, 6);
+        Assert.Equal(new Point(0, 10), outcome.undoneState.Item1);
+        Assert.Equal(90, outcome.undoneState.Item2, 6);
+    }
+
+    [Fact]
     public void ExecuteEditMarkupGeometryCommandForTesting_ArcLengthDimension_UpdatesGeometryAndSupportsUndo()
     {
         var outcome = RunOnSta(() =>
@@ -486,6 +607,203 @@ public class MainWindowMarkupInteractionTests
         Assert.Equal(10, outcome.undoneState.Item4, 6);
         Assert.Equal(0, outcome.undoneState.Item5, 6);
         Assert.Equal(90, outcome.undoneState.Item6, 6);
+    }
+
+    [Fact]
+    public void DirectRadiusDragForTesting_ArcLengthDimension_UpdatesGeometryAndSupportsUndo()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var markup = new MarkupRecord
+            {
+                Type = MarkupType.Dimension,
+                Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90,
+                Metadata = new MarkupMetadata { Subject = "ArcLength" }
+            };
+            markup.UpdateBoundingRect();
+            viewModel.Markups.Add(markup);
+            viewModel.MarkupTool.SelectedMarkup = markup;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var began = window.BeginSelectedMarkupRadiusDragForTesting(new Point(7.0710678118654755, 7.0710678118654755));
+                window.UpdateDraggedMarkupRadiusPreviewForTesting(new Point(8.48528137423857, 8.48528137423857));
+                window.FinishMarkupRadiusDragForTesting();
+                var editedState = (markup.Vertices[1], markup.Radius, markup.ArcSweepDeg);
+
+                viewModel.Undo();
+                var undoneState = (markup.Vertices[1], markup.Radius, markup.ArcSweepDeg);
+                return (began, editedState, undoneState);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.began);
+        Assert.Equal(3.105828541230249, outcome.editedState.Item1.X, 6);
+        Assert.Equal(11.59110991546882, outcome.editedState.Item1.Y, 6);
+        Assert.Equal(12, outcome.editedState.Item2, 6);
+        Assert.Equal(75, outcome.editedState.Item3, 6);
+        Assert.Equal(new Point(0, 10), outcome.undoneState.Item1);
+        Assert.Equal(10, outcome.undoneState.Item2, 6);
+        Assert.Equal(90, outcome.undoneState.Item3, 6);
+    }
+
+    [Fact]
+    public void DirectArcAngleDragForTesting_ArcLengthDimension_UpdatesGeometryAndSupportsUndo()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var markup = new MarkupRecord
+            {
+                Type = MarkupType.Dimension,
+                Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90,
+                Metadata = new MarkupMetadata { Subject = "ArcLength" }
+            };
+            markup.UpdateBoundingRect();
+            viewModel.Markups.Add(markup);
+            viewModel.MarkupTool.SelectedMarkup = markup;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var began = window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
+                window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(-10, 0));
+                window.FinishMarkupArcAngleDragForTesting();
+                var editedState = (markup.Vertices[1], markup.ArcSweepDeg);
+
+                viewModel.Undo();
+                var undoneState = (markup.Vertices[1], markup.ArcSweepDeg);
+                return (began, editedState, undoneState);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.began);
+        Assert.Equal(-10, outcome.editedState.Item1.X, 6);
+        Assert.Equal(0, outcome.editedState.Item1.Y, 6);
+        Assert.Equal(180, outcome.editedState.Item2, 6);
+        Assert.Equal(new Point(0, 10), outcome.undoneState.Item1);
+        Assert.Equal(90, outcome.undoneState.Item2, 6);
+    }
+
+    [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_LineStyleVertexDrag_RendersGeometryReadout()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel { SnapToGrid = false };
+            var markup = new MarkupRecord
+            {
+                Type = MarkupType.Dimension,
+                Vertices = { new Point(0, 0), new Point(12, 0), new Point(30, 20) },
+                Metadata = new MarkupMetadata { Subject = "Diameter" }
+            };
+            markup.UpdateBoundingRect();
+            viewModel.Markups.Add(markup);
+            viewModel.MarkupTool.SelectedMarkup = markup;
+
+            var renderer = new OverlayRecordingRenderer();
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.BeginSelectedMarkupVertexDragForTesting(new Point(12, 0));
+                window.UpdateDraggedMarkupVertexPreviewForTesting(new Point(18, 0));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                window.FinishMarkupVertexDragForTesting();
+                return renderer.LastTextBoxText;
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.Equal("Diameter 18  Angle 0 deg", outcome);
+    }
+
+    [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_ArcLengthAngleDrag_RendersArcLengthReadout()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var markup = new MarkupRecord
+            {
+                Type = MarkupType.Dimension,
+                Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90,
+                Metadata = new MarkupMetadata { Subject = "ArcLength" }
+            };
+            markup.UpdateBoundingRect();
+            viewModel.Markups.Add(markup);
+            viewModel.MarkupTool.SelectedMarkup = markup;
+
+            var renderer = new OverlayRecordingRenderer();
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
+                window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(-10, 0));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                window.FinishMarkupArcAngleDragForTesting();
+                return renderer.LastTextBoxText;
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.Equal("Arc Length 31.42  Sweep 180 deg  Radius 10", outcome);
+    }
+
+    private sealed class OverlayRecordingRenderer : ICanvas2DRenderer
+    {
+        public string LastTextBoxText { get; private set; } = string.Empty;
+
+        public Rect ViewportDocRect => Rect.Empty;
+        public double Zoom => 1.0;
+
+        public void Clear(string backgroundColor = "#FF1E1E1E") { }
+        public void RequestRedraw() { }
+        public void InvalidateRegion(Rect docRect) { }
+        public void PushTransform(double translateX, double translateY, double rotateDeg = 0, double scale = 1.0) { }
+        public void PopTransform() { }
+        public void DrawLine(Point start, Point end, RenderStyle style) { }
+        public void DrawPolyline(IReadOnlyList<Point> points, RenderStyle style) { }
+        public void DrawPolygon(IReadOnlyList<Point> points, RenderStyle style) { }
+        public void DrawRect(Rect rect, RenderStyle style) { }
+        public void DrawEllipse(Point center, double radiusX, double radiusY, RenderStyle style) { }
+        public void DrawArc(Point center, double radiusX, double radiusY, double startAngleDeg, double sweepAngleDeg, RenderStyle style) { }
+        public void DrawBezier(IReadOnlyList<Point> controlPoints, RenderStyle style) { }
+        public void DrawHatch(IReadOnlyList<Point> boundary, HatchPattern pattern, RenderStyle style) { }
+        public void DrawText(Point anchor, string text, RenderStyle style, TextAlign align = TextAlign.Left) { }
+        public void DrawTextBox(Point anchor, string text, RenderStyle textStyle, string boxFill = "#CCFFFFFF", double padding = 3.0)
+            => LastTextBoxText = text;
+        public void DrawDimension(Point p1, Point p2, double offset, string valueText, DimensionStyle dimStyle) { }
+        public void DrawSnapGlyph(Point docPos, SnapGlyphType glyphType) { }
+        public void DrawTrackingLine(Point docOrigin, double angleDeg) { }
+        public void DrawSelectionRect(Rect docRect, bool crossing) { }
+        public void DrawGrip(Point docPos, bool hot = false) { }
+        public void DrawRevisionCloud(IReadOnlyList<Point> points, RenderStyle style, double arcRadius = 0.5) { }
+        public void DrawLeader(IReadOnlyList<Point> points, string? calloutText, RenderStyle style) { }
     }
 
     [Fact]

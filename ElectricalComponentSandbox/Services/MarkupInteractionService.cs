@@ -10,6 +10,8 @@ public sealed class MarkupInteractionService
 {
     private const double MinimumScale = 0.05;
     private const double MinimumArcSweepDegrees = 1.0;
+    private static readonly IReadOnlyList<MarkupArcAngleHandle> ArcAngleHandles = new[] { MarkupArcAngleHandle.Start, MarkupArcAngleHandle.End };
+    private static readonly IReadOnlyList<MarkupArcAngleHandle> EndOnlyArcAngleHandle = new[] { MarkupArcAngleHandle.End };
 
     public IReadOnlyList<MarkupRecord> GetSelectionSet(MarkupRecord selectedMarkup, IEnumerable<MarkupRecord> allMarkups)
     {
@@ -68,12 +70,21 @@ public sealed class MarkupInteractionService
 
     public bool CanEditRadius(MarkupRecord markup)
     {
-        return markup.Type is MarkupType.Circle or MarkupType.Arc && markup.Vertices.Count >= 1;
+        return markup.Type switch
+        {
+            MarkupType.Circle => markup.Vertices.Count >= 1,
+            MarkupType.Arc => markup.Vertices.Count >= 1,
+            MarkupType.Dimension or MarkupType.Measurement => IsAngularGeometryEditable(markup) || IsArcLengthGeometryEditable(markup),
+            _ => false
+        };
     }
 
     public bool CanEditArcAngles(MarkupRecord markup)
     {
-        return markup.Type == MarkupType.Arc && markup.Vertices.Count >= 1 && markup.Radius > 0.1;
+        if (markup.Type == MarkupType.Arc)
+            return markup.Vertices.Count >= 1 && markup.Radius > 0.1;
+
+        return IsAngularGeometryEditable(markup) || IsArcLengthGeometryEditable(markup);
     }
 
     public bool CanInsertVertices(MarkupRecord markup)
@@ -119,6 +130,20 @@ public sealed class MarkupInteractionService
         if (!CanEditRadius(markup))
             return default;
 
+        if (IsAngularGeometryEditable(markup))
+        {
+            var vertex = markup.Vertices[0];
+            var firstRayEnd = markup.Vertices[1];
+            var firstRayAngleDeg = Math.Atan2(firstRayEnd.Y - vertex.Y, firstRayEnd.X - vertex.X) * 180.0 / Math.PI;
+            return GetPolarPoint(vertex, Math.Max(markup.Radius, 0.1), firstRayAngleDeg + markup.ArcSweepDeg / 2.0);
+        }
+
+        if (IsArcLengthGeometryEditable(markup))
+        {
+            var arcCenter = GetArcLengthCenter(markup);
+            return GetPolarPoint(arcCenter, Math.Max(markup.Radius, 0.1), markup.ArcStartDeg + markup.ArcSweepDeg / 2.0);
+        }
+
         var center = markup.Vertices[0];
         var angleDeg = markup.Type == MarkupType.Arc
             ? markup.ArcStartDeg + markup.ArcSweepDeg / 2.0
@@ -126,15 +151,67 @@ public sealed class MarkupInteractionService
         return GetPolarPoint(center, markup.Radius, angleDeg);
     }
 
+    public Point GetRadiusPivotPoint(MarkupRecord markup)
+    {
+        if (!CanEditRadius(markup))
+            return default;
+
+        if (IsArcLengthGeometryEditable(markup))
+            return GetArcLengthCenter(markup);
+
+        return markup.Vertices[0];
+    }
+
+    public IReadOnlyList<MarkupArcAngleHandle> GetArcAngleHandles(MarkupRecord markup)
+    {
+        if (!CanEditArcAngles(markup))
+            return Array.Empty<MarkupArcAngleHandle>();
+
+        return markup.Type == MarkupType.Arc ? ArcAngleHandles : EndOnlyArcAngleHandle;
+    }
+
     public Point GetArcAngleHandlePoint(MarkupRecord markup, MarkupArcAngleHandle handle)
     {
         if (!CanEditArcAngles(markup) || handle == MarkupArcAngleHandle.None)
             return default;
 
+        if (IsAngularGeometryEditable(markup))
+            return handle == MarkupArcAngleHandle.End ? markup.Vertices[2] : default;
+
+        if (IsArcLengthGeometryEditable(markup))
+            return handle == MarkupArcAngleHandle.End ? markup.Vertices[1] : default;
+
         var angleDeg = handle == MarkupArcAngleHandle.Start
             ? markup.ArcStartDeg
             : markup.ArcStartDeg + markup.ArcSweepDeg;
         return GetPolarPoint(markup.Vertices[0], markup.Radius, angleDeg);
+    }
+
+    public bool TryGetArcAnglePivotPoint(MarkupRecord markup, MarkupArcAngleHandle handle, out Point pivot)
+    {
+        pivot = default;
+        if (!CanEditArcAngles(markup) || handle == MarkupArcAngleHandle.None)
+            return false;
+
+        if (markup.Type == MarkupType.Arc)
+        {
+            pivot = markup.Vertices[0];
+            return true;
+        }
+
+        if (IsAngularGeometryEditable(markup) && handle == MarkupArcAngleHandle.End)
+        {
+            pivot = markup.Vertices[0];
+            return true;
+        }
+
+        if (IsArcLengthGeometryEditable(markup) && handle == MarkupArcAngleHandle.End)
+        {
+            pivot = GetArcLengthCenter(markup);
+            return true;
+        }
+
+        return false;
     }
 
     public bool HitTestRadiusHandle(Point point, MarkupRecord markup, double tolerance)
@@ -150,7 +227,7 @@ public sealed class MarkupInteractionService
         if (!CanEditArcAngles(markup))
             return MarkupArcAngleHandle.None;
 
-        foreach (var handle in new[] { MarkupArcAngleHandle.End, MarkupArcAngleHandle.Start })
+        foreach (var handle in GetArcAngleHandles(markup).Reverse())
         {
             if ((GetArcAngleHandlePoint(markup, handle) - point).Length <= tolerance)
                 return handle;
@@ -324,6 +401,19 @@ public sealed class MarkupInteractionService
         if (!CanEditRadius(markup))
             return;
 
+        if (IsAngularGeometryEditable(markup))
+        {
+            SetAngularGeometry(markup, Math.Abs(markup.ArcSweepDeg), radius);
+            return;
+        }
+
+        if (IsArcLengthGeometryEditable(markup))
+        {
+            var arcLength = Math.Abs(markup.ArcSweepDeg) * Math.PI / 180.0 * Math.Max(markup.Radius, 0.1);
+            SetArcLengthGeometry(markup, arcLength, radius);
+            return;
+        }
+
         markup.Radius = Math.Max(0.1, radius);
         markup.UpdateBoundingRect();
         markup.Metadata.ModifiedUtc = DateTime.UtcNow;
@@ -333,6 +423,38 @@ public sealed class MarkupInteractionService
     {
         if (!CanEditArcAngles(markup) || handle == MarkupArcAngleHandle.None)
             return;
+
+        if (IsAngularGeometryEditable(markup))
+        {
+            if (handle != MarkupArcAngleHandle.End)
+                return;
+
+            var vertex = markup.Vertices[0];
+            var firstRayEnd = markup.Vertices[1];
+            var firstRayAngleDeg = Math.Atan2(firstRayEnd.Y - vertex.Y, firstRayEnd.X - vertex.X) * 180.0 / Math.PI;
+            var normalizedTarget = NormalizeAngleDegrees(angleDeg);
+            var signedSweep = markup.ArcSweepDeg >= 0
+                ? GetPositiveSweepDegrees(firstRayAngleDeg, normalizedTarget)
+                : -GetPositiveSweepDegrees(normalizedTarget, firstRayAngleDeg);
+
+            SetAngularGeometry(markup, Math.Abs(signedSweep), markup.Radius);
+            return;
+        }
+
+        if (IsArcLengthGeometryEditable(markup))
+        {
+            if (handle != MarkupArcAngleHandle.End)
+                return;
+
+            var normalizedStart = NormalizeAngleDegrees(markup.ArcStartDeg);
+            var normalizedTarget = NormalizeAngleDegrees(angleDeg);
+            var nextSweep = markup.ArcSweepDeg >= 0
+                ? GetPositiveSweepDegrees(normalizedStart, normalizedTarget)
+                : -GetPositiveSweepDegrees(normalizedTarget, normalizedStart);
+
+            SetArcLengthSweep(markup, nextSweep);
+            return;
+        }
 
         var normalizedAngle = NormalizeAngleDegrees(angleDeg);
         var isPositiveSweep = markup.ArcSweepDeg >= 0;
@@ -364,16 +486,19 @@ public sealed class MarkupInteractionService
         markup.Metadata.ModifiedUtc = DateTime.UtcNow;
     }
 
-    public void SetArcAngleFromPoint(MarkupRecord markup, MarkupArcAngleHandle handle, Point point)
+    public void SetArcAngleFromPoint(MarkupRecord markup, MarkupArcAngleHandle handle, Point point, double snapIncrementDeg = 0)
     {
-        if (!CanEditArcAngles(markup) || markup.Vertices.Count == 0)
+        if (!TryGetArcAnglePivotPoint(markup, handle, out var pivot))
             return;
 
-        var center = markup.Vertices[0];
-        if ((point - center).Length <= double.Epsilon)
+        if ((point - pivot).Length <= double.Epsilon)
             return;
 
-        SetArcAngle(markup, handle, Math.Atan2(point.Y - center.Y, point.X - center.X) * 180.0 / Math.PI);
+        var angleDeg = Math.Atan2(point.Y - pivot.Y, point.X - pivot.X) * 180.0 / Math.PI;
+        if (snapIncrementDeg > 0)
+            angleDeg = SnapAngleDegrees(angleDeg, snapIncrementDeg);
+
+        SetArcAngle(markup, handle, angleDeg);
     }
 
     public bool SetArcGeometry(MarkupRecord markup, double radius, double startAngleDeg, double? sweepAngleDeg = null, double? endAngleDeg = null)
@@ -435,23 +560,46 @@ public sealed class MarkupInteractionService
             return false;
 
         var start = markup.Vertices[0];
-        var originalEnd = markup.Vertices[1];
-        var originalMidpoint = GetMidpoint(start, originalEnd);
-        var originalAngleDeg = Math.Atan2(originalEnd.Y - start.Y, originalEnd.X - start.X) * 180.0 / Math.PI;
-        var originalLength = (originalEnd - start).Length;
         var nextLength = Math.Max(0.1, length);
         var nextEnd = GetPolarPoint(start, nextLength, angleDeg);
+        return SetLineGeometryByEndpoints(markup, start, nextEnd);
+    }
+
+    public bool SetLineGeometryByEndpoints(MarkupRecord markup, Point startPoint, Point endPoint)
+    {
+        if (!IsLineGeometryEditable(markup))
+            return false;
+
+        var originalStart = markup.Vertices[0];
+        var originalEnd = markup.Vertices[1];
+        var start = startPoint;
+        var nextEnd = endPoint;
+        var originalAngleDeg = Math.Atan2(originalEnd.Y - originalStart.Y, originalEnd.X - originalStart.X) * 180.0 / Math.PI;
+        var originalLength = (originalEnd - originalStart).Length;
+        var nextLength = (nextEnd - start).Length;
+        if (nextLength <= 0.1)
+        {
+            var fallbackAngleDeg = originalLength <= double.Epsilon
+                ? 0.0
+                : Math.Atan2(originalEnd.Y - originalStart.Y, originalEnd.X - originalStart.X) * 180.0 / Math.PI;
+            nextEnd = GetPolarPoint(start, 0.1, fallbackAngleDeg);
+            nextLength = (nextEnd - start).Length;
+        }
+
+        var nextAngleDeg = Math.Atan2(nextEnd.Y - start.Y, nextEnd.X - start.X) * 180.0 / Math.PI;
+        var originalReferenceMidpoint = GetMidpoint(originalStart, originalEnd);
         markup.Vertices[1] = nextEnd;
+        markup.Vertices[0] = start;
 
         if (markup.Vertices.Count > 2)
         {
             var nextMidpoint = GetMidpoint(start, nextEnd);
-            var rotationDeltaDeg = NormalizeAngleDegrees(angleDeg) - NormalizeAngleDegrees(originalAngleDeg);
+            var rotationDeltaDeg = NormalizeAngleDegrees(nextAngleDeg) - NormalizeAngleDegrees(originalAngleDeg);
             var scale = originalLength <= double.Epsilon ? 1.0 : nextLength / originalLength;
 
             for (int i = 2; i < markup.Vertices.Count; i++)
             {
-                var offset = markup.Vertices[i] - originalMidpoint;
+                var offset = markup.Vertices[i] - originalReferenceMidpoint;
                 markup.Vertices[i] = nextMidpoint + RotateAndScale(offset, rotationDeltaDeg, scale);
             }
         }
@@ -499,34 +647,11 @@ public sealed class MarkupInteractionService
         if (!IsArcLengthGeometryEditable(markup))
             return false;
 
-        var startPoint = markup.Vertices[0];
         var nextRadius = Math.Max(0.1, radius);
-        var startAngleDeg = markup.ArcStartDeg;
-        var startAngleRad = startAngleDeg * Math.PI / 180.0;
-        var center = new Point(
-            startPoint.X - Math.Cos(startAngleRad) * markup.Radius,
-            startPoint.Y - Math.Sin(startAngleRad) * markup.Radius);
         var requestedSweepMagnitude = Math.Abs(arcLength) * 180.0 / (Math.PI * nextRadius);
         var nextSweepMagnitude = Math.Clamp(requestedSweepMagnitude, MinimumArcSweepDegrees, 359.0);
         var nextSweepDeg = markup.ArcSweepDeg < 0 ? -nextSweepMagnitude : nextSweepMagnitude;
-        var endAngleDeg = startAngleDeg + nextSweepDeg;
-        var labelOffset = markup.Vertices.Count > 2
-            ? Math.Max(0, (markup.Vertices[2] - center).Length - Math.Max(markup.Radius, 0.1))
-            : 0;
-        var midAngleDeg = startAngleDeg + nextSweepDeg / 2.0;
-
-        markup.Vertices[0] = GetPolarPoint(center, nextRadius, startAngleDeg);
-        markup.Vertices[1] = GetPolarPoint(center, nextRadius, endAngleDeg);
-
-        if (markup.Vertices.Count > 2)
-            markup.Vertices[2] = GetPolarPoint(center, nextRadius + labelOffset, midAngleDeg);
-
-        markup.Radius = nextRadius;
-        markup.ArcStartDeg = NormalizeAngleDegrees(startAngleDeg);
-        markup.ArcSweepDeg = nextSweepDeg;
-        markup.UpdateBoundingRect();
-        markup.Metadata.ModifiedUtc = DateTime.UtcNow;
-        return true;
+        return SetArcLengthSweep(markup, nextSweepDeg, nextRadius);
     }
 
     public double SnapAngleDegrees(double angleDeg, double incrementDeg)
@@ -703,17 +828,57 @@ public sealed class MarkupInteractionService
 
     private static bool IsAngularGeometryEditable(MarkupRecord markup)
     {
-        return markup.Type == MarkupType.Dimension &&
+        return markup.Type is MarkupType.Dimension or MarkupType.Measurement &&
                string.Equals(markup.Metadata.Subject, "Angular", StringComparison.OrdinalIgnoreCase) &&
                markup.Vertices.Count >= 3;
     }
 
     private static bool IsArcLengthGeometryEditable(MarkupRecord markup)
     {
-        return markup.Type == MarkupType.Dimension &&
+        return markup.Type is MarkupType.Dimension or MarkupType.Measurement &&
                string.Equals(markup.Metadata.Subject, "ArcLength", StringComparison.OrdinalIgnoreCase) &&
                markup.Vertices.Count >= 3 &&
                markup.Radius > 0.1;
+    }
+
+    private static Point GetArcLengthCenter(MarkupRecord markup)
+    {
+        var startPoint = markup.Vertices[0];
+        var startAngleRad = markup.ArcStartDeg * Math.PI / 180.0;
+        return new Point(
+            startPoint.X - Math.Cos(startAngleRad) * markup.Radius,
+            startPoint.Y - Math.Sin(startAngleRad) * markup.Radius);
+    }
+
+    private static bool SetArcLengthSweep(MarkupRecord markup, double sweepDeg, double? radiusOverride = null)
+    {
+        if (!IsArcLengthGeometryEditable(markup))
+            return false;
+
+        var nextRadius = Math.Max(0.1, radiusOverride ?? markup.Radius);
+        var startAngleDeg = NormalizeAngleDegrees(markup.ArcStartDeg);
+        var center = GetArcLengthCenter(markup);
+        var positiveSweep = sweepDeg >= 0 || Math.Abs(sweepDeg) < double.Epsilon && markup.ArcSweepDeg >= 0;
+        var nextSweepMagnitude = Math.Clamp(Math.Abs(sweepDeg), MinimumArcSweepDegrees, 359.0);
+        var nextSweepDeg = positiveSweep ? nextSweepMagnitude : -nextSweepMagnitude;
+        var endAngleDeg = startAngleDeg + nextSweepDeg;
+        var labelOffset = markup.Vertices.Count > 2
+            ? Math.Max(0, (markup.Vertices[2] - center).Length - Math.Max(markup.Radius, 0.1))
+            : 0;
+        var midAngleDeg = startAngleDeg + nextSweepDeg / 2.0;
+
+        markup.Vertices[0] = GetPolarPoint(center, nextRadius, startAngleDeg);
+        markup.Vertices[1] = GetPolarPoint(center, nextRadius, endAngleDeg);
+
+        if (markup.Vertices.Count > 2)
+            markup.Vertices[2] = GetPolarPoint(center, nextRadius + labelOffset, midAngleDeg);
+
+        markup.Radius = nextRadius;
+        markup.ArcStartDeg = startAngleDeg;
+        markup.ArcSweepDeg = nextSweepDeg;
+        markup.UpdateBoundingRect();
+        markup.Metadata.ModifiedUtc = DateTime.UtcNow;
+        return true;
     }
 
     private static Point TransformPoint(Point point, Rect originalBounds, Rect targetBounds)
