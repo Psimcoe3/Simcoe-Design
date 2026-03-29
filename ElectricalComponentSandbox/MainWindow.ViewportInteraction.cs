@@ -12,6 +12,9 @@ namespace ElectricalComponentSandbox;
 
 public partial class MainWindow
 {
+    private static bool IsAdditiveSelectionGesture(ModifierKeys modifiers)
+        => (modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+
     private void Viewport_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         var position = e.GetPosition(Viewport);
@@ -175,15 +178,29 @@ public partial class MainWindow
             .Select(visual => _visualToComponentMap[visual])
             .FirstOrDefault();
 
-        _viewModel.SelectedComponent = matchedComponent;
+        var isAdditiveSelection = IsAdditiveSelectionGesture(Keyboard.Modifiers);
 
-        if (_isEditingConduitPath && matchedComponent is ConduitComponent selectedConduit)
+        if (matchedComponent != null)
+        {
+            ClearMarkupSelection();
+
+            if (isAdditiveSelection)
+                _viewModel.ToggleComponentSelection(matchedComponent);
+            else
+                _viewModel.SelectSingleComponent(matchedComponent);
+        }
+        else if (!isAdditiveSelection)
+        {
+            _viewModel.ClearComponentSelection();
+        }
+
+        if (_isEditingConduitPath && _viewModel.SelectedComponent is ConduitComponent selectedConduit)
         {
             EnsureConduitHasEditableEndPoint(selectedConduit);
             ShowBendPointHandles();
             Update2DCanvas();
         }
-        else if (_isMobileView && matchedComponent != null)
+        else if (_isMobileView && _viewModel.SelectedComponent != null)
         {
             SetMobilePane(MobilePane.Properties);
         }

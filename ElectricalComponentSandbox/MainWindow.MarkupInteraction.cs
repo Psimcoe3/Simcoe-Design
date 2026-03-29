@@ -1779,9 +1779,7 @@ public partial class MainWindow
         }
 
         _selectedSketchPrimitive = null;
-        _viewModel.SelectedComponentIds.Clear();
-        if (_viewModel.SelectedComponent != null)
-            _viewModel.SelectedComponent = null;
+        _viewModel.ClearComponentSelection();
 
         _viewModel.MarkupTool.SelectedMarkup = markup;
     }

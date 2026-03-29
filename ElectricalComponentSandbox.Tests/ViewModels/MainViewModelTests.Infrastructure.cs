@@ -78,6 +78,57 @@ public partial class MainViewModelTests
     }
 
     [Fact]
+    public void SelectSingleComponent_SetsPrimaryAndSelectionIds()
+    {
+        var vm = new MainViewModel();
+        vm.AddComponent(ComponentType.Box);
+        vm.AddComponent(ComponentType.Panel);
+        var target = vm.Components[0];
+
+        vm.SelectSingleComponent(target);
+
+        Assert.Equal(target, vm.SelectedComponent);
+        Assert.Single(vm.SelectedComponentIds);
+        Assert.Contains(target.Id, vm.SelectedComponentIds);
+    }
+
+    [Fact]
+    public void SetSelectedComponents_TracksAllSelectedIds()
+    {
+        var vm = new MainViewModel();
+        vm.AddComponent(ComponentType.Box);
+        vm.AddComponent(ComponentType.Panel);
+        vm.AddComponent(ComponentType.Support);
+
+        var selected = vm.Components.Take(2).ToList();
+
+        vm.SetSelectedComponents(selected, selected[1]);
+
+        Assert.Equal(2, vm.SelectedComponentIds.Count);
+        Assert.Equal(selected[1], vm.SelectedComponent);
+        Assert.All(selected, component => Assert.Contains(component.Id, vm.SelectedComponentIds));
+    }
+
+    [Fact]
+    public void ToggleComponentSelection_RemovingPrimaryPromotesRemainingSelection()
+    {
+        var vm = new MainViewModel();
+        vm.AddComponent(ComponentType.Box);
+        vm.AddComponent(ComponentType.Panel);
+
+        var first = vm.Components[0];
+        var second = vm.Components[1];
+
+        vm.SetSelectedComponents(new[] { first, second }, second);
+        var isStillSelected = vm.ToggleComponentSelection(second);
+
+        Assert.False(isStillSelected);
+        Assert.Equal(first, vm.SelectedComponent);
+        Assert.Single(vm.SelectedComponentIds);
+        Assert.Contains(first.Id, vm.SelectedComponentIds);
+    }
+
+    [Fact]
     public void DeleteSelectedComponent_IsUndoable()
     {
         var vm = new MainViewModel();
@@ -90,6 +141,29 @@ public partial class MainViewModelTests
         vm.Undo();
         Assert.Single(vm.Components);
         Assert.Equal(component.Id, vm.Components[0].Id);
+    }
+
+    [Fact]
+    public void DeleteSelectedComponent_WithMultiSelection_RemovesAllSelectedAndIsUndoable()
+    {
+        var vm = new MainViewModel();
+        vm.AddComponent(ComponentType.Conduit);
+        vm.AddComponent(ComponentType.Box);
+        vm.AddComponent(ComponentType.Panel);
+
+        var selected = vm.Components.Take(2).ToList();
+        vm.SetSelectedComponents(selected, selected[0]);
+
+        vm.DeleteSelectedComponent();
+
+        Assert.Single(vm.Components);
+        Assert.Empty(vm.SelectedComponentIds);
+        Assert.Null(vm.SelectedComponent);
+
+        vm.Undo();
+
+        Assert.Equal(3, vm.Components.Count);
+        Assert.All(selected, component => Assert.Contains(vm.Components, restored => restored.Id == component.Id));
     }
 
     [Fact]

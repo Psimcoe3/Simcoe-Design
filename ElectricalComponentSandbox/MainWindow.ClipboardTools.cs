@@ -44,7 +44,7 @@ public partial class MainWindow
         var composite = new CompositeAction($"Cut {originals.Count} component(s)", actions);
         _viewModel.UndoRedo.Execute(composite);
 
-        _viewModel.SelectedComponent = null;
+        _viewModel.ClearComponentSelection();
         QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
         ActionLogService.Instance.Log(LogCategory.Edit, "Cut components",
             $"Count: {originals.Count}");
@@ -95,11 +95,7 @@ public partial class MainWindow
         _viewModel.UndoRedo.Execute(composite);
 
         // Select the pasted components
-        _viewModel.SelectedComponentIds.Clear();
-        foreach (var c in pasted)
-            _viewModel.SelectedComponentIds.Add(c.Id);
-        if (pasted.Count == 1)
-            _viewModel.SelectedComponent = pasted[0];
+        _viewModel.SetSelectedComponents(pasted, pasted[0]);
 
         QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
         ActionLogService.Instance.Log(LogCategory.Edit, "Pasted components",
@@ -198,7 +194,7 @@ public partial class MainWindow
         newConduit.LayerId = conduit.LayerId;
 
         _viewModel.UndoRedo.Execute(new AddComponentAction(_viewModel.Components, newConduit));
-        _viewModel.SelectedComponent = newConduit;
+        _viewModel.SelectSingleComponent(newConduit);
         QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
         ActionLogService.Instance.Log(LogCategory.Edit, "Offset conduit created",
             $"Distance: {dist:F3}, Direction: {direction}");

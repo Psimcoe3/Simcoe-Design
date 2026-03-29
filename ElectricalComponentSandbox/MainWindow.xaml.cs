@@ -394,7 +394,7 @@ public partial class MainWindow : Window
     
     private void Draw2DComponent(ElectricalComponent component)
     {
-        var isSelected = component == _viewModel.SelectedComponent;
+        var isSelected = _viewModel.IsComponentSelected(component);
 
         double canvasX = 1000 + component.Position.X * 20;
         double canvasY = 1000 - component.Position.Z * 20;

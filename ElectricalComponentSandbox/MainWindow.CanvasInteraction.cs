@@ -173,8 +173,7 @@ public partial class MainWindow
 
     private void OnCanvasInteractionSelectionRectCompleted(IReadOnlyList<string> ids, bool crossing)
     {
-        _viewModel.SelectedComponentIds.Clear();
-        ElectricalComponent? firstSelected = null;
+        var selectedComponents = new List<ElectricalComponent>();
         MarkupRecord? firstMarkup = null;
 
         foreach (var id in ids)
@@ -182,27 +181,26 @@ public partial class MainWindow
             var component = _viewModel.Components.FirstOrDefault(candidate => string.Equals(candidate.Id, id, StringComparison.Ordinal));
             if (component != null)
             {
-                _viewModel.SelectedComponentIds.Add(id);
-                firstSelected ??= component;
+                selectedComponents.Add(component);
                 continue;
             }
 
             firstMarkup ??= _viewModel.Markups.FirstOrDefault(markup => string.Equals(markup.Id, id, StringComparison.Ordinal));
         }
 
-        if (firstSelected != null)
+        if (selectedComponents.Count > 0)
         {
             ClearMarkupSelection();
-            _viewModel.SelectedComponent = firstSelected;
+            _viewModel.SetSelectedComponents(selectedComponents, selectedComponents[0]);
         }
         else if (firstMarkup != null)
         {
-            _viewModel.SelectedComponent = null;
+            _viewModel.ClearComponentSelection();
             _viewModel.MarkupTool.SelectedMarkup = firstMarkup;
         }
         else
         {
-            _viewModel.SelectedComponent = null;
+            _viewModel.ClearComponentSelection();
             ClearMarkupSelection();
         }
 
@@ -281,7 +279,7 @@ public partial class MainWindow
             var totalLen = conduit.Length;
 
             _viewModel.Components.Add(conduit);
-            _viewModel.SelectedComponent = conduit;
+            _viewModel.SelectSingleComponent(conduit);
 
             ActionLogService.Instance.Log(LogCategory.Component, "Conduit drawn",
                 $"Vertices: {_drawingCanvasPoints.Count}, Length: {totalLen:F2}, Id: {conduit.Id}");
@@ -431,17 +429,25 @@ public partial class MainWindow
         var hit = PlanCanvas.InputHitTest(pos) as FrameworkElement;
         if (hit != null && _canvasToComponentMap.ContainsKey(hit))
         {
+            var clickedComponent = _canvasToComponentMap[hit];
+            var isAdditiveSelection = IsAdditiveSelectionGesture(Keyboard.Modifiers);
+
             ClearMarkupSelection();
             if (_isEditingConduitPath &&
                 _viewModel.SelectedComponent is ConduitComponent &&
-                ReferenceEquals(_canvasToComponentMap[hit], _viewModel.SelectedComponent))
+                ReferenceEquals(clickedComponent, _viewModel.SelectedComponent))
             {
                 e.Handled = true;
                 return;
             }
 
             _selectedSketchPrimitive = null;
-            _viewModel.SelectedComponent = _canvasToComponentMap[hit];
+
+            if (isAdditiveSelection)
+                _viewModel.ToggleComponentSelection(clickedComponent);
+            else
+                _viewModel.SelectSingleComponent(clickedComponent);
+
             _isDragging2D = true;
             _draggedElement2D = hit;
             _lastMousePosition = pos;
@@ -462,9 +468,14 @@ public partial class MainWindow
 
         if (TryHitConduitPath2D(pos, out var hitConduit) && hitConduit != null)
         {
+            var isAdditiveSelection = IsAdditiveSelectionGesture(Keyboard.Modifiers);
             ClearMarkupSelection();
             _selectedSketchPrimitive = null;
-            _viewModel.SelectedComponent = hitConduit;
+
+            if (isAdditiveSelection)
+                _viewModel.ToggleComponentSelection(hitConduit);
+            else
+                _viewModel.SelectSingleComponent(hitConduit);
 
             if (_isEditingConduitPath)
             {

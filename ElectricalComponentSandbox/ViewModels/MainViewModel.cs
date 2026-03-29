@@ -108,10 +108,67 @@ public class MainViewModel : INotifyPropertyChanged
         set
         {
             _selectedComponent = value;
+            if (value != null && SelectedComponentIds.Count == 0)
+                SelectedComponentIds.Add(value.Id);
             ActionLogService.Instance.Log(LogCategory.Selection, "Component selected",
                 value != null ? $"Name: {value.Name}, Type: {value.Type}, Id: {value.Id}" : "Deselected");
             OnPropertyChanged();
         }
+    }
+
+    public bool IsComponentSelected(ElectricalComponent? component)
+        => component != null && SelectedComponentIds.Contains(component.Id);
+
+    public void ClearComponentSelection()
+    {
+        SelectedComponentIds.Clear();
+        OnPropertyChanged(nameof(SelectedComponentIds));
+        SelectedComponent = null;
+    }
+
+    public void SelectSingleComponent(ElectricalComponent? component)
+    {
+        SelectedComponentIds.Clear();
+        if (component != null)
+            SelectedComponentIds.Add(component.Id);
+
+        OnPropertyChanged(nameof(SelectedComponentIds));
+        SelectedComponent = component;
+    }
+
+    public void SetSelectedComponents(IEnumerable<ElectricalComponent> components, ElectricalComponent? primaryComponent = null)
+    {
+        var selection = components
+            .Where(component => component != null)
+            .Distinct()
+            .ToList();
+
+        SelectedComponentIds.Clear();
+        foreach (var component in selection)
+            SelectedComponentIds.Add(component.Id);
+
+        var nextPrimary = primaryComponent != null && SelectedComponentIds.Contains(primaryComponent.Id)
+            ? primaryComponent
+            : selection.FirstOrDefault();
+
+        OnPropertyChanged(nameof(SelectedComponentIds));
+        SelectedComponent = nextPrimary;
+    }
+
+    public bool ToggleComponentSelection(ElectricalComponent component)
+    {
+        if (SelectedComponentIds.Remove(component.Id))
+        {
+            OnPropertyChanged(nameof(SelectedComponentIds));
+            if (ReferenceEquals(SelectedComponent, component) || SelectedComponent?.Id == component.Id)
+                SelectedComponent = Components.FirstOrDefault(candidate => SelectedComponentIds.Contains(candidate.Id));
+            return false;
+        }
+
+        SelectedComponentIds.Add(component.Id);
+        OnPropertyChanged(nameof(SelectedComponentIds));
+        SelectedComponent = component;
+        return true;
     }
     
     public bool ShowGrid
@@ -382,20 +439,37 @@ public class MainViewModel : INotifyPropertyChanged
 
         var action = new AddComponentAction(Components, component);
         UndoRedo.Execute(action);
-        SelectedComponent = component;
+        SelectSingleComponent(component);
         ActionLogService.Instance.Log(LogCategory.Component, "Component added",
             $"Name: {component.Name}, Id: {component.Id}, Layer: {component.LayerId}, Total: {Components.Count}");
     }
     
     public void DeleteSelectedComponent()
     {
+        var selected = Components
+            .Where(component => SelectedComponentIds.Contains(component.Id))
+            .ToList();
+
+        if (selected.Count > 1)
+        {
+            ActionLogService.Instance.Log(LogCategory.Component, "Deleting selected components",
+                $"Count: {selected.Count}, Primary: {SelectedComponent?.Name ?? "(none)"}");
+
+            var actions = selected
+                .Select(component => (IUndoableAction)new RemoveComponentAction(Components, component))
+                .ToList();
+            UndoRedo.Execute(new CompositeAction($"Delete {selected.Count} components", actions));
+            ClearComponentSelection();
+            return;
+        }
+
         if (SelectedComponent != null)
         {
             ActionLogService.Instance.Log(LogCategory.Component, "Deleting component",
                 $"Name: {SelectedComponent.Name}, Type: {SelectedComponent.Type}, Id: {SelectedComponent.Id}");
             var action = new RemoveComponentAction(Components, SelectedComponent);
             UndoRedo.Execute(action);
-            SelectedComponent = null;
+            ClearComponentSelection();
         }
     }
     
@@ -561,7 +635,7 @@ public class MainViewModel : INotifyPropertyChanged
         SnapToGrid = project.SnapToGrid;
 
         UndoRedo.Clear();
-        SelectedComponent = null;
+        ClearComponentSelection();
     }
     
     public event PropertyChangedEventHandler? PropertyChanged;

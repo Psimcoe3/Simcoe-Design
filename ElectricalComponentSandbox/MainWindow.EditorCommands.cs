@@ -46,7 +46,7 @@ public partial class MainWindow
 
         var action = new AddComponentAction(_viewModel.Components, component);
         _viewModel.UndoRedo.Execute(action);
-        _viewModel.SelectedComponent = component;
+        _viewModel.SelectSingleComponent(component);
     }
 
     private void DeleteComponent_Click(object sender, RoutedEventArgs e)

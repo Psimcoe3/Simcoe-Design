@@ -306,12 +306,7 @@ public partial class MainWindow
 
     private void ApplySelectionResult(IReadOnlyList<ElectricalComponent> matches, string message)
     {
-        _viewModel.SelectedComponentIds.Clear();
-        foreach (var c in matches)
-            _viewModel.SelectedComponentIds.Add(c.Id);
-
-        if (matches.Count > 0)
-            _viewModel.SelectedComponent = matches[0];
+        _viewModel.SetSelectedComponents(matches, matches.FirstOrDefault());
 
         QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
 

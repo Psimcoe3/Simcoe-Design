@@ -68,7 +68,8 @@ public partial class MainWindow
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainViewModel.SelectedComponent))
+        if (e.PropertyName == nameof(MainViewModel.SelectedComponent) ||
+            e.PropertyName == nameof(MainViewModel.SelectedComponentIds))
         {
             QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
         }
@@ -102,7 +103,14 @@ public partial class MainWindow
         if (_viewModel.SelectedComponent is { } selectedComponent &&
             !IsLayerVisible(layerVisibilityById, selectedComponent.LayerId))
         {
-            _viewModel.SelectedComponent = null;
+            var visibleSelected = _viewModel.Components
+                .Where(component => _viewModel.SelectedComponentIds.Contains(component.Id) && IsLayerVisible(layerVisibilityById, component.LayerId))
+                .ToList();
+
+            if (visibleSelected.Count > 0)
+                _viewModel.SetSelectedComponents(visibleSelected, visibleSelected[0]);
+            else
+                _viewModel.ClearComponentSelection();
         }
 
         if (_viewModel.MarkupTool.SelectedMarkup is { } selectedMarkup &&

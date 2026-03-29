@@ -443,7 +443,7 @@ public partial class MainWindow
         copy.Parameters.Color = src.Parameters.Color;
 
         _viewModel.UndoRedo.Execute(new AddComponentAction(_viewModel.Components, copy));
-        _viewModel.SelectedComponent = copy;
+    _viewModel.SelectSingleComponent(copy);
 
         QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
         ActionLogService.Instance.Log(LogCategory.Component, "Component duplicated",

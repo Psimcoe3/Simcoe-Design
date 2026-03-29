@@ -102,7 +102,7 @@ public partial class MainWindow
         var visual = new ModelVisual3D();
         var geometry = CreateComponentGeometry(component);
         var color = ResolveComponentColor(component, Colors.SlateGray);
-        var appliedMaterial = Build3DMaterial(color, component == _viewModel.SelectedComponent);
+        var appliedMaterial = Build3DMaterial(color, _viewModel.IsComponentSelected(component));
         var model = new GeometryModel3D(geometry, appliedMaterial)
         {
             Transform = CreateComponentTransform(component)
