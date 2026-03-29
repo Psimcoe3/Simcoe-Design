@@ -97,6 +97,28 @@ public sealed class ShadowGeometryTree
         Register(node);
     }
 
+    /// <summary>
+    /// Adds a grip-point node for hit-testing.  Uses a synthetic key so
+    /// multiple grips can coexist for the same parent entity.
+    /// </summary>
+    public void AddGripPoint(string parentId, int gripIndex, Point position, object? source = null)
+    {
+        var key = $"{parentId}:grip:{gripIndex}";
+        var node = new ShadowNode
+        {
+            Id = parentId,
+            Kind = ShadowNodeKind.GripPoint,
+            GripIndex = gripIndex,
+            BoundingRect = new Rect(position, new Size(0, 0)),
+            Source = source
+        };
+
+        if (_index.TryGetValue(key, out var existing))
+            _nodes.Remove(existing);
+        _nodes.Add(node);
+        _index[key] = node;
+    }
+
     public void Remove(string id)
     {
         if (_index.TryGetValue(id, out var node))

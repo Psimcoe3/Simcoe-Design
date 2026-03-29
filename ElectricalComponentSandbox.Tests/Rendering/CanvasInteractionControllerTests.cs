@@ -148,6 +148,69 @@ public class CanvasInteractionControllerTests
         Assert.Equal(new Rect(new Point(10, 10), new Point(0, 0)), renderer.LastSelectionRect);
     }
 
+    [Fact]
+    public void GripPointNode_IsHitTestedBeforeMarkup()
+    {
+        var shadowTree = new ShadowGeometryTree();
+        shadowTree.AddOrUpdateNode("markup-1", ShadowGeometryTree.ShadowNodeKind.Markup,
+            new Rect(0, 0, 100, 100));
+        shadowTree.AddGripPoint("markup-1", 2, new Point(50, 50));
+
+        var hit = shadowTree.HitTest(new Point(50, 50), 5);
+
+        Assert.NotNull(hit);
+        Assert.Equal(ShadowGeometryTree.ShadowNodeKind.GripPoint, hit!.Kind);
+        Assert.Equal("markup-1", hit.Id);
+        Assert.Equal(2, hit.GripIndex);
+    }
+
+    [Fact]
+    public void GripPointHit_StartsGripDrag_AndFiresGripDragCompleted()
+    {
+        var shadowTree = new ShadowGeometryTree();
+        shadowTree.AddGripPoint("markup-1", 3, new Point(10, 10));
+
+        var controller = new CanvasInteractionController(new DrawingContext2D(), new SnapService(), shadowTree);
+        string? firedId = null;
+        int firedIndex = -1;
+        Vector firedDelta = default;
+
+        controller.GripDragCompleted += (id, idx, delta) =>
+        {
+            firedId = id;
+            firedIndex = idx;
+            firedDelta = delta;
+        };
+
+        controller.OnMouseDown(new Point(10, 10), MouseButton.Left, ModifierKeys.None);
+        controller.OnMouseUp(new Point(15, 20), MouseButton.Left);
+
+        Assert.Equal("markup-1", firedId);
+        Assert.Equal(3, firedIndex);
+        Assert.Equal(5.0, firedDelta.X, 1);
+        Assert.Equal(10.0, firedDelta.Y, 1);
+    }
+
+    [Fact]
+    public void MultipleGripPoints_CoexistInShadowTree()
+    {
+        var shadowTree = new ShadowGeometryTree();
+        shadowTree.AddGripPoint("markup-1", 0, new Point(0, 0));
+        shadowTree.AddGripPoint("markup-1", 1, new Point(100, 0));
+        shadowTree.AddGripPoint("markup-1", 2, new Point(100, 100));
+
+        var hit0 = shadowTree.HitTest(new Point(0, 0), 5);
+        var hit1 = shadowTree.HitTest(new Point(100, 0), 5);
+        var hit2 = shadowTree.HitTest(new Point(100, 100), 5);
+
+        Assert.NotNull(hit0);
+        Assert.Equal(0, hit0!.GripIndex);
+        Assert.NotNull(hit1);
+        Assert.Equal(1, hit1!.GripIndex);
+        Assert.NotNull(hit2);
+        Assert.Equal(2, hit2!.GripIndex);
+    }
+
     private sealed class RecordingRenderer : ICanvas2DRenderer
     {
         public Point LastSnapGlyphPoint { get; private set; }

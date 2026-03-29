@@ -109,6 +109,66 @@ public partial class MainWindow
 
             _canvasInteractionShadowTree.AddOrUpdate(markup);
         }
+
+        PopulateSelectedMarkupGripNodes();
+    }
+
+    private void PopulateSelectedMarkupGripNodes()
+    {
+        var selectedMarkup = _viewModel.MarkupTool.SelectedMarkup;
+        if (selectedMarkup == null)
+            return;
+
+        var selectionSet = _markupInteractionService.GetSelectionSet(selectedMarkup, _viewModel.Markups);
+        var bounds = _markupInteractionService.GetAggregateBounds(selectionSet);
+        if (bounds == Rect.Empty)
+            return;
+
+        var canEditVertices = selectionSet.Count == 1 && _markupInteractionService.CanEditVertices(selectedMarkup);
+        var canEditArcAngles = selectionSet.Count == 1 && _markupInteractionService.CanEditArcAngles(selectedMarkup);
+        var canEditRadius = selectionSet.Count == 1 && _markupInteractionService.CanEditRadius(selectedMarkup);
+        var handleMode = GetMarkupHandleOverlayMode(
+            canEditArcAngles, canEditRadius, canEditVertices,
+            _markupInteractionService.CanResize(selectionSet));
+
+        int gripIndex = 0;
+
+        if (handleMode == MarkupHandleOverlayMode.DirectGeometry && canEditArcAngles)
+        {
+            foreach (var handle in _markupInteractionService.GetArcAngleHandles(selectedMarkup))
+            {
+                var point = _markupInteractionService.GetArcAngleHandlePoint(selectedMarkup, handle);
+                _canvasInteractionShadowTree.AddGripPoint(selectedMarkup.Id, gripIndex++, point, selectedMarkup);
+            }
+        }
+
+        if (handleMode == MarkupHandleOverlayMode.DirectGeometry && canEditRadius)
+        {
+            _canvasInteractionShadowTree.AddGripPoint(
+                selectedMarkup.Id, gripIndex++,
+                _markupInteractionService.GetRadiusHandlePoint(selectedMarkup), selectedMarkup);
+        }
+
+        if (handleMode == MarkupHandleOverlayMode.Vertices)
+        {
+            var points = _markupInteractionService.GetVertexHandlePoints(selectedMarkup);
+            for (int i = 0; i < points.Count; i++)
+            {
+                _canvasInteractionShadowTree.AddGripPoint(selectedMarkup.Id, i, points[i], selectedMarkup);
+            }
+        }
+        else if (handleMode == MarkupHandleOverlayMode.Resize)
+        {
+            foreach (var handle in Enum.GetValues<MarkupResizeHandle>())
+            {
+                if (handle == MarkupResizeHandle.None)
+                    continue;
+
+                _canvasInteractionShadowTree.AddGripPoint(
+                    selectedMarkup.Id, gripIndex++,
+                    _markupInteractionService.GetResizeHandlePoint(bounds, handle), selectedMarkup);
+            }
+        }
     }
 
     private void OnCanvasInteractionSelectionRectCompleted(IReadOnlyList<string> ids, bool crossing)

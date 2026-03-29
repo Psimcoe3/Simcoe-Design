@@ -181,11 +181,19 @@ Use descriptive names that include:
 
 ## Keyboard Shortcuts
 
-Currently the application uses menu and toolbar actions. Future versions will include:
+The application exposes keyboard shortcuts for common file, edit, and markup workflows:
 - Ctrl+N: New file
 - Ctrl+O: Open file
 - Ctrl+S: Save file
-- Delete: Delete selected component
+- Ctrl+Shift+S: Save As
+- Ctrl+E: Export JSON
+- Ctrl+Z: Undo
+- Ctrl+Y: Redo
+- Delete / Backspace: Delete the selected component or active markup vertex, depending on context
+- Ctrl+Shift+G: Edit selected markup geometry
+- Ctrl+Shift+A: Edit selected markup appearance
+- F2: Edit selected structured markup text
+- Esc: Cancel the active insert or edit mode
 
 ## Troubleshooting
 
@@ -265,10 +273,9 @@ https://github.com/Psimcoe3/Simcoe-Design
 
 Planned features include:
 - Constraint system for parametric relationships
-- 2D drawing view
+- Expanded 2D drawing and documentation views
 - Multi-component selection and editing
 - Component libraries (import/export)
-- Undo/Redo functionality
 - Dimension annotations
 - Material cost calculations
 - Export to CAD formats

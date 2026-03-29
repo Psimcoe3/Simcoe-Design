@@ -137,13 +137,8 @@ All components support:
 
 ## Project Statistics
 
-- **Total Files Created**: 24
-- **Lines of Code**: ~2,280 (including documentation)
-- **C# Classes**: 10
-- **XAML Views**: 2
-- **Documentation Pages**: 4
-- **Example Files**: 2
-- **Build Scripts**: 2
+- The repository has expanded significantly beyond the original MVP.
+- In addition to the original 3D component editor, the solution now includes a substantial 2D drawing and markup workflow, PDF/image underlay support, richer command surfaces, and a much larger automated test suite.
 
 ## Key Features by Category
 
@@ -179,10 +174,9 @@ All components support:
 - ✅ **Build Tests**: Successful compilation in both Debug and Release
 - ✅ **Security Scan**: CodeQL analysis completed with 0 alerts
 - ✅ **Dependency Check**: No vulnerabilities found
-- ✅ **Unit Tests**: xUnit test project with comprehensive coverage
-  - Model tests (ConduitComponent, BoxComponent, PanelComponent, SupportComponent)
-  - Service tests (ComponentFileService save/load/export round-trips)
-  - ViewModel tests (MainViewModel add, delete, move, rotate, scale, property changes)
+- ✅ **Automated Test Suite**: xUnit coverage across models, services, view models, rendering, markup interaction, and MainWindow interaction seams
+   - Current validated baseline: **707/707 tests passing**
+   - Coverage includes geometry editing, undo/redo flows, command routing, shadow-tree hit testing, and document/markup tooling
 
 ### Manual Testing Required
 ⚠️ **Runtime Testing**: Application and tests require Windows for execution
@@ -258,21 +252,19 @@ Simcoe-Design/
 
 1. **Platform**: Windows-only (WPF requirement)
 2. **Testing**: Tests require Windows OS to run (WPF dependency)
-3. **Multi-selection**: Not yet implemented
-4. **Undo/Redo**: Not implemented in MVP
-5. **Constraints**: Model support exists but UI not implemented
-6. **2D View**: Only 3D viewport in current version
+3. **Multi-selection**: Broad multi-selection workflows remain limited
+4. **Constraints**: Model support exists, but a dedicated constraint-authoring UI is not implemented
 
 ## Future Enhancements
 
 The application is designed for extensibility. Planned features include:
 
 - **Constraint System**: Parametric relationships between dimensions
-- **2D Drawing View**: Orthographic projection views
-- **Multi-Component Selection**: Select and edit multiple components
+- **Expanded 2D Documentation Views**: Additional orthographic and sheet-style workflows beyond the current 2D canvas and markup system
+- **Multi-Component Selection**: Select and edit multiple components together
 - **Component Library**: Import/export custom libraries
-- **Undo/Redo**: Command pattern implementation
-- **Keyboard Shortcuts**: Improved keyboard navigation
+- **Constraint UI**: Author, inspect, and edit parametric relationships from the interface
+- **Keyboard Shortcuts**: Broader shortcut coverage and discoverability improvements
 - **Material Library**: Predefined material database
 - **Dimension Annotations**: Display measurements in viewport
 - **CAD Export**: DXF/DWG file format support

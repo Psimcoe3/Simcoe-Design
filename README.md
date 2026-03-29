@@ -14,6 +14,8 @@ A desktop application for designing and editing parametric electrical constructi
 - **Property Panel**: Real-time editing of component properties
 - **File Operations**: Save and load custom component files (.ecomp format)
 - **JSON Export**: Export components to JSON format for integration with other tools
+- **2D Drawing + Markup Canvas**: Hybrid WPF/Skia drawing surface with grip editing, measurement markup, and PDF/image underlays
+- **Undo/Redo**: Command-driven editing across component and markup workflows
 - **Interactive Conduit Bending**: Click and drag to create complex conduit paths with multiple bends (NEW!)
 
 ### Technology Stack
@@ -142,12 +144,17 @@ Standard JSON format for component data, suitable for integration with other sys
 | Ctrl+S | Save file |
 | Ctrl+Shift+S | Save As |
 | Ctrl+E | Export to JSON |
+| Ctrl+Z | Undo |
+| Ctrl+Y | Redo |
 | Delete | Delete selected component |
-| Escape | Exit conduit edit mode |
+| Ctrl+Shift+G | Edit selected markup geometry |
+| F2 | Edit selected structured markup text |
+| Ctrl+Shift+A | Edit selected markup appearance |
+| Escape | Cancel active insert/edit mode |
 
 ### Running Tests
 
-The project includes a comprehensive unit test suite covering models, services, and viewmodels.
+The project includes a comprehensive automated test suite covering models, services, view models, rendering, markup editing, and MainWindow interaction seams.
 
 ```bash
 # Build and run tests (requires Windows)
@@ -156,14 +163,15 @@ dotnet test ElectricalComponentSandbox.Tests/ElectricalComponentSandbox.Tests.cs
 
 *Note: Tests require Windows OS to run due to WPF framework dependencies.*
 
+Current validated baseline: **707/707 tests passing**.
+
 ### Future Enhancements
 
 - Constraint system for parametric relationships
-- Advanced 2D drawing mode
+- Expanded 2D documentation and orthographic workflows
 - Component validation rules
 - Material library
 - Advanced transformation tools
-- Undo/Redo functionality
 - Multi-component selection
 - Component cloning
 - Import from standard formats

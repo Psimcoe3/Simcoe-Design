@@ -303,15 +303,13 @@ if (SnapToGrid)
 
 ### Planned Features
 - Constraint system for parametric design
-- Undo/Redo with command pattern
 - Multi-component selection
-- 2D orthographic views
+- Expanded 2D orthographic and documentation views
 - Component validation rules
 - Plugin system for custom components
 
 ### Potential Improvements
-- Unit tests for models and services
-- Integration tests for file operations
+- Additional integration tests for file operations and UI interaction seams
 - Performance profiling for large component counts
 - Accessibility improvements (keyboard navigation)
 - Localization support

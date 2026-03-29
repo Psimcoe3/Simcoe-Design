@@ -259,7 +259,7 @@ Panels maintain fixed widths (Library: 200px, Properties: 300px) while the 3D vi
 
 - All controls accessible via keyboard
 - Tab order follows left-to-right, top-to-bottom
-- Menu items have standard keyboard shortcuts (future enhancement)
+- Menu items expose standard keyboard shortcuts for common file and edit actions
 - High contrast support through Windows settings
 
 ## Future UI Enhancements
