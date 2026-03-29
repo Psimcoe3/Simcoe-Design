@@ -354,6 +354,21 @@ public partial class MainWindow
             return false;
         }
 
+        if (!TryBuildGeometryPrompt(selectedMarkup, out var title, out var prompt, out var defaultValue))
+            return ShowUnsupportedGeometryEditMessage(showFeedbackIfUnsupported);
+
+        var input = PromptInput(title, prompt, defaultValue);
+        if (input == null)
+            return true;
+
+        return TryEditSelectedMarkupGeometry(input, showFeedbackIfUnsupported);
+    }
+
+    private bool TryEditSelectedMarkupGeometry(string input, bool showFeedbackIfUnsupported)
+    {
+        if (_viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup)
+            return false;
+
         var selectionSet = _markupInteractionService.GetSelectionSet(selectedMarkup, _viewModel.Markups);
         if (selectionSet.Count != 1)
         {
@@ -368,10 +383,11 @@ public partial class MainWindow
 
         return selectedMarkup.Type switch
         {
-            MarkupType.Rectangle or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel => TryEditSelectedBoundsGeometry(selectedMarkup),
-            MarkupType.Circle => TryEditSelectedCircleGeometry(selectedMarkup),
-            MarkupType.Arc => TryEditSelectedArcGeometry(selectedMarkup),
-            MarkupType.Dimension or MarkupType.Measurement => TryEditSelectedLineGeometry(selectedMarkup, showFeedbackIfUnsupported),
+            MarkupType.Rectangle or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel => TryEditSelectedBoundsGeometry(selectedMarkup, input),
+            MarkupType.Circle => TryEditSelectedCircleGeometry(selectedMarkup, input),
+            MarkupType.Arc => TryEditSelectedArcGeometry(selectedMarkup, input),
+            MarkupType.Dimension or MarkupType.Measurement when IsAngularDimension(selectedMarkup) => TryEditSelectedAngularGeometry(selectedMarkup, input),
+            MarkupType.Dimension or MarkupType.Measurement => TryEditSelectedLineGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
             _ => ShowUnsupportedGeometryEditMessage(showFeedbackIfUnsupported)
         };
     }
@@ -444,13 +460,13 @@ public partial class MainWindow
         return CommitMarkupAppearanceEdit(selectedMarkup, before);
     }
 
-    private bool TryEditSelectedLineGeometry(MarkupRecord markup, bool showFeedbackIfUnsupported)
+    private bool TryEditSelectedLineGeometry(MarkupRecord markup, string input, bool showFeedbackIfUnsupported)
     {
         if (markup.Vertices.Count != 2)
         {
             if (showFeedbackIfUnsupported)
             {
-                MessageBox.Show("Numeric geometry editing for dimensions and measurements is currently available for line-style markups only. Angular and arc-length dimension variants are excluded.", "Edit Geometry",
+                MessageBox.Show("Numeric geometry editing for dimensions and measurements is currently available for line-style markups. Angular dimensions use angle/radius semantics, and arc-length variants remain excluded.", "Edit Geometry",
                     MessageBoxButton.OK, MessageBoxImage.Information);
             }
 
@@ -464,13 +480,6 @@ public partial class MainWindow
         var angleDeg = Math.Atan2(delta.Y, delta.X) * 180.0 / Math.PI;
         var lengthKey = GetLineGeometryLengthKey(markup);
         var lengthLabel = GetLineGeometryLengthLabel(markup);
-        var input = PromptInput(
-            $"Edit {markup.TypeDisplayText} Geometry",
-            $"Enter {lengthLabel.ToLowerInvariant()} and optional angle. The first point stays fixed.\n\nExamples:\n{lengthKey}=24\nangle=30",
-            BuildLineGeometryDefaultValue(lengthKey, length, angleDeg));
-        if (input == null)
-            return true;
-
         if (!TryParseMarkupGeometryAssignments(input, out var values, out var errorMessage))
         {
             MessageBox.Show(errorMessage, $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -500,21 +509,45 @@ public partial class MainWindow
             FormattableString.Invariant($"Type: {markup.TypeDisplayText}, {lengthLabel}: {nextLength:0.##}, Angle: {nextAngleDeg:0.##}"));
     }
 
-    private bool TryEditSelectedBoundsGeometry(MarkupRecord markup)
+    private bool TryEditSelectedAngularGeometry(MarkupRecord markup, string input)
+    {
+        if (markup.Vertices.Count < 3)
+            return false;
+
+        if (!TryParseMarkupGeometryAssignments(input, out var values, out var errorMessage))
+        {
+            MessageBox.Show(errorMessage, $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return true;
+        }
+
+        if (!TryGetAssignment(values, "angle", Math.Abs(markup.ArcSweepDeg), out var nextAngleDeg) || nextAngleDeg <= 0)
+        {
+            MessageBox.Show("Angle must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return true;
+        }
+
+        if (!TryGetAssignment(values, "radius", markup.Radius, out var nextRadius) || nextRadius <= 0)
+        {
+            MessageBox.Show("Radius must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return true;
+        }
+
+        var before = _markupInteractionService.Capture(markup);
+        if (!_markupInteractionService.SetAngularGeometry(markup, nextAngleDeg, nextRadius))
+            return false;
+
+        return CommitMarkupGeometryEdit(
+            markup,
+            before,
+            $"Edit {markup.TypeDisplayText.ToLowerInvariant()} geometry",
+            FormattableString.Invariant($"Type: {markup.TypeDisplayText}, Angle: {Math.Abs(markup.ArcSweepDeg):0.##}, Radius: {markup.Radius:0.##}"));
+    }
+
+    private bool TryEditSelectedBoundsGeometry(MarkupRecord markup, string input)
     {
         var bounds = markup.BoundingRect != Rect.Empty
             ? markup.BoundingRect
             : new Rect(markup.Vertices[0], markup.Vertices[1]);
-        var input = PromptInput(
-            $"Edit {markup.TypeDisplayText} Geometry",
-            "Enter width and height. The markup's top-left corner stays fixed.\n\nExamples:\nwidth=24\nheight=12",
-            string.Join(Environment.NewLine, new[]
-            {
-                FormattableString.Invariant($"width={bounds.Width:0.##}"),
-                FormattableString.Invariant($"height={bounds.Height:0.##}")
-            }));
-        if (input == null)
-            return true;
 
         if (!TryParseMarkupGeometryAssignments(input, out var values, out var errorMessage))
         {
@@ -545,15 +578,8 @@ public partial class MainWindow
             FormattableString.Invariant($"Type: {markup.TypeDisplayText}, Width: {markup.BoundingRect.Width:0.##}, Height: {markup.BoundingRect.Height:0.##}"));
     }
 
-    private bool TryEditSelectedCircleGeometry(MarkupRecord markup)
+    private bool TryEditSelectedCircleGeometry(MarkupRecord markup, string input)
     {
-        var input = PromptInput(
-            "Edit Circle Geometry",
-            "Enter radius:\n\nExamples:\n12\nradius=12",
-            FormattableString.Invariant($"radius={markup.Radius:0.##}"));
-        if (input == null)
-            return true;
-
         if (!TryParseMarkupGeometryAssignments(input, out var values, out var errorMessage))
         {
             MessageBox.Show(errorMessage, "Edit Circle Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -571,15 +597,8 @@ public partial class MainWindow
         return CommitMarkupGeometryEdit(markup, before, "Edit circle geometry", $"Type: {markup.TypeDisplayText}, Radius: {markup.Radius:0.##}");
     }
 
-    private bool TryEditSelectedArcGeometry(MarkupRecord markup)
+    private bool TryEditSelectedArcGeometry(MarkupRecord markup, string input)
     {
-        var input = PromptInput(
-            "Edit Arc Geometry",
-            "Enter radius, start angle, and either end or sweep.\n\nExamples:\nradius=12\nstart=30\nend=150\n\nor\nradius=12\nstart=30\nsweep=120",
-            BuildArcGeometryDefaultValue(markup));
-        if (input == null)
-            return true;
-
         if (!TryParseMarkupGeometryAssignments(input, out var values, out var errorMessage))
         {
             MessageBox.Show(errorMessage, "Edit Arc Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -935,11 +954,87 @@ public partial class MainWindow
     {
         if (showFeedbackIfUnsupported)
         {
-            MessageBox.Show("Numeric geometry editing is currently available for circle, arc, rectangle, stamp, hyperlink, box, panel, and line-style dimension or measurement markups only. Angular and arc-length dimension variants remain excluded.", "Edit Geometry",
+            MessageBox.Show("Numeric geometry editing is currently available for circle, arc, rectangle, stamp, hyperlink, box, panel, angular dimension, and line-style dimension or measurement markups. Arc-length dimension variants remain excluded.", "Edit Geometry",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         return false;
+    }
+
+    private static string BuildBoundsGeometryDefaultValue(MarkupRecord markup)
+    {
+        var bounds = markup.BoundingRect != Rect.Empty
+            ? markup.BoundingRect
+            : new Rect(markup.Vertices[0], markup.Vertices[1]);
+
+        return string.Join(Environment.NewLine, new[]
+        {
+            FormattableString.Invariant($"width={bounds.Width:0.##}"),
+            FormattableString.Invariant($"height={bounds.Height:0.##}")
+        });
+    }
+
+    private static string BuildAngularGeometryDefaultValue(MarkupRecord markup)
+    {
+        return string.Join(Environment.NewLine, new[]
+        {
+            FormattableString.Invariant($"angle={Math.Abs(markup.ArcSweepDeg):0.##}"),
+            FormattableString.Invariant($"radius={markup.Radius:0.##}")
+        });
+    }
+
+    private static bool TryBuildGeometryPrompt(MarkupRecord markup, out string title, out string prompt, out string defaultValue)
+    {
+        title = string.Empty;
+        prompt = string.Empty;
+        defaultValue = string.Empty;
+
+        switch (markup.Type)
+        {
+            case MarkupType.Rectangle:
+            case MarkupType.Stamp:
+            case MarkupType.Hyperlink:
+            case MarkupType.Box:
+            case MarkupType.Panel:
+                title = $"Edit {markup.TypeDisplayText} Geometry";
+                prompt = "Enter width and height. The markup's top-left corner stays fixed.\n\nExamples:\nwidth=24\nheight=12";
+                defaultValue = BuildBoundsGeometryDefaultValue(markup);
+                return true;
+            case MarkupType.Circle:
+                title = "Edit Circle Geometry";
+                prompt = "Enter radius:\n\nExamples:\n12\nradius=12";
+                defaultValue = FormattableString.Invariant($"radius={markup.Radius:0.##}");
+                return true;
+            case MarkupType.Arc:
+                title = "Edit Arc Geometry";
+                prompt = "Enter radius, start angle, and either end or sweep.\n\nExamples:\nradius=12\nstart=30\nend=150\n\nor\nradius=12\nstart=30\nsweep=120";
+                defaultValue = BuildArcGeometryDefaultValue(markup);
+                return true;
+            case MarkupType.Dimension:
+            case MarkupType.Measurement:
+                if (IsAngularDimension(markup))
+                {
+                    title = $"Edit {markup.TypeDisplayText} Geometry";
+                    prompt = "Enter angle and optional radius. The vertex and first ray stay fixed.\n\nExamples:\nangle=45\nradius=18";
+                    defaultValue = BuildAngularGeometryDefaultValue(markup);
+                    return true;
+                }
+
+                if (IsArcLengthDimension(markup) || markup.Vertices.Count < 2 || markup.Vertices.Count > 3)
+                    return false;
+
+                var start = markup.Vertices[0];
+                var end = markup.Vertices[1];
+                var delta = end - start;
+                var angleDeg = Math.Atan2(delta.Y, delta.X) * 180.0 / Math.PI;
+                var lengthKey = GetLineGeometryLengthKey(markup);
+                title = $"Edit {markup.TypeDisplayText} Geometry";
+                prompt = $"Enter {GetLineGeometryLengthLabel(markup).ToLowerInvariant()} and optional angle. The first point stays fixed.\n\nExamples:\n{lengthKey}=24\nangle=30";
+                defaultValue = BuildLineGeometryDefaultValue(lengthKey, delta.Length, angleDeg);
+                return true;
+            default:
+                return false;
+        }
     }
 
     private static string BuildArcGeometryDefaultValue(MarkupRecord markup)
@@ -990,6 +1085,18 @@ public partial class MainWindow
             return "Diameter";
 
         return "Length";
+    }
+
+    private static bool IsAngularDimension(MarkupRecord markup)
+    {
+        return markup.Type == MarkupType.Dimension &&
+               string.Equals(markup.Metadata.Subject, "Angular", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsArcLengthDimension(MarkupRecord markup)
+    {
+        return markup.Type == MarkupType.Dimension &&
+               string.Equals(markup.Metadata.Subject, "ArcLength", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TryParseMarkupGeometryAssignments(string input, out Dictionary<string, double> values, out string errorMessage)

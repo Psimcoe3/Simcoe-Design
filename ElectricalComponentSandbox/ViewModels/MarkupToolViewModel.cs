@@ -425,7 +425,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
             return GetSelectionSet(_selectedMarkup).Count > 1
                 ? "Numeric geometry editing is disabled for grouped selections"
-                : "Numeric geometry editing is currently available for circle, arc, rectangle, stamp, hyperlink, box, panel, and line-style dimension or measurement markups only";
+                : "Numeric geometry editing is currently available for circle, arc, rectangle, stamp, hyperlink, box, panel, angular dimension, and line-style dimension or measurement markups only";
         }
     }
 
@@ -450,6 +450,15 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
             if (_selectedMarkup.Type is MarkupType.Dimension or MarkupType.Measurement)
             {
+                if (IsAngularDimension(_selectedMarkup))
+                {
+                    return string.Join(Environment.NewLine, new[]
+                    {
+                        $"Angle: {FormatGeometryValue(Math.Abs(_selectedMarkup.ArcSweepDeg))} deg",
+                        $"Radius: {FormatGeometryValue(_selectedMarkup.Radius)}"
+                    });
+                }
+
                 var delta = _selectedMarkup.Vertices[1] - _selectedMarkup.Vertices[0];
                 var length = delta.Length;
                 var angle = NormalizeMarkupAngle(Math.Atan2(delta.Y, delta.X) * 180.0 / Math.PI);
@@ -884,17 +893,20 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         if (markup.Type != MarkupType.Dimension)
             return false;
 
-        if (string.Equals(markup.Metadata.Subject, "Angular", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(markup.Metadata.Subject, "ArcLength", StringComparison.OrdinalIgnoreCase))
-        {
+        if (string.Equals(markup.Metadata.Subject, "ArcLength", StringComparison.OrdinalIgnoreCase))
             return false;
-        }
+
+        if (IsAngularDimension(markup))
+            return markup.Vertices.Count >= 3;
 
         return markup.Vertices.Count >= 2 && markup.Vertices.Count <= 3;
     }
 
     private static string GetLineGeometrySummary(MarkupRecord markup)
     {
+        if (IsAngularDimension(markup))
+            return "Numeric edit available: angle and radius";
+
         if (IsRadialDimension(markup))
             return "Numeric edit available: radius and angle";
 
@@ -909,6 +921,9 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
     private static bool IsDiameterDimension(MarkupRecord markup)
         => markup.Type == MarkupType.Dimension && string.Equals(markup.Metadata.Subject, "Diameter", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsAngularDimension(MarkupRecord markup)
+        => markup.Type == MarkupType.Dimension && string.Equals(markup.Metadata.Subject, "Angular", StringComparison.OrdinalIgnoreCase);
 
     private void OnCountsChanged()
     {

@@ -608,6 +608,34 @@ public class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void SetAngularGeometry_AngularDimension_RepositionsSecondRayAndAnchor()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 12), new Point(10, 10) },
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+        markup.UpdateBoundingRect();
+
+        var result = _sut.SetAngularGeometry(markup, 60, 14);
+
+        Assert.True(result);
+        Assert.Equal(new Point(0, 0), markup.Vertices[0]);
+        Assert.Equal(new Point(10, 0), markup.Vertices[1]);
+        Assert.Equal(6, markup.Vertices[2].X, 6);
+        Assert.Equal(10.392304845413264, markup.Vertices[2].Y, 6);
+        Assert.Equal(17.443601136622522, markup.Vertices[3].X, 6);
+        Assert.Equal(10.071067811865476, markup.Vertices[3].Y, 6);
+        Assert.Equal(14, markup.Radius, 6);
+        Assert.Equal(0, markup.ArcStartDeg, 6);
+        Assert.Equal(60, markup.ArcSweepDeg, 6);
+    }
+
+    [Fact]
     public void SetLineGeometry_ArcLengthDimension_ReturnsFalse()
     {
         var markup = new MarkupRecord

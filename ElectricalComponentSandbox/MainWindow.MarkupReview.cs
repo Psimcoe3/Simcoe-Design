@@ -10,6 +10,9 @@ public partial class MainWindow
 {
     // ── Markup Review Workflow ───────────────────────────────────────────────
 
+    internal bool ExecuteEditMarkupGeometryCommandForTesting(string input)
+        => TryEditSelectedMarkupGeometry(input, showFeedbackIfUnsupported: false);
+
     internal bool ExecuteEditMarkupAppearanceCommandForTesting(string input)
         => TryEditSelectedMarkupAppearance(input, showFeedbackIfUnsupported: false);
 

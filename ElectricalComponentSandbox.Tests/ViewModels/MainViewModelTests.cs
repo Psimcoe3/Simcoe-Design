@@ -530,6 +530,29 @@ public class MainViewModelTests
     }
 
     [Fact]
+    public void MarkupTool_SelectedAngularDimension_ReportsAngularGeometryEditability()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(12, 0), new Point(0, 12), new Point(10, 10) },
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+        markup.UpdateBoundingRect();
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasGeometryEditableSelection);
+        Assert.Equal("Numeric edit available: angle and radius", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.Equal($"Angle: 90 deg{Environment.NewLine}Radius: 8", vm.MarkupTool.SelectedMarkupGeometryDetails);
+    }
+
+    [Fact]
     public void MarkupTool_SelectedArcLengthDimension_DoesNotReportGeometryEditability()
     {
         var vm = new MainViewModel();
@@ -547,7 +570,7 @@ public class MainViewModelTests
 
         Assert.False(vm.MarkupTool.HasGeometryEditableSelection);
         Assert.Equal(
-            "Numeric geometry editing is currently available for circle, arc, rectangle, stamp, hyperlink, box, panel, and line-style dimension or measurement markups only",
+            "Numeric geometry editing is currently available for circle, arc, rectangle, stamp, hyperlink, box, panel, angular dimension, and line-style dimension or measurement markups only",
             vm.MarkupTool.SelectedMarkupGeometryEditSummary);
     }
 

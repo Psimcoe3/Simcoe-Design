@@ -461,6 +461,39 @@ public sealed class MarkupInteractionService
         return true;
     }
 
+    public bool SetAngularGeometry(MarkupRecord markup, double angleDeg, double radius)
+    {
+        if (!IsAngularGeometryEditable(markup))
+            return false;
+
+        var vertex = markup.Vertices[0];
+        var firstRayEnd = markup.Vertices[1];
+        var secondRayEnd = markup.Vertices[2];
+        var firstRayAngleDeg = Math.Atan2(firstRayEnd.Y - vertex.Y, firstRayEnd.X - vertex.X) * 180.0 / Math.PI;
+        var secondRayLength = Math.Max((secondRayEnd - vertex).Length, 0.1);
+        var nextRadius = Math.Max(0.1, radius);
+        var nextSweepMagnitude = Math.Clamp(Math.Abs(angleDeg), MinimumArcSweepDegrees, 359.0);
+        var nextSweepDeg = markup.ArcSweepDeg < 0 ? -nextSweepMagnitude : nextSweepMagnitude;
+        var nextSecondRayAngleDeg = firstRayAngleDeg + nextSweepDeg;
+
+        markup.Vertices[2] = GetPolarPoint(vertex, secondRayLength, nextSecondRayAngleDeg);
+
+        if (markup.Vertices.Count > 3)
+        {
+            var labelOffset = Math.Max(0, (markup.Vertices[3] - vertex).Length - Math.Max(markup.Radius, 0.1));
+            var labelDistance = nextRadius + labelOffset;
+            var labelAngleDeg = firstRayAngleDeg + nextSweepDeg / 2.0;
+            markup.Vertices[3] = GetPolarPoint(vertex, labelDistance, labelAngleDeg);
+        }
+
+        markup.Radius = nextRadius;
+        markup.ArcStartDeg = NormalizeAngleDegrees(firstRayAngleDeg);
+        markup.ArcSweepDeg = nextSweepDeg;
+        markup.UpdateBoundingRect();
+        markup.Metadata.ModifiedUtc = DateTime.UtcNow;
+        return true;
+    }
+
     public double SnapAngleDegrees(double angleDeg, double incrementDeg)
     {
         var normalizedAngle = NormalizeAngleDegrees(angleDeg);
@@ -624,13 +657,20 @@ public sealed class MarkupInteractionService
         if (markup.Type != MarkupType.Dimension)
             return false;
 
-        if (string.Equals(markup.Metadata.Subject, "Angular", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(markup.Metadata.Subject, "ArcLength", StringComparison.OrdinalIgnoreCase))
-        {
+        if (string.Equals(markup.Metadata.Subject, "ArcLength", StringComparison.OrdinalIgnoreCase))
             return false;
-        }
+
+        if (string.Equals(markup.Metadata.Subject, "Angular", StringComparison.OrdinalIgnoreCase))
+            return false;
 
         return markup.Vertices.Count >= 2 && markup.Vertices.Count <= 3;
+    }
+
+    private static bool IsAngularGeometryEditable(MarkupRecord markup)
+    {
+        return markup.Type == MarkupType.Dimension &&
+               string.Equals(markup.Metadata.Subject, "Angular", StringComparison.OrdinalIgnoreCase) &&
+               markup.Vertices.Count >= 3;
     }
 
     private static Point TransformPoint(Point point, Rect originalBounds, Rect targetBounds)
