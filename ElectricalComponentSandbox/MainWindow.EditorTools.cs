@@ -14,16 +14,18 @@ public partial class MainWindow
 
     private void MoveComponent_Click(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.SelectedComponent == null)
+        var selectedComponents = GetSelectedComponents();
+        if (selectedComponents.Count == 0)
         {
-            MessageBox.Show("Select a component first.", "Move",
+            MessageBox.Show("Select one or more components first.", "Move",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        var src = _viewModel.SelectedComponent;
-        var input = PromptInput("Move Component",
-            $"Current position: ({src.Position.X:F2}, {src.Position.Y:F2}, {src.Position.Z:F2})\n\n" +
+        var src = _viewModel.SelectedComponent ?? selectedComponents[0];
+        var title = selectedComponents.Count == 1 ? "Move Component" : "Move Components";
+        var input = PromptInput(title,
+            $"Primary position: ({src.Position.X:F2}, {src.Position.Y:F2}, {src.Position.Z:F2})\nSelected: {selectedComponents.Count}\n\n" +
             "Enter displacement (dX, dY, dZ) or new position as (X, Y, Z):",
             "2, 0, 0");
         if (input == null) return;
@@ -31,7 +33,7 @@ public partial class MainWindow
         var parts = input.Split(',');
         if (parts.Length < 2)
         {
-            MessageBox.Show("Enter at least X, Y values separated by commas.", "Move",
+            MessageBox.Show("Enter at least X, Y values separated by commas.", title,
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -41,79 +43,94 @@ public partial class MainWindow
         double dz = parts.Length >= 3 && double.TryParse(parts[2].Trim(), out double z) ? z : 0;
 
         // Determine if absolute or relative based on magnitude hint
-        var modeInput = PromptInput("Move Component", "Mode:\n1. Relative (offset)\n2. Absolute (new position)", "1");
+        var modeInput = PromptInput(title, "Mode:\n1. Relative (offset)\n2. Absolute (new primary position)", "1");
         bool isAbsolute = modeInput == "2";
 
-        Point3D newPos;
+        Point3D newPrimaryPos;
         if (isAbsolute)
-            newPos = new Point3D(dx, dy, dz);
+            newPrimaryPos = new Point3D(dx, dy, dz);
         else
-            newPos = new Point3D(src.Position.X + dx, src.Position.Y + dy, src.Position.Z + dz);
+            newPrimaryPos = new Point3D(src.Position.X + dx, src.Position.Y + dy, src.Position.Z + dz);
 
-        _viewModel.UndoRedo.Execute(new MoveComponentAction(src, src.Position, newPos));
+        var delta = newPrimaryPos - src.Position;
+        var actions = selectedComponents
+            .Select(component => (IUndoableAction)new MoveComponentAction(component, component.Position, component.Position + delta))
+            .ToList();
+
+        _viewModel.UndoRedo.Execute(actions.Count == 1
+            ? actions[0]
+            : new CompositeAction($"Move {selectedComponents.Count} components", actions));
         QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
-        ActionLogService.Instance.Log(LogCategory.Edit, "Component moved",
-            $"Name: {src.Name}, To: ({newPos.X:F2}, {newPos.Y:F2}, {newPos.Z:F2})");
+        ActionLogService.Instance.Log(LogCategory.Edit, actions.Count == 1 ? "Component moved" : "Components moved",
+            $"Primary: {src.Name}, Count: {selectedComponents.Count}, Delta: ({delta.X:F2}, {delta.Y:F2}, {delta.Z:F2})");
     }
 
     private void RotateComponent_Click(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.SelectedComponent == null)
+        var selectedComponents = GetSelectedComponents();
+        if (selectedComponents.Count == 0)
         {
-            MessageBox.Show("Select a component first.", "Rotate",
+            MessageBox.Show("Select one or more components first.", "Rotate",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        var src = _viewModel.SelectedComponent;
-        var input = PromptInput("Rotate Component",
-            $"Current rotation: ({src.Rotation.X:F1}°, {src.Rotation.Y:F1}°, {src.Rotation.Z:F1}°)\n\n" +
+        var src = _viewModel.SelectedComponent ?? selectedComponents[0];
+        var input = PromptInput(selectedComponents.Count == 1 ? "Rotate Component" : "Rotate Components",
+            $"Primary rotation: ({src.Rotation.X:F1}°, {src.Rotation.Y:F1}°, {src.Rotation.Z:F1}°)\nSelected: {selectedComponents.Count}\n\n" +
             "Enter rotation angle in degrees (Y-axis for plan view):",
             "90");
         if (!double.TryParse(input, out double angle)) return;
 
-        var oldRot = src.Rotation;
-        var newRot = new Vector3D(oldRot.X, oldRot.Y + angle, oldRot.Z);
+        var actions = selectedComponents
+            .Select(component =>
+            {
+                var oldRot = component.Rotation;
+                var newRot = new Vector3D(oldRot.X, oldRot.Y + angle, oldRot.Z);
+                return (IUndoableAction)new RotateComponentAction(component, oldRot, newRot);
+            })
+            .ToList();
 
-        _viewModel.UndoRedo.Execute(new RotateComponentAction(src, oldRot, newRot));
+        _viewModel.UndoRedo.Execute(actions.Count == 1
+            ? actions[0]
+            : new CompositeAction($"Rotate {selectedComponents.Count} components", actions));
         QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
-        ActionLogService.Instance.Log(LogCategory.Edit, "Component rotated",
-            $"Name: {src.Name}, Angle: {angle}°");
+        ActionLogService.Instance.Log(LogCategory.Edit, actions.Count == 1 ? "Component rotated" : "Components rotated",
+            $"Primary: {src.Name}, Count: {selectedComponents.Count}, Angle: {angle}°");
     }
 
     private void MirrorComponent_Click(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.SelectedComponent == null)
+        var selectedComponents = GetSelectedComponents();
+        if (selectedComponents.Count == 0)
         {
-            MessageBox.Show("Select a component first.", "Mirror",
+            MessageBox.Show("Select one or more components first.", "Mirror",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        var src = _viewModel.SelectedComponent;
-        var input = PromptInput("Mirror Component",
+        var src = _viewModel.SelectedComponent ?? selectedComponents[0];
+        var input = PromptInput(selectedComponents.Count == 1 ? "Mirror Component" : "Mirror Components",
             "Mirror axis:\n1. X axis (flip left/right)\n2. Z axis (flip top/bottom)\n3. About a point (X, Z)",
             "1");
         if (input == null) return;
 
-        Point3D mirroredPos;
-        Vector3D mirroredScale;
+        Func<ElectricalComponent, (Point3D position, Vector3D scale)> mirrorTransform;
 
         if (input == "1")
         {
-            // Mirror about X axis: negate X position, flip X scale
-            mirroredPos = new Point3D(-src.Position.X, src.Position.Y, src.Position.Z);
-            mirroredScale = new Vector3D(-src.Scale.X, src.Scale.Y, src.Scale.Z);
+            mirrorTransform = component =>
+                (new Point3D(-component.Position.X, component.Position.Y, component.Position.Z),
+                 new Vector3D(-component.Scale.X, component.Scale.Y, component.Scale.Z));
         }
         else if (input == "2")
         {
-            // Mirror about Z axis: negate Z position, flip Z scale
-            mirroredPos = new Point3D(src.Position.X, src.Position.Y, -src.Position.Z);
-            mirroredScale = new Vector3D(src.Scale.X, src.Scale.Y, -src.Scale.Z);
+            mirrorTransform = component =>
+                (new Point3D(component.Position.X, component.Position.Y, -component.Position.Z),
+                 new Vector3D(component.Scale.X, component.Scale.Y, -component.Scale.Z));
         }
         else
         {
-            // Mirror about a point
             var parts = input.Split(',');
             if (parts.Length < 2 ||
                 !double.TryParse(parts[0].Trim(), out double mx) ||
@@ -124,14 +141,25 @@ public partial class MainWindow
                 return;
             }
 
-            mirroredPos = new Point3D(2 * mx - src.Position.X, src.Position.Y, 2 * mz - src.Position.Z);
-            mirroredScale = src.Scale; // point mirror preserves scale
+            mirrorTransform = component =>
+                (new Point3D(2 * mx - component.Position.X, component.Position.Y, 2 * mz - component.Position.Z),
+                 component.Scale);
         }
 
-        _viewModel.UndoRedo.Execute(new MirrorComponentAction(src, mirroredPos, mirroredScale));
+        var actions = selectedComponents
+            .Select(component =>
+            {
+                var (mirroredPos, mirroredScale) = mirrorTransform(component);
+                return (IUndoableAction)new MirrorComponentAction(component, mirroredPos, mirroredScale);
+            })
+            .ToList();
+
+        _viewModel.UndoRedo.Execute(actions.Count == 1
+            ? actions[0]
+            : new CompositeAction($"Mirror {selectedComponents.Count} components", actions));
         QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
-        ActionLogService.Instance.Log(LogCategory.Edit, "Component mirrored",
-            $"Name: {src.Name}");
+        ActionLogService.Instance.Log(LogCategory.Edit, actions.Count == 1 ? "Component mirrored" : "Components mirrored",
+            $"Primary: {src.Name}, Count: {selectedComponents.Count}");
     }
 
     // ── Schedule Table Annotation ────────────────────────────────────────────

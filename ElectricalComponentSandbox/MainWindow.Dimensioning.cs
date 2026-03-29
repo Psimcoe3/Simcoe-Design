@@ -157,17 +157,30 @@ public partial class MainWindow
 
     private void UpdateSelectedDimensionsDisplay(ElectricalComponent? component)
     {
+        if (component == null)
+        {
+            UpdateSelectedDimensionsDisplay(Array.Empty<ElectricalComponent>());
+            return;
+        }
+
+        UpdateSelectedDimensionsDisplay(new[] { component });
+    }
+
+    private void UpdateSelectedDimensionsDisplay(IReadOnlyList<ElectricalComponent> components)
+    {
         if (SelectedDimensionsListBox == null)
             return;
 
-        if (component == null)
+        if (components.Count == 0)
         {
             SelectedDimensionsListBox.ItemsSource = null;
             SelectedDimensionsListBox.Items.Clear();
             return;
         }
 
-        var entries = BuildDimensionEntries(component);
+        var entries = components
+            .SelectMany(BuildDimensionEntries)
+            .ToList();
         if (entries.Count == 0)
         {
             SelectedDimensionsListBox.ItemsSource = new[] { "No dimensions available." };
@@ -1002,12 +1015,25 @@ public partial class MainWindow
 
     private void UpdatePropertiesPanel()
     {
-        var component = _viewModel.SelectedComponent;
-        if (component == null)
+        var selectedComponents = GetSelectedComponents();
+        if (selectedComponents.Count == 0)
         {
             ClearPropertiesPanel();
             return;
         }
+
+        if (selectedComponents.Count == 1)
+        {
+            UpdateSingleComponentPropertiesPanel(selectedComponents[0]);
+            return;
+        }
+
+        UpdateMultiSelectionPropertiesPanel(selectedComponents);
+    }
+
+    private void UpdateSingleComponentPropertiesPanel(ElectricalComponent component)
+    {
+        SetPropertiesPanelMultiSelectMode(isMultiSelection: false);
 
         NameTextBox.Text = component.Name;
         TypeTextBox.Text = component.Type.ToString();
@@ -1036,6 +1062,7 @@ public partial class MainWindow
         {
             ConduitProperties.Visibility = Visibility.Visible;
             BendPointsTextBlock.Text = conduit.BendPoints.Count.ToString();
+            ClearBendPointsButton.IsEnabled = true;
         }
         else
         {
@@ -1045,8 +1072,82 @@ public partial class MainWindow
         UpdateCustomDimensionUiState();
     }
 
+    private void UpdateMultiSelectionPropertiesPanel(IReadOnlyList<ElectricalComponent> components)
+    {
+        SetPropertiesPanelMultiSelectMode(isMultiSelection: true);
+
+        NameTextBox.Text = string.Empty;
+        TypeTextBox.Text = TryGetSharedValue(components, component => component.Type, type => type.ToString())
+            ?? $"Mixed ({components.Count} selected)";
+        PositionXTextBox.Text = string.Empty;
+        PositionYTextBox.Text = string.Empty;
+        PositionZTextBox.Text = string.Empty;
+        RotationXTextBox.Text = string.Empty;
+        RotationYTextBox.Text = string.Empty;
+        RotationZTextBox.Text = string.Empty;
+        WidthTextBox.Text = TryGetSharedValue(components, component => component.Parameters.Width, FormatLengthForInput) ?? string.Empty;
+        HeightTextBox.Text = TryGetSharedValue(components, component => component.Parameters.Height, FormatLengthForInput) ?? string.Empty;
+        DepthTextBox.Text = TryGetSharedValue(components, component => component.Parameters.Depth, FormatLengthForInput) ?? string.Empty;
+        MaterialTextBox.Text = TryGetSharedValue(components, component => component.Parameters.Material, value => value) ?? string.Empty;
+        ElevationTextBox.Text = TryGetSharedValue(components, component => component.Parameters.Elevation, FormatLengthForInput) ?? string.Empty;
+        ColorTextBox.Text = TryGetSharedValue(components, component => component.Parameters.Color, value => value) ?? string.Empty;
+        ManufacturerTextBox.Text = TryGetSharedValue(components, component => component.Parameters.Manufacturer, value => value) ?? string.Empty;
+        PartNumberTextBox.Text = TryGetSharedValue(components, component => component.Parameters.PartNumber, value => value) ?? string.Empty;
+        ReferenceUrlTextBox.Text = TryGetSharedValue(components, component => component.Parameters.ReferenceUrl, value => value) ?? string.Empty;
+        UpdateSelectedDimensionsDisplay(components);
+
+        var sharedLayerId = TryGetSharedValue(components, component => component.LayerId, value => value);
+        LayerComboBox.SelectedItem = sharedLayerId == null
+            ? null
+            : _viewModel.Layers.FirstOrDefault(current => current.Id == sharedLayerId);
+
+        ConduitProperties.Visibility = Visibility.Collapsed;
+        ClearBendPointsButton.IsEnabled = false;
+
+        var distinctTypes = components.Select(component => component.Type).Distinct().ToList();
+        var typeSummary = distinctTypes.Count == 1
+            ? distinctTypes[0].ToString()
+            : "mixed component types";
+        MultiSelectionSummaryTextBlock.Text =
+            $"Editing {components.Count} selected components ({typeSummary}). Shared values are shown; blank fields indicate mixed values. Apply Changes only updates fields you fill in for the whole selection.";
+
+        UpdateCustomDimensionUiState();
+    }
+
+    private void SetPropertiesPanelMultiSelectMode(bool isMultiSelection)
+    {
+        MultiSelectionSummaryTextBlock.Visibility = isMultiSelection ? Visibility.Visible : Visibility.Collapsed;
+        ApplyPropertiesButton.Content = isMultiSelection ? "Apply Shared Changes" : "Apply Changes";
+
+        NameTextBox.IsEnabled = !isMultiSelection;
+        PositionXTextBox.IsEnabled = !isMultiSelection;
+        PositionYTextBox.IsEnabled = !isMultiSelection;
+        PositionZTextBox.IsEnabled = !isMultiSelection;
+        RotationXTextBox.IsEnabled = !isMultiSelection;
+        RotationYTextBox.IsEnabled = !isMultiSelection;
+        RotationZTextBox.IsEnabled = !isMultiSelection;
+        OpenReferenceButton.IsEnabled = !isMultiSelection;
+    }
+
+    private static string? TryGetSharedValue<T>(IReadOnlyList<ElectricalComponent> components, Func<ElectricalComponent, T> selector, Func<T, string> formatter)
+    {
+        if (components.Count == 0)
+            return null;
+
+        var first = selector(components[0]);
+        for (var index = 1; index < components.Count; index++)
+        {
+            if (!EqualityComparer<T>.Default.Equals(first, selector(components[index])))
+                return null;
+        }
+
+        return formatter(first);
+    }
+
     private void ClearPropertiesPanel()
     {
+        SetPropertiesPanelMultiSelectMode(isMultiSelection: false);
+        MultiSelectionSummaryTextBlock.Text = string.Empty;
         NameTextBox.Text = string.Empty;
         TypeTextBox.Text = string.Empty;
         PositionXTextBox.Text = string.Empty;
@@ -1064,7 +1165,10 @@ public partial class MainWindow
         ManufacturerTextBox.Text = string.Empty;
         PartNumberTextBox.Text = string.Empty;
         ReferenceUrlTextBox.Text = string.Empty;
-        UpdateSelectedDimensionsDisplay(null);
+        LayerComboBox.SelectedItem = null;
+        ConduitProperties.Visibility = Visibility.Collapsed;
+        ClearBendPointsButton.IsEnabled = false;
+        UpdateSelectedDimensionsDisplay(Array.Empty<ElectricalComponent>());
         UpdateCustomDimensionUiState();
     }
 }

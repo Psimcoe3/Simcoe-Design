@@ -24,54 +24,33 @@ public partial class MainWindow
 
     private void ApplyProperties_Click(object sender, RoutedEventArgs e)
     {
-        var component = _viewModel.SelectedComponent;
-        if (component == null)
+        var selectedComponents = GetSelectedComponents();
+        if (selectedComponents.Count == 0)
             return;
 
+        var component = _viewModel.SelectedComponent ?? selectedComponents[0];
+
         ActionLogService.Instance.Log(LogCategory.Property, "Applying property changes",
-            $"Component: {component.Name}, Type: {component.Type}");
+            $"Primary: {component.Name}, Count: {selectedComponents.Count}");
 
         try
         {
-            component.Name = NameTextBox.Text;
-
-            component.Position = new Point3D(
-                ParseLengthInput(PositionXTextBox.Text, "Position X"),
-                ParseLengthInput(PositionYTextBox.Text, "Position Y"),
-                ParseLengthInput(PositionZTextBox.Text, "Position Z"));
-
-            component.Rotation = new Vector3D(
-                double.Parse(RotationXTextBox.Text),
-                double.Parse(RotationYTextBox.Text),
-                double.Parse(RotationZTextBox.Text));
-
-            component.Parameters.Width = ParseLengthInput(WidthTextBox.Text, "Width");
-            component.Parameters.Height = ParseLengthInput(HeightTextBox.Text, "Height");
-            component.Parameters.Depth = ParseLengthInput(DepthTextBox.Text, "Depth");
-            component.Parameters.Material = MaterialTextBox.Text;
-            component.Parameters.Elevation = ParseLengthInput(ElevationTextBox.Text, "Elevation");
-            component.Parameters.Color = ColorTextBox.Text;
-            component.Parameters.Manufacturer = ManufacturerTextBox.Text;
-            component.Parameters.PartNumber = PartNumberTextBox.Text;
-            component.Parameters.ReferenceUrl = ReferenceUrlTextBox.Text;
-
-            if (component is ConduitComponent conduitComponent)
-                ApplyImperialDefaultsToConduit(conduitComponent);
-
-            var catalogDataCleared = ClearCatalogMetadataIfDimensionsChanged(component);
-            if (LayerComboBox.SelectedItem is Layer layer)
-                component.LayerId = layer.Id;
+            var catalogDataCleared = selectedComponents.Count == 1
+                ? ApplySingleComponentProperties(component)
+                : ApplySharedPropertiesToSelection(selectedComponents);
 
             UpdateViewport();
             Update2DCanvas();
             UpdatePropertiesPanel();
             ActionLogService.Instance.Log(LogCategory.Property, "Properties applied",
-                $"Name: {component.Name}, Pos: ({component.Position.X:F2}, {component.Position.Y:F2}, {component.Position.Z:F2}), " +
-                $"Material: {component.Parameters.Material}, Color: {component.Parameters.Color}, " +
-                $"Mfr: {component.Parameters.Manufacturer}, Part#: {component.Parameters.PartNumber}");
-            var successMessage = catalogDataCleared
-                ? "Properties updated. Catalog metadata was cleared because dimensions no longer match the validated catalog size."
-                : "Properties updated successfully!";
+                $"Primary: {component.Name}, Count: {selectedComponents.Count}");
+            var successMessage = selectedComponents.Count == 1
+                ? (catalogDataCleared
+                    ? "Properties updated. Catalog metadata was cleared because dimensions no longer match the validated catalog size."
+                    : "Properties updated successfully!")
+                : (catalogDataCleared
+                    ? $"Updated {selectedComponents.Count} components. Catalog metadata was cleared where edited dimensions no longer matched validated catalog sizes."
+                    : $"Updated {selectedComponents.Count} components successfully!");
             MessageBox.Show(successMessage, "Success", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
@@ -79,6 +58,100 @@ public partial class MainWindow
             ActionLogService.Instance.LogError(LogCategory.Property, "Failed to apply properties", ex);
             MessageBox.Show($"Error updating properties: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    private bool ApplySingleComponentProperties(ElectricalComponent component)
+    {
+        component.Name = NameTextBox.Text;
+
+        component.Position = new Point3D(
+            ParseLengthInput(PositionXTextBox.Text, "Position X"),
+            ParseLengthInput(PositionYTextBox.Text, "Position Y"),
+            ParseLengthInput(PositionZTextBox.Text, "Position Z"));
+
+        component.Rotation = new Vector3D(
+            double.Parse(RotationXTextBox.Text),
+            double.Parse(RotationYTextBox.Text),
+            double.Parse(RotationZTextBox.Text));
+
+        component.Parameters.Width = ParseLengthInput(WidthTextBox.Text, "Width");
+        component.Parameters.Height = ParseLengthInput(HeightTextBox.Text, "Height");
+        component.Parameters.Depth = ParseLengthInput(DepthTextBox.Text, "Depth");
+        component.Parameters.Material = MaterialTextBox.Text;
+        component.Parameters.Elevation = ParseLengthInput(ElevationTextBox.Text, "Elevation");
+        component.Parameters.Color = ColorTextBox.Text;
+        component.Parameters.Manufacturer = ManufacturerTextBox.Text;
+        component.Parameters.PartNumber = PartNumberTextBox.Text;
+        component.Parameters.ReferenceUrl = ReferenceUrlTextBox.Text;
+
+        if (component is ConduitComponent conduitComponent)
+            ApplyImperialDefaultsToConduit(conduitComponent);
+
+        var catalogDataCleared = ClearCatalogMetadataIfDimensionsChanged(component);
+        if (LayerComboBox.SelectedItem is Layer layer)
+            component.LayerId = layer.Id;
+
+        return catalogDataCleared;
+    }
+
+    private bool ApplySharedPropertiesToSelection(IReadOnlyList<ElectricalComponent> components)
+    {
+        var applyWidth = !string.IsNullOrWhiteSpace(WidthTextBox.Text);
+        var applyHeight = !string.IsNullOrWhiteSpace(HeightTextBox.Text);
+        var applyDepth = !string.IsNullOrWhiteSpace(DepthTextBox.Text);
+        var applyMaterial = !string.IsNullOrWhiteSpace(MaterialTextBox.Text);
+        var applyElevation = !string.IsNullOrWhiteSpace(ElevationTextBox.Text);
+        var applyColor = !string.IsNullOrWhiteSpace(ColorTextBox.Text);
+        var applyManufacturer = !string.IsNullOrWhiteSpace(ManufacturerTextBox.Text);
+        var applyPartNumber = !string.IsNullOrWhiteSpace(PartNumberTextBox.Text);
+        var applyReferenceUrl = !string.IsNullOrWhiteSpace(ReferenceUrlTextBox.Text);
+        var applyLayer = LayerComboBox.SelectedItem is Layer;
+
+        if (!applyWidth && !applyHeight && !applyDepth && !applyMaterial && !applyElevation && !applyColor &&
+            !applyManufacturer && !applyPartNumber && !applyReferenceUrl && !applyLayer)
+        {
+            MessageBox.Show("Enter one or more shared property values to apply to the current selection.",
+                "Apply Shared Changes", MessageBoxButton.OK, MessageBoxImage.Information);
+            return false;
+        }
+
+        var width = applyWidth ? ParseLengthInput(WidthTextBox.Text, "Width") : 0.0;
+        var height = applyHeight ? ParseLengthInput(HeightTextBox.Text, "Height") : 0.0;
+        var depth = applyDepth ? ParseLengthInput(DepthTextBox.Text, "Depth") : 0.0;
+        var elevation = applyElevation ? ParseLengthInput(ElevationTextBox.Text, "Elevation") : 0.0;
+        var layer = LayerComboBox.SelectedItem as Layer;
+        var catalogDataCleared = false;
+
+        foreach (var component in components)
+        {
+            if (applyWidth)
+                component.Parameters.Width = width;
+            if (applyHeight)
+                component.Parameters.Height = height;
+            if (applyDepth)
+                component.Parameters.Depth = depth;
+            if (applyMaterial)
+                component.Parameters.Material = MaterialTextBox.Text;
+            if (applyElevation)
+                component.Parameters.Elevation = elevation;
+            if (applyColor)
+                component.Parameters.Color = ColorTextBox.Text;
+            if (applyManufacturer)
+                component.Parameters.Manufacturer = ManufacturerTextBox.Text;
+            if (applyPartNumber)
+                component.Parameters.PartNumber = PartNumberTextBox.Text;
+            if (applyReferenceUrl)
+                component.Parameters.ReferenceUrl = ReferenceUrlTextBox.Text;
+            if (layer != null)
+                component.LayerId = layer.Id;
+
+            if (component is ConduitComponent conduitComponent)
+                ApplyImperialDefaultsToConduit(conduitComponent);
+
+            catalogDataCleared |= ClearCatalogMetadataIfDimensionsChanged(component);
+        }
+
+        return catalogDataCleared;
     }
 
     private static bool ClearCatalogMetadataIfDimensionsChanged(ElectricalComponent component)
