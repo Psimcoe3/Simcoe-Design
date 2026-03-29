@@ -494,6 +494,41 @@ public sealed class MarkupInteractionService
         return true;
     }
 
+    public bool SetArcLengthGeometry(MarkupRecord markup, double arcLength, double radius)
+    {
+        if (!IsArcLengthGeometryEditable(markup))
+            return false;
+
+        var startPoint = markup.Vertices[0];
+        var nextRadius = Math.Max(0.1, radius);
+        var startAngleDeg = markup.ArcStartDeg;
+        var startAngleRad = startAngleDeg * Math.PI / 180.0;
+        var center = new Point(
+            startPoint.X - Math.Cos(startAngleRad) * markup.Radius,
+            startPoint.Y - Math.Sin(startAngleRad) * markup.Radius);
+        var requestedSweepMagnitude = Math.Abs(arcLength) * 180.0 / (Math.PI * nextRadius);
+        var nextSweepMagnitude = Math.Clamp(requestedSweepMagnitude, MinimumArcSweepDegrees, 359.0);
+        var nextSweepDeg = markup.ArcSweepDeg < 0 ? -nextSweepMagnitude : nextSweepMagnitude;
+        var endAngleDeg = startAngleDeg + nextSweepDeg;
+        var labelOffset = markup.Vertices.Count > 2
+            ? Math.Max(0, (markup.Vertices[2] - center).Length - Math.Max(markup.Radius, 0.1))
+            : 0;
+        var midAngleDeg = startAngleDeg + nextSweepDeg / 2.0;
+
+        markup.Vertices[0] = GetPolarPoint(center, nextRadius, startAngleDeg);
+        markup.Vertices[1] = GetPolarPoint(center, nextRadius, endAngleDeg);
+
+        if (markup.Vertices.Count > 2)
+            markup.Vertices[2] = GetPolarPoint(center, nextRadius + labelOffset, midAngleDeg);
+
+        markup.Radius = nextRadius;
+        markup.ArcStartDeg = NormalizeAngleDegrees(startAngleDeg);
+        markup.ArcSweepDeg = nextSweepDeg;
+        markup.UpdateBoundingRect();
+        markup.Metadata.ModifiedUtc = DateTime.UtcNow;
+        return true;
+    }
+
     public double SnapAngleDegrees(double angleDeg, double incrementDeg)
     {
         var normalizedAngle = NormalizeAngleDegrees(angleDeg);
@@ -671,6 +706,14 @@ public sealed class MarkupInteractionService
         return markup.Type == MarkupType.Dimension &&
                string.Equals(markup.Metadata.Subject, "Angular", StringComparison.OrdinalIgnoreCase) &&
                markup.Vertices.Count >= 3;
+    }
+
+    private static bool IsArcLengthGeometryEditable(MarkupRecord markup)
+    {
+        return markup.Type == MarkupType.Dimension &&
+               string.Equals(markup.Metadata.Subject, "ArcLength", StringComparison.OrdinalIgnoreCase) &&
+               markup.Vertices.Count >= 3 &&
+               markup.Radius > 0.1;
     }
 
     private static Point TransformPoint(Point point, Rect originalBounds, Rect targetBounds)

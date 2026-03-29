@@ -553,13 +553,16 @@ public class MainViewModelTests
     }
 
     [Fact]
-    public void MarkupTool_SelectedArcLengthDimension_DoesNotReportGeometryEditability()
+    public void MarkupTool_SelectedArcLengthDimension_ReportsArcLengthGeometryEditability()
     {
         var vm = new MainViewModel();
         var markup = new MarkupRecord
         {
             Type = MarkupType.Dimension,
-            Vertices = { new Point(0, 0), new Point(12, 0), new Point(6, 3) },
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
             TextContent = "12"
         };
         markup.Metadata.Subject = "ArcLength";
@@ -568,10 +571,9 @@ public class MainViewModelTests
         vm.Markups.Add(markup);
         vm.MarkupTool.SelectedMarkup = markup;
 
-        Assert.False(vm.MarkupTool.HasGeometryEditableSelection);
-        Assert.Equal(
-            "Numeric geometry editing is currently available for circle, arc, rectangle, stamp, hyperlink, box, panel, angular dimension, and line-style dimension or measurement markups only",
-            vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.True(vm.MarkupTool.HasGeometryEditableSelection);
+        Assert.Equal("Numeric edit available: arc length and radius", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.Equal($"Arc Length: 15.71{Environment.NewLine}Radius: 10{Environment.NewLine}Start: 0 deg{Environment.NewLine}Sweep: 90 deg", vm.MarkupTool.SelectedMarkupGeometryDetails);
     }
 
     [Fact]

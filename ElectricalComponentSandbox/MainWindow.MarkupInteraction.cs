@@ -386,6 +386,7 @@ public partial class MainWindow
             MarkupType.Rectangle or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel => TryEditSelectedBoundsGeometry(selectedMarkup, input),
             MarkupType.Circle => TryEditSelectedCircleGeometry(selectedMarkup, input),
             MarkupType.Arc => TryEditSelectedArcGeometry(selectedMarkup, input),
+            MarkupType.Dimension or MarkupType.Measurement when IsArcLengthDimension(selectedMarkup) => TryEditSelectedArcLengthGeometry(selectedMarkup, input),
             MarkupType.Dimension or MarkupType.Measurement when IsAngularDimension(selectedMarkup) => TryEditSelectedAngularGeometry(selectedMarkup, input),
             MarkupType.Dimension or MarkupType.Measurement => TryEditSelectedLineGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
             _ => ShowUnsupportedGeometryEditMessage(showFeedbackIfUnsupported)
@@ -541,6 +542,41 @@ public partial class MainWindow
             before,
             $"Edit {markup.TypeDisplayText.ToLowerInvariant()} geometry",
             FormattableString.Invariant($"Type: {markup.TypeDisplayText}, Angle: {Math.Abs(markup.ArcSweepDeg):0.##}, Radius: {markup.Radius:0.##}"));
+    }
+
+    private bool TryEditSelectedArcLengthGeometry(MarkupRecord markup, string input)
+    {
+        if (markup.Vertices.Count < 3)
+            return false;
+
+        if (!TryParseMarkupGeometryAssignments(input, out var values, out var errorMessage))
+        {
+            MessageBox.Show(errorMessage, $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return true;
+        }
+
+        var currentArcLength = Math.Abs(markup.ArcSweepDeg) * Math.PI / 180.0 * markup.Radius;
+        if (!TryGetAssignment(values, "arclength", currentArcLength, out var nextArcLength) || nextArcLength <= 0)
+        {
+            MessageBox.Show("Arc length must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return true;
+        }
+
+        if (!TryGetAssignment(values, "radius", markup.Radius, out var nextRadius) || nextRadius <= 0)
+        {
+            MessageBox.Show("Radius must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return true;
+        }
+
+        var before = _markupInteractionService.Capture(markup);
+        if (!_markupInteractionService.SetArcLengthGeometry(markup, nextArcLength, nextRadius))
+            return false;
+
+        return CommitMarkupGeometryEdit(
+            markup,
+            before,
+            $"Edit {markup.TypeDisplayText.ToLowerInvariant()} geometry",
+            FormattableString.Invariant($"Type: {markup.TypeDisplayText}, Arc Length: {nextArcLength:0.##}, Radius: {markup.Radius:0.##}, Sweep: {markup.ArcSweepDeg:0.##}"));
     }
 
     private bool TryEditSelectedBoundsGeometry(MarkupRecord markup, string input)
@@ -954,7 +990,7 @@ public partial class MainWindow
     {
         if (showFeedbackIfUnsupported)
         {
-            MessageBox.Show("Numeric geometry editing is currently available for circle, arc, rectangle, stamp, hyperlink, box, panel, angular dimension, and line-style dimension or measurement markups. Arc-length dimension variants remain excluded.", "Edit Geometry",
+            MessageBox.Show("Numeric geometry editing is currently available for circle, arc, rectangle, stamp, hyperlink, box, panel, angular dimension, arc-length dimension, and line-style dimension or measurement markups.", "Edit Geometry",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
@@ -979,6 +1015,16 @@ public partial class MainWindow
         return string.Join(Environment.NewLine, new[]
         {
             FormattableString.Invariant($"angle={Math.Abs(markup.ArcSweepDeg):0.##}"),
+            FormattableString.Invariant($"radius={markup.Radius:0.##}")
+        });
+    }
+
+    private static string BuildArcLengthGeometryDefaultValue(MarkupRecord markup)
+    {
+        var arcLength = Math.Abs(markup.ArcSweepDeg) * Math.PI / 180.0 * markup.Radius;
+        return string.Join(Environment.NewLine, new[]
+        {
+            FormattableString.Invariant($"arclength={arcLength:0.##}"),
             FormattableString.Invariant($"radius={markup.Radius:0.##}")
         });
     }
@@ -1012,6 +1058,14 @@ public partial class MainWindow
                 return true;
             case MarkupType.Dimension:
             case MarkupType.Measurement:
+                if (IsArcLengthDimension(markup))
+                {
+                    title = $"Edit {markup.TypeDisplayText} Geometry";
+                    prompt = "Enter arc length and optional radius. The arc center and start angle stay fixed.\n\nExamples:\narclength=24\nradius=12";
+                    defaultValue = BuildArcLengthGeometryDefaultValue(markup);
+                    return true;
+                }
+
                 if (IsAngularDimension(markup))
                 {
                     title = $"Edit {markup.TypeDisplayText} Geometry";
@@ -1020,7 +1074,7 @@ public partial class MainWindow
                     return true;
                 }
 
-                if (IsArcLengthDimension(markup) || markup.Vertices.Count < 2 || markup.Vertices.Count > 3)
+                if (markup.Vertices.Count < 2 || markup.Vertices.Count > 3)
                     return false;
 
                 var start = markup.Vertices[0];

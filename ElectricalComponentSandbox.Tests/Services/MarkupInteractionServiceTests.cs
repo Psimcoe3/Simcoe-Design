@@ -636,6 +636,33 @@ public class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void SetArcLengthGeometry_ArcLengthDimension_RepositionsEndPointAndAnchor()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+        markup.UpdateBoundingRect();
+
+        var result = _sut.SetArcLengthGeometry(markup, 6.283185307179586, 12);
+
+        Assert.True(result);
+        Assert.Equal(new Point(12, 0), markup.Vertices[0]);
+        Assert.Equal(10.392304845413264, markup.Vertices[1].X, 6);
+        Assert.Equal(6, markup.Vertices[1].Y, 6);
+        Assert.Equal(11.59110991546882, markup.Vertices[2].X, 6);
+        Assert.Equal(3.105828541230249, markup.Vertices[2].Y, 6);
+        Assert.Equal(12, markup.Radius, 6);
+        Assert.Equal(0, markup.ArcStartDeg, 6);
+        Assert.Equal(30, markup.ArcSweepDeg, 6);
+    }
+
+    [Fact]
     public void SetLineGeometry_ArcLengthDimension_ReturnsFalse()
     {
         var markup = new MarkupRecord

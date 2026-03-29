@@ -450,6 +450,18 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
             if (_selectedMarkup.Type is MarkupType.Dimension or MarkupType.Measurement)
             {
+                if (IsArcLengthDimension(_selectedMarkup))
+                {
+                    var arcLength = Math.Abs(_selectedMarkup.ArcSweepDeg) * Math.PI / 180.0 * _selectedMarkup.Radius;
+                    return string.Join(Environment.NewLine, new[]
+                    {
+                        $"Arc Length: {FormatGeometryValue(arcLength)}",
+                        $"Radius: {FormatGeometryValue(_selectedMarkup.Radius)}",
+                        $"Start: {FormatGeometryValue(NormalizeMarkupAngle(_selectedMarkup.ArcStartDeg))} deg",
+                        $"Sweep: {FormatGeometryValue(_selectedMarkup.ArcSweepDeg)} deg"
+                    });
+                }
+
                 if (IsAngularDimension(_selectedMarkup))
                 {
                     return string.Join(Environment.NewLine, new[]
@@ -893,8 +905,8 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         if (markup.Type != MarkupType.Dimension)
             return false;
 
-        if (string.Equals(markup.Metadata.Subject, "ArcLength", StringComparison.OrdinalIgnoreCase))
-            return false;
+        if (IsArcLengthDimension(markup))
+            return markup.Vertices.Count >= 3 && markup.Radius > 0.1;
 
         if (IsAngularDimension(markup))
             return markup.Vertices.Count >= 3;
@@ -904,6 +916,9 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
     private static string GetLineGeometrySummary(MarkupRecord markup)
     {
+        if (IsArcLengthDimension(markup))
+            return "Numeric edit available: arc length and radius";
+
         if (IsAngularDimension(markup))
             return "Numeric edit available: angle and radius";
 
@@ -924,6 +939,9 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
     private static bool IsAngularDimension(MarkupRecord markup)
         => markup.Type == MarkupType.Dimension && string.Equals(markup.Metadata.Subject, "Angular", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsArcLengthDimension(MarkupRecord markup)
+        => markup.Type == MarkupType.Dimension && string.Equals(markup.Metadata.Subject, "ArcLength", StringComparison.OrdinalIgnoreCase);
 
     private void OnCountsChanged()
     {

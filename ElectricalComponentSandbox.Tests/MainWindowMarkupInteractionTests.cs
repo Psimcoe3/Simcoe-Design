@@ -423,6 +423,72 @@ public class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_ArcLengthDimension_UpdatesGeometryAndSupportsUndo()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var markup = new MarkupRecord
+            {
+                Type = MarkupType.Dimension,
+                Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90,
+                Metadata = new MarkupMetadata { Subject = "ArcLength" }
+            };
+            markup.UpdateBoundingRect();
+            viewModel.Markups.Add(markup);
+            viewModel.MarkupTool.SelectedMarkup = markup;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var edited = window.ExecuteEditMarkupGeometryCommandForTesting("arclength=6.283185307179586\nradius=12");
+                var editedState = (
+                    markup.Vertices[0],
+                    markup.Vertices[1],
+                    markup.Vertices[2],
+                    markup.Radius,
+                    markup.ArcStartDeg,
+                    markup.ArcSweepDeg);
+
+                viewModel.Undo();
+                var undoneState = (
+                    markup.Vertices[0],
+                    markup.Vertices[1],
+                    markup.Vertices[2],
+                    markup.Radius,
+                    markup.ArcStartDeg,
+                    markup.ArcSweepDeg);
+
+                return (edited, editedState, undoneState);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.edited);
+        Assert.Equal(new Point(12, 0), outcome.editedState.Item1);
+        Assert.Equal(10.392304845413264, outcome.editedState.Item2.X, 6);
+        Assert.Equal(6, outcome.editedState.Item2.Y, 6);
+        Assert.Equal(11.59110991546882, outcome.editedState.Item3.X, 6);
+        Assert.Equal(3.105828541230249, outcome.editedState.Item3.Y, 6);
+        Assert.Equal(12, outcome.editedState.Item4, 6);
+        Assert.Equal(0, outcome.editedState.Item5, 6);
+        Assert.Equal(30, outcome.editedState.Item6, 6);
+
+        Assert.Equal(new Point(10, 0), outcome.undoneState.Item1);
+        Assert.Equal(new Point(0, 10), outcome.undoneState.Item2);
+        Assert.Equal(new Point(7.0710678118654755, 7.0710678118654755), outcome.undoneState.Item3);
+        Assert.Equal(10, outcome.undoneState.Item4, 6);
+        Assert.Equal(0, outcome.undoneState.Item5, 6);
+        Assert.Equal(90, outcome.undoneState.Item6, 6);
+    }
+
+    [Fact]
     public void ExecuteEscapeShortcutForTesting_PendingInsertMode_CancelsPendingInsertion()
     {
         var outcome = RunOnSta(() =>
