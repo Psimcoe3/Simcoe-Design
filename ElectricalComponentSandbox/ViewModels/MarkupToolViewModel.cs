@@ -71,6 +71,8 @@ public sealed class MarkupReplyItemViewModel
     public required string Id { get; init; }
     public required string Author { get; init; }
     public required string Text { get; init; }
+    public required bool IsAuditEntry { get; init; }
+    public required string EntryTypeDisplayText { get; init; }
     public required string CreatedDisplayText { get; init; }
     public required string ModifiedDisplayText { get; init; }
 }
@@ -317,6 +319,10 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
     public int SelectedMarkupReplyCount => _selectedMarkup?.Replies.Count ?? 0;
 
+    public int SelectedMarkupAuditReplyCount => _selectedMarkup?.Replies.Count(reply => reply.IsAuditEntry) ?? 0;
+
+    public int SelectedMarkupManualReplyCount => _selectedMarkup?.Replies.Count(reply => !reply.IsAuditEntry) ?? 0;
+
     public string SelectedMarkupReplySummary
     {
         get
@@ -331,8 +337,9 @@ public class MarkupToolViewModel : INotifyPropertyChanged
                 .OrderByDescending(reply => reply.ModifiedUtc)
                 .First();
 
-            var replyLabel = SelectedMarkupReplyCount == 1 ? "reply" : "replies";
-            return $"{SelectedMarkupReplyCount} {replyLabel}. Latest by {latest.Author} on {latest.ModifiedDisplayText}";
+            var entryLabel = SelectedMarkupReplyCount == 1 ? "entry" : "entries";
+            var latestLabel = latest.IsAuditEntry ? "audit update" : "reply";
+            return $"{SelectedMarkupReplyCount} {entryLabel}: {SelectedMarkupManualReplyCount} replies, {SelectedMarkupAuditReplyCount} audit updates. Latest {latestLabel} by {latest.Author} on {latest.ModifiedDisplayText}";
         }
     }
 
@@ -820,6 +827,8 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         RebuildSelectedMarkupReplies();
         OnPropertyChanged(nameof(HasSelectedMarkupReplies));
         OnPropertyChanged(nameof(SelectedMarkupReplyCount));
+        OnPropertyChanged(nameof(SelectedMarkupAuditReplyCount));
+        OnPropertyChanged(nameof(SelectedMarkupManualReplyCount));
         OnPropertyChanged(nameof(SelectedMarkupReplySummary));
         OnPropertyChanged(nameof(SelectedMarkupReplySearchSummary));
         OnPropertyChanged(nameof(HasStructuredSelection));
@@ -874,6 +883,8 @@ public class MarkupToolViewModel : INotifyPropertyChanged
                 Id = reply.Id,
                 Author = string.IsNullOrWhiteSpace(reply.Author) ? "Unknown" : reply.Author,
                 Text = reply.Text,
+                IsAuditEntry = reply.IsAuditEntry,
+                EntryTypeDisplayText = reply.EntryTypeDisplayText,
                 CreatedDisplayText = reply.CreatedDisplayText,
                 ModifiedDisplayText = reply.ModifiedDisplayText
             });

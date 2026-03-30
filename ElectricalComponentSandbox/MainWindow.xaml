@@ -1030,12 +1030,46 @@
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
                                                     <Border Margin="0,0,0,6" Padding="6" Background="#FFFFFFFF" BorderBrush="#FFD8DEE4" BorderThickness="1">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <Setter Property="Background" Value="#FFFFFFFF"/>
+                                                                <Setter Property="BorderBrush" Value="#FFD8DEE4"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsAuditEntry}" Value="True">
+                                                                        <Setter Property="Background" Value="#FFF4F7FA"/>
+                                                                        <Setter Property="BorderBrush" Value="#FFB8C2CC"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
                                                         <StackPanel>
-                                                            <TextBlock Margin="0,0,0,2">
-                                                                <Run Text="{Binding Author}" FontWeight="SemiBold"/>
-                                                                <Run Text="  "/>
-                                                                <Run Text="{Binding CreatedDisplayText}" Foreground="Gray"/>
-                                                            </TextBlock>
+                                                            <DockPanel Margin="0,0,0,4" LastChildFill="False">
+                                                                <Border Padding="6,1"
+                                                                        CornerRadius="3"
+                                                                        Background="#FFEAF2FF"
+                                                                        BorderBrush="#FFBDD3FF"
+                                                                        BorderThickness="1"
+                                                                        DockPanel.Dock="Left">
+                                                                    <Border.Style>
+                                                                        <Style TargetType="Border">
+                                                                            <Setter Property="Background" Value="#FFEAF2FF"/>
+                                                                            <Setter Property="BorderBrush" Value="#FFBDD3FF"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding IsAuditEntry}" Value="True">
+                                                                                    <Setter Property="Background" Value="#FFE9EEF3"/>
+                                                                                    <Setter Property="BorderBrush" Value="#FFBCC7D2"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </Border.Style>
+                                                                    <TextBlock Text="{Binding EntryTypeDisplayText}" FontSize="10" FontWeight="SemiBold" Foreground="#FF22303C"/>
+                                                                </Border>
+                                                                <TextBlock Margin="8,0,0,0" VerticalAlignment="Center">
+                                                                    <Run Text="{Binding Author}" FontWeight="SemiBold"/>
+                                                                    <Run Text="  "/>
+                                                                    <Run Text="{Binding CreatedDisplayText}" Foreground="Gray"/>
+                                                                </TextBlock>
+                                                            </DockPanel>
                                                             <TextBlock Text="{Binding Text}" TextWrapping="Wrap"/>
                                                         </StackPanel>
                                                     </Border>

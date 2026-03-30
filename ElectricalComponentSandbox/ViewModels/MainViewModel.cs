@@ -779,6 +779,7 @@ public class MainViewModel : INotifyPropertyChanged
         {
             Author = author,
             Text = auditText,
+            IsAuditEntry = true,
             CreatedUtc = utcNow,
             ModifiedUtc = utcNow
         };
@@ -798,6 +799,7 @@ public class MainViewModel : INotifyPropertyChanged
         {
             Author = author,
             Text = $"Assignment changed: {oldDisplay} -> {newDisplay}",
+            IsAuditEntry = true,
             CreatedUtc = utcNow,
             ModifiedUtc = utcNow
         };

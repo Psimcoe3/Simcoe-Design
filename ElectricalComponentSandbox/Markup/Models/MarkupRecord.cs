@@ -90,8 +90,10 @@ public class MarkupReply
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Author { get; set; } = string.Empty;
     public string Text { get; set; } = string.Empty;
+    public bool IsAuditEntry { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime ModifiedUtc { get; set; } = DateTime.UtcNow;
+    public string EntryTypeDisplayText => IsAuditEntry ? "Audit" : "Reply";
     public string CreatedDisplayText => FormatUtcForDisplay(CreatedUtc);
     public string ModifiedDisplayText => FormatUtcForDisplay(ModifiedUtc);
 
