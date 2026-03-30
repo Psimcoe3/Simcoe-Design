@@ -12,6 +12,28 @@ public partial class MainWindow
 {
     // ── Move / Rotate / Mirror Commands ──────────────────────────────────────
 
+    internal bool TryMoveSelectedComponentsForTesting(Vector3D deltaOrAbsolutePosition, bool isAbsolute)
+        => TryMoveSelectedComponents(deltaOrAbsolutePosition, isAbsolute, showFeedbackIfNoSelection: false);
+
+    internal bool TryRotateSelectedComponentsForTesting(double angle)
+        => TryRotateSelectedComponents(angle, showFeedbackIfNoSelection: false);
+
+    internal bool TryMirrorSelectedComponentsAcrossXAxisForTesting()
+        => TryMirrorSelectedComponents(MirrorSelectionMode.XAxis, null, showFeedbackIfNoSelection: false, showFeedbackIfInvalid: false);
+
+    internal bool TryMirrorSelectedComponentsAcrossZAxisForTesting()
+        => TryMirrorSelectedComponents(MirrorSelectionMode.ZAxis, null, showFeedbackIfNoSelection: false, showFeedbackIfInvalid: false);
+
+    internal bool TryMirrorSelectedComponentsAroundPointForTesting(double x, double z)
+        => TryMirrorSelectedComponents(MirrorSelectionMode.Point, new Point(x, z), showFeedbackIfNoSelection: false, showFeedbackIfInvalid: false);
+
+    private enum MirrorSelectionMode
+    {
+        XAxis,
+        ZAxis,
+        Point
+    }
+
     private void MoveComponent_Click(object sender, RoutedEventArgs e)
     {
         var selectedComponents = GetSelectedComponents();
@@ -52,6 +74,31 @@ public partial class MainWindow
         else
             newPrimaryPos = new Point3D(src.Position.X + dx, src.Position.Y + dy, src.Position.Z + dz);
 
+        TryMoveSelectedComponents(new Vector3D(newPrimaryPos.X, newPrimaryPos.Y, newPrimaryPos.Z), isAbsolute, showFeedbackIfNoSelection: true);
+    }
+
+    private bool TryMoveSelectedComponents(Vector3D deltaOrAbsolutePosition, bool isAbsolute, bool showFeedbackIfNoSelection)
+    {
+        var selectedComponents = GetSelectedComponents();
+        if (selectedComponents.Count == 0)
+        {
+            if (showFeedbackIfNoSelection)
+            {
+                MessageBox.Show("Select one or more components first.", "Move",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        var src = _viewModel.SelectedComponent ?? selectedComponents[0];
+        var newPrimaryPos = isAbsolute
+            ? new Point3D(deltaOrAbsolutePosition.X, deltaOrAbsolutePosition.Y, deltaOrAbsolutePosition.Z)
+            : new Point3D(
+                src.Position.X + deltaOrAbsolutePosition.X,
+                src.Position.Y + deltaOrAbsolutePosition.Y,
+                src.Position.Z + deltaOrAbsolutePosition.Z);
+
         var delta = newPrimaryPos - src.Position;
         var actions = selectedComponents
             .Select(component => (IUndoableAction)new MoveComponentAction(component, component.Position, component.Position + delta))
@@ -63,6 +110,7 @@ public partial class MainWindow
         QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
         ActionLogService.Instance.Log(LogCategory.Edit, actions.Count == 1 ? "Component moved" : "Components moved",
             $"Primary: {src.Name}, Count: {selectedComponents.Count}, Delta: ({delta.X:F2}, {delta.Y:F2}, {delta.Z:F2})");
+        return true;
     }
 
     private void RotateComponent_Click(object sender, RoutedEventArgs e)
@@ -82,6 +130,24 @@ public partial class MainWindow
             "90");
         if (!double.TryParse(input, out double angle)) return;
 
+        TryRotateSelectedComponents(angle, showFeedbackIfNoSelection: true);
+    }
+
+    private bool TryRotateSelectedComponents(double angle, bool showFeedbackIfNoSelection)
+    {
+        var selectedComponents = GetSelectedComponents();
+        if (selectedComponents.Count == 0)
+        {
+            if (showFeedbackIfNoSelection)
+            {
+                MessageBox.Show("Select one or more components first.", "Rotate",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        var src = _viewModel.SelectedComponent ?? selectedComponents[0];
         var actions = selectedComponents
             .Select(component =>
             {
@@ -97,6 +163,7 @@ public partial class MainWindow
         QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
         ActionLogService.Instance.Log(LogCategory.Edit, actions.Count == 1 ? "Component rotated" : "Components rotated",
             $"Primary: {src.Name}, Count: {selectedComponents.Count}, Angle: {angle}°");
+        return true;
     }
 
     private void MirrorComponent_Click(object sender, RoutedEventArgs e)
@@ -115,19 +182,15 @@ public partial class MainWindow
             "1");
         if (input == null) return;
 
-        Func<ElectricalComponent, (Point3D position, Vector3D scale)> mirrorTransform;
-
         if (input == "1")
         {
-            mirrorTransform = component =>
-                (new Point3D(-component.Position.X, component.Position.Y, component.Position.Z),
-                 new Vector3D(-component.Scale.X, component.Scale.Y, component.Scale.Z));
+            TryMirrorSelectedComponents(MirrorSelectionMode.XAxis, null, showFeedbackIfNoSelection: true, showFeedbackIfInvalid: true);
+            return;
         }
         else if (input == "2")
         {
-            mirrorTransform = component =>
-                (new Point3D(component.Position.X, component.Position.Y, -component.Position.Z),
-                 new Vector3D(component.Scale.X, component.Scale.Y, -component.Scale.Z));
+            TryMirrorSelectedComponents(MirrorSelectionMode.ZAxis, null, showFeedbackIfNoSelection: true, showFeedbackIfInvalid: true);
+            return;
         }
         else
         {
@@ -141,10 +204,50 @@ public partial class MainWindow
                 return;
             }
 
-            mirrorTransform = component =>
-                (new Point3D(2 * mx - component.Position.X, component.Position.Y, 2 * mz - component.Position.Z),
-                 component.Scale);
+            TryMirrorSelectedComponents(MirrorSelectionMode.Point, new Point(mx, mz), showFeedbackIfNoSelection: true, showFeedbackIfInvalid: true);
+            return;
         }
+    }
+
+    private bool TryMirrorSelectedComponents(MirrorSelectionMode mode, Point? point, bool showFeedbackIfNoSelection, bool showFeedbackIfInvalid)
+    {
+        var selectedComponents = GetSelectedComponents();
+        if (selectedComponents.Count == 0)
+        {
+            if (showFeedbackIfNoSelection)
+            {
+                MessageBox.Show("Select one or more components first.", "Mirror",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        if (mode == MirrorSelectionMode.Point && point == null)
+        {
+            if (showFeedbackIfInvalid)
+            {
+                MessageBox.Show("Invalid mirror point. Use format: X, Z", "Mirror",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
+            return false;
+        }
+
+        var src = _viewModel.SelectedComponent ?? selectedComponents[0];
+        Func<ElectricalComponent, (Point3D position, Vector3D scale)> mirrorTransform = mode switch
+        {
+            MirrorSelectionMode.XAxis => component =>
+                (new Point3D(-component.Position.X, component.Position.Y, component.Position.Z),
+                 new Vector3D(-component.Scale.X, component.Scale.Y, component.Scale.Z)),
+            MirrorSelectionMode.ZAxis => component =>
+                (new Point3D(component.Position.X, component.Position.Y, -component.Position.Z),
+                 new Vector3D(component.Scale.X, component.Scale.Y, -component.Scale.Z)),
+            MirrorSelectionMode.Point => component =>
+                (new Point3D(2 * point!.Value.X - component.Position.X, component.Position.Y, 2 * point.Value.Y - component.Position.Z),
+                 component.Scale),
+            _ => throw new InvalidOperationException("Unsupported mirror mode.")
+        };
 
         var actions = selectedComponents
             .Select(component =>
@@ -160,6 +263,7 @@ public partial class MainWindow
         QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
         ActionLogService.Instance.Log(LogCategory.Edit, actions.Count == 1 ? "Component mirrored" : "Components mirrored",
             $"Primary: {src.Name}, Count: {selectedComponents.Count}");
+        return true;
     }
 
     // ── Schedule Table Annotation ────────────────────────────────────────────
@@ -312,9 +416,10 @@ public partial class MainWindow
 
     private void RectangularArray_Click(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.SelectedComponent == null)
+        var selectedComponents = GetSelectedComponents();
+        if (selectedComponents.Count == 0)
         {
-            MessageBox.Show("Select a component first.", "Rectangular Array",
+            MessageBox.Show("Select one or more components first.", "Rectangular Array",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -341,40 +446,48 @@ public partial class MainWindow
             ColumnSpacing = colSpacing
         };
 
+        CreateRectangularArrayForTesting(rows, cols, rowSpacing, colSpacing);
+    }
+
+    internal IReadOnlyList<ElectricalComponent> CreateRectangularArrayForTesting(int rows, int columns, double rowSpacing, double columnSpacing)
+    {
+        var selectedComponents = GetSelectedComponents();
+        if (selectedComponents.Count == 0)
+            return Array.Empty<ElectricalComponent>();
+
+        var src = _viewModel.SelectedComponent ?? selectedComponents[0];
+        var arrayParams = new RectangularArrayParams
+        {
+            Rows = rows,
+            Columns = columns,
+            RowSpacing = rowSpacing,
+            ColumnSpacing = columnSpacing
+        };
+
         var arrayService = new ArrayService();
         var placements = arrayService.ComputeRectangularArray(
-            _viewModel.SelectedComponent.Position,
-            _viewModel.SelectedComponent.Rotation,
+            src.Position,
+            src.Rotation,
             arrayParams);
 
-        var src = _viewModel.SelectedComponent;
-        var actions = new System.Collections.Generic.List<IUndoableAction>();
+        var copies = CreateTranslatedArrayCopies(selectedComponents, src, placements, " (Array)");
+        if (copies.Count == 0)
+            return copies;
 
-        foreach (var placement in placements)
-        {
-            var copy = ElectricalComponentCatalog.CreateDefaultComponent(src.Type);
-            CopyComponentProperties(src, copy);
-            copy.Name = src.Name + $" (Array)";
-            copy.Position = placement.Position;
-            copy.Rotation = placement.Rotation;
-            actions.Add(new AddComponentAction(_viewModel.Components, copy));
-        }
-
-        if (actions.Count > 0)
-        {
-            _viewModel.UndoRedo.Execute(new CompositeAction(
-                $"Rectangular array {rows}x{cols}", actions));
-            QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
-            ActionLogService.Instance.Log(LogCategory.Component, "Rectangular array created",
-                $"Source: {src.Name}, Rows: {rows}, Cols: {cols}, Total: {placements.Count}");
-        }
+        ExecuteAddCopies(copies, $"Rectangular array {rows}x{columns}");
+        _viewModel.SetSelectedComponents(copies, copies[0]);
+        QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
+        ActionLogService.Instance.Log(LogCategory.Component, "Rectangular array created",
+            $"Primary: {src.Name}, SourceCount: {selectedComponents.Count}, Rows: {rows}, Cols: {columns}, Added: {copies.Count}");
+        return copies;
     }
 
     private void PolarArray_Click(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.SelectedComponent == null)
+        var selectedComponents = GetSelectedComponents();
+        if (selectedComponents.Count == 0)
         {
-            MessageBox.Show("Select a component first.", "Polar Array",
+            MessageBox.Show("Select one or more components first.", "Polar Array",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -395,39 +508,46 @@ public partial class MainWindow
 
         var polarParams = new PolarArrayParams
         {
-            Center = new Point3D(cx, _viewModel.SelectedComponent.Position.Y, cz),
+            Center = new Point3D(cx, (_viewModel.SelectedComponent ?? selectedComponents[0]).Position.Y, cz),
             Count = count,
             TotalAngleDegrees = totalAngle,
             RotateItems = true
         };
 
+        CreatePolarArrayForTesting(polarParams.Center, count, totalAngle, rotateItems: true);
+    }
+
+    internal IReadOnlyList<ElectricalComponent> CreatePolarArrayForTesting(Point3D center, int count, double totalAngleDegrees, bool rotateItems)
+    {
+        var selectedComponents = GetSelectedComponents();
+        if (selectedComponents.Count == 0)
+            return Array.Empty<ElectricalComponent>();
+
+        var src = _viewModel.SelectedComponent ?? selectedComponents[0];
+        var polarParams = new PolarArrayParams
+        {
+            Center = new Point3D(center.X, src.Position.Y, center.Z),
+            Count = count,
+            TotalAngleDegrees = totalAngleDegrees,
+            RotateItems = rotateItems
+        };
+
         var arrayService = new ArrayService();
         var placements = arrayService.ComputePolarArray(
-            _viewModel.SelectedComponent.Position,
-            _viewModel.SelectedComponent.Rotation,
+            src.Position,
+            src.Rotation,
             polarParams);
 
-        var src = _viewModel.SelectedComponent;
-        var actions = new System.Collections.Generic.List<IUndoableAction>();
+        var copies = CreatePolarArrayCopies(selectedComponents, src, polarParams.Center, placements, rotateItems, " (Array)");
+        if (copies.Count == 0)
+            return copies;
 
-        foreach (var placement in placements)
-        {
-            var copy = ElectricalComponentCatalog.CreateDefaultComponent(src.Type);
-            CopyComponentProperties(src, copy);
-            copy.Name = src.Name + $" (Array)";
-            copy.Position = placement.Position;
-            copy.Rotation = placement.Rotation;
-            actions.Add(new AddComponentAction(_viewModel.Components, copy));
-        }
-
-        if (actions.Count > 0)
-        {
-            _viewModel.UndoRedo.Execute(new CompositeAction(
-                $"Polar array {count} items", actions));
-            QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
-            ActionLogService.Instance.Log(LogCategory.Component, "Polar array created",
-                $"Source: {src.Name}, Count: {count}, Angle: {totalAngle}°");
-        }
+        ExecuteAddCopies(copies, $"Polar array {count} items");
+        _viewModel.SetSelectedComponents(copies, copies[0]);
+        QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
+        ActionLogService.Instance.Log(LogCategory.Component, "Polar array created",
+            $"Primary: {src.Name}, SourceCount: {selectedComponents.Count}, Count: {count}, Angle: {totalAngleDegrees}°, Added: {copies.Count}");
+        return copies;
     }
 
     private static void CopyComponentProperties(ElectricalComponent src, ElectricalComponent copy)
@@ -441,64 +561,156 @@ public partial class MainWindow
         copy.Parameters.Elevation = src.Parameters.Elevation;
         copy.Parameters.Material = src.Parameters.Material;
         copy.Parameters.Manufacturer = src.Parameters.Manufacturer;
+        copy.Parameters.PartNumber = src.Parameters.PartNumber;
+        copy.Parameters.ReferenceUrl = src.Parameters.ReferenceUrl;
         copy.Parameters.Color = src.Parameters.Color;
+        copy.Parameters.CatalogWidth = src.Parameters.CatalogWidth;
+        copy.Parameters.CatalogHeight = src.Parameters.CatalogHeight;
+        copy.Parameters.CatalogDepth = src.Parameters.CatalogDepth;
+        copy.Parameters.LineWeightOverride = src.Parameters.LineWeightOverride;
+        copy.Parameters.LineTypeOverride = src.Parameters.LineTypeOverride;
+        copy.Parameters.ColorOverride = src.Parameters.ColorOverride;
     }
 
     // ── Duplicate Component ─────────────────────────────────────────────────
 
     private void DuplicateComponent_Click(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.SelectedComponent == null)
+        if (GetSelectedComponents().Count == 0)
         {
-            MessageBox.Show("Select a component first.", "Duplicate",
+            MessageBox.Show("Select one or more components first.", "Duplicate",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        var src = _viewModel.SelectedComponent;
-        var copy = ElectricalComponentCatalog.CreateDefaultComponent(src.Type);
-        copy.Name = src.Name + " (Copy)";
-        copy.LayerId = src.LayerId;
-        copy.Position = new Point3D(src.Position.X + 2, src.Position.Y, src.Position.Z + 2);
-        copy.Rotation = src.Rotation;
-        copy.Scale = src.Scale;
-        copy.Parameters.Width = src.Parameters.Width;
-        copy.Parameters.Height = src.Parameters.Height;
-        copy.Parameters.Depth = src.Parameters.Depth;
-        copy.Parameters.Elevation = src.Parameters.Elevation;
-        copy.Parameters.Material = src.Parameters.Material;
-        copy.Parameters.Manufacturer = src.Parameters.Manufacturer;
-        copy.Parameters.Color = src.Parameters.Color;
+        DuplicateSelectedComponentsForTesting();
+    }
 
-        _viewModel.UndoRedo.Execute(new AddComponentAction(_viewModel.Components, copy));
-    _viewModel.SelectSingleComponent(copy);
+    internal IReadOnlyList<ElectricalComponent> DuplicateSelectedComponentsForTesting()
+    {
+        var selectedComponents = GetSelectedComponents();
+        if (selectedComponents.Count == 0)
+            return Array.Empty<ElectricalComponent>();
+
+        var copies = selectedComponents
+            .Select(component =>
+            {
+                var copy = ElectricalComponentCatalog.CreateDefaultComponent(component.Type);
+                CopyComponentProperties(component, copy);
+                copy.Name = component.Name + " (Copy)";
+                copy.Position = new Point3D(component.Position.X + 2, component.Position.Y, component.Position.Z + 2);
+                return copy;
+            })
+            .ToList();
+
+        ExecuteAddCopies(copies, copies.Count == 1 ? "Duplicate component" : $"Duplicate {copies.Count} components");
+        _viewModel.SetSelectedComponents(copies, copies[0]);
 
         QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
-        ActionLogService.Instance.Log(LogCategory.Component, "Component duplicated",
-            $"Source: {src.Name}, Copy: {copy.Name}");
+        ActionLogService.Instance.Log(LogCategory.Component,
+            copies.Count == 1 ? "Component duplicated" : "Components duplicated",
+            $"SourceCount: {selectedComponents.Count}, Added: {copies.Count}");
+        return copies;
+    }
+
+    private void ExecuteAddCopies(IReadOnlyList<ElectricalComponent> copies, string description)
+    {
+        var actions = copies
+            .Select(copy => (IUndoableAction)new AddComponentAction(_viewModel.Components, copy))
+            .ToList();
+
+        if (actions.Count == 1)
+        {
+            _viewModel.UndoRedo.Execute(actions[0]);
+            return;
+        }
+
+        if (actions.Count > 1)
+            _viewModel.UndoRedo.Execute(new CompositeAction(description, actions));
+    }
+
+    private static List<ElectricalComponent> CreateTranslatedArrayCopies(
+        IReadOnlyList<ElectricalComponent> selectedComponents,
+        ElectricalComponent primaryComponent,
+        IReadOnlyList<ArrayPlacement> placements,
+        string nameSuffix)
+    {
+        var copies = new List<ElectricalComponent>();
+
+        foreach (var placement in placements)
+        {
+            var translation = placement.Position - primaryComponent.Position;
+            foreach (var component in selectedComponents)
+            {
+                var copy = ElectricalComponentCatalog.CreateDefaultComponent(component.Type);
+                CopyComponentProperties(component, copy);
+                copy.Name = component.Name + nameSuffix;
+                copy.Position = component.Position + translation;
+                copy.Rotation = new Vector3D(
+                    component.Rotation.X + (placement.Rotation.X - primaryComponent.Rotation.X),
+                    component.Rotation.Y + (placement.Rotation.Y - primaryComponent.Rotation.Y),
+                    component.Rotation.Z + (placement.Rotation.Z - primaryComponent.Rotation.Z));
+                copies.Add(copy);
+            }
+        }
+
+        return copies;
+    }
+
+    private static List<ElectricalComponent> CreatePolarArrayCopies(
+        IReadOnlyList<ElectricalComponent> selectedComponents,
+        ElectricalComponent primaryComponent,
+        Point3D center,
+        IReadOnlyList<ArrayPlacement> placements,
+        bool rotateItems,
+        string nameSuffix)
+    {
+        var copies = new List<ElectricalComponent>();
+        var sourceAngle = Math.Atan2(primaryComponent.Position.Z - center.Z, primaryComponent.Position.X - center.X);
+
+        foreach (var placement in placements)
+        {
+            var placementAngle = Math.Atan2(placement.Position.Z - center.Z, placement.Position.X - center.X);
+            var angleDeltaDegrees = (placementAngle - sourceAngle) * 180.0 / Math.PI;
+            var rotationDeltaY = rotateItems ? placement.Rotation.Y - primaryComponent.Rotation.Y : 0.0;
+
+            foreach (var component in selectedComponents)
+            {
+                var copy = ElectricalComponentCatalog.CreateDefaultComponent(component.Type);
+                CopyComponentProperties(component, copy);
+                copy.Name = component.Name + nameSuffix;
+                copy.Position = RotatePointAroundCenter(component.Position, center, angleDeltaDegrees);
+                copy.Rotation = new Vector3D(component.Rotation.X, component.Rotation.Y + rotationDeltaY, component.Rotation.Z);
+                copies.Add(copy);
+            }
+        }
+
+        return copies;
+    }
+
+    private static Point3D RotatePointAroundCenter(Point3D point, Point3D center, double angleDegrees)
+    {
+        var angleRadians = angleDegrees * Math.PI / 180.0;
+        var dx = point.X - center.X;
+        var dz = point.Z - center.Z;
+        var cos = Math.Cos(angleRadians);
+        var sin = Math.Sin(angleRadians);
+
+        return new Point3D(
+            center.X + dx * cos - dz * sin,
+            point.Y,
+            center.Z + dx * sin + dz * cos);
     }
 
     // ── Measurement Tools ───────────────────────────────────────────────────
 
-    private void MeasureDistance_Click(object sender, RoutedEventArgs e)
+    internal bool TryMeasureDistanceForTesting(out (string FirstName, string SecondName, double Distance2D, double Distance3D, double DeltaX, double DeltaY, double DeltaZ, double AngleDegrees) measurement)
     {
-        if (_viewModel.Components.Count < 2)
-        {
-            MessageBox.Show("Need at least 2 components to measure between.",
-                "Measure Distance", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        var selected = _viewModel.Components
-            .Where(c => _viewModel.SelectedComponentIds.Contains(c.Id))
-            .ToList();
-
+        var selected = GetSelectedComponents();
         if (selected.Count < 2)
         {
-            MessageBox.Show("Select 2 components to measure the distance between them.\n" +
-                "Use window/crossing selection to select multiple components.",
-                "Measure Distance", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
+            measurement = default;
+            return false;
         }
 
         var p1 = selected[0].Position;
@@ -509,33 +721,28 @@ public partial class MainWindow
         double dist3D = System.Math.Sqrt(dx * dx + dy * dy + dz * dz);
         double dist2D = System.Math.Sqrt(dx * dx + dz * dz);
 
-        var unit = _viewModel.UnitSystemName == "Metric" ? "m" : "ft";
-        MessageBox.Show(
-            $"Distance: {selected[0].Name} → {selected[1].Name}\n\n" +
-            $"  2D (plan): {dist2D:F3} {unit}\n" +
-            $"  3D:        {dist3D:F3} {unit}\n\n" +
-            $"  ΔX: {dx:F3}  ΔY: {dy:F3}  ΔZ: {dz:F3}\n" +
-            $"  Angle (plan): {System.Math.Atan2(dz, dx) * 180 / System.Math.PI:F1}°",
-            "Measure Distance", MessageBoxButton.OK, MessageBoxImage.Information);
+        measurement = (
+            selected[0].Name,
+            selected[1].Name,
+            dist2D,
+            dist3D,
+            dx,
+            dy,
+            dz,
+            System.Math.Atan2(dz, dx) * 180 / System.Math.PI);
+        return true;
     }
 
-    private void MeasureArea_Click(object sender, RoutedEventArgs e)
+    internal bool TryMeasureAreaForTesting(out (int Count, double Area) measurement)
     {
-        var selected = _viewModel.Components
-            .Where(c => _viewModel.SelectedComponentIds.Contains(c.Id))
-            .ToList();
-
+        var selected = GetSelectedComponents();
         if (selected.Count < 3)
         {
-            MessageBox.Show("Select 3+ components to compute the enclosed area.\n" +
-                "The area is calculated from the convex hull of component positions.",
-                "Measure Area", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
+            measurement = default;
+            return false;
         }
 
-        // Shoelace formula on XZ plane (plan view)
         var pts = selected.Select(c => (X: c.Position.X, Z: c.Position.Z)).ToList();
-        // Sort by angle from centroid for simple polygon
         double cx = pts.Average(p => p.X), cz = pts.Average(p => p.Z);
         pts = pts.OrderBy(p => System.Math.Atan2(p.Z - cz, p.X - cx)).ToList();
 
@@ -546,11 +753,51 @@ public partial class MainWindow
             area += pts[i].X * pts[j].Z;
             area -= pts[j].X * pts[i].Z;
         }
-        area = System.Math.Abs(area) / 2.0;
+
+        measurement = (selected.Count, System.Math.Abs(area) / 2.0);
+        return true;
+    }
+
+    private void MeasureDistance_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.Components.Count < 2)
+        {
+            MessageBox.Show("Need at least 2 components to measure between.",
+                "Measure Distance", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (!TryMeasureDistanceForTesting(out var measurement))
+        {
+            MessageBox.Show("Select 2 components to measure the distance between them.\n" +
+                "Use window/crossing selection to select multiple components.",
+                "Measure Distance", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var unit = _viewModel.UnitSystemName == "Metric" ? "m" : "ft";
+        MessageBox.Show(
+            $"Distance: {measurement.FirstName} → {measurement.SecondName}\n\n" +
+            $"  2D (plan): {measurement.Distance2D:F3} {unit}\n" +
+            $"  3D:        {measurement.Distance3D:F3} {unit}\n\n" +
+            $"  ΔX: {measurement.DeltaX:F3}  ΔY: {measurement.DeltaY:F3}  ΔZ: {measurement.DeltaZ:F3}\n" +
+            $"  Angle (plan): {measurement.AngleDegrees:F1}°",
+            "Measure Distance", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void MeasureArea_Click(object sender, RoutedEventArgs e)
+    {
+        if (!TryMeasureAreaForTesting(out var measurement))
+        {
+            MessageBox.Show("Select 3+ components to compute the enclosed area.\n" +
+                "The area is calculated from the convex hull of component positions.",
+                "Measure Area", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
 
         var unit = _viewModel.UnitSystemName == "Metric" ? "m²" : "sq ft";
         MessageBox.Show(
-            $"Enclosed area ({selected.Count} points): {area:F2} {unit}",
+            $"Enclosed area ({measurement.Count} points): {measurement.Area:F2} {unit}",
             "Measure Area", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 

@@ -25,9 +25,7 @@ public partial class MainWindow
 
     private void ZoomSelection_Click(object sender, RoutedEventArgs e)
     {
-        var selected = _viewModel.Components
-            .Where(c => _viewModel.SelectedComponentIds.Contains(c.Id))
-            .ToList();
+        var selected = GetSelectedComponents();
 
         if (selected.Count == 0)
         {
@@ -118,6 +116,8 @@ public partial class MainWindow
 
     internal void UpdateStatusBar()
     {
+        var selectedComponents = GetSelectedComponents();
+
         // Zoom level
         double zoomPercent = PlanCanvasScale.ScaleX * 100;
         ZoomLevelText.Text = $"Zoom: {zoomPercent:F0}%";
@@ -126,12 +126,11 @@ public partial class MainWindow
         ComponentCountText.Text = $"Components: {_viewModel.Components.Count}";
 
         // Selection count
-        SelectionCountText.Text = $"Selected: {_viewModel.SelectedComponentIds.Count}";
+        SelectionCountText.Text = $"Selected: {selectedComponents.Count}";
 
         // Active layer
-        var activeLayer = _viewModel.SelectedComponent?.LayerId ?? "default";
-        var layerName = _viewModel.Layers.FirstOrDefault(l => l.Id == activeLayer)?.Name ?? "Default";
-        ActiveLayerText.Text = $"Layer: {layerName}";
+        var layerSummary = GetSelectedLayerSummary(selectedComponents);
+        ActiveLayerText.Text = $"Layer: {layerSummary}";
 
         // Ortho / Polar status
         if (_canvasInteractionController != null)
@@ -141,6 +140,22 @@ public partial class MainWindow
                           "";
             OrthoStatusText.Text = mode;
         }
+    }
+
+    private string GetSelectedLayerSummary(IReadOnlyList<Models.ElectricalComponent> selectedComponents)
+    {
+        if (selectedComponents.Count == 0)
+            return "Default";
+
+        var distinctLayerIds = selectedComponents
+            .Select(component => component.LayerId)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (distinctLayerIds.Count != 1)
+            return "Mixed";
+
+        return _viewModel.Layers.FirstOrDefault(layer => layer.Id == distinctLayerIds[0])?.Name ?? "Default";
     }
 
     internal void UpdateCoordinateDisplay(double docX, double docY)

@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Media3D;
@@ -22,6 +21,23 @@ public partial class MainWindow
     internal bool ExecuteEscapeShortcutForTesting()
         => TryCancelActiveInteraction(this, new RoutedEventArgs());
 
+    internal bool ApplyPropertiesForTesting()
+    {
+        var selectedComponents = GetSelectedComponents();
+        if (selectedComponents.Count == 0)
+            return false;
+
+        var component = _viewModel.SelectedComponent ?? selectedComponents[0];
+        var catalogDataCleared = selectedComponents.Count == 1
+            ? ApplySingleComponentProperties(component)
+            : ApplySharedPropertiesToSelection(selectedComponents);
+
+        UpdateViewport();
+        Update2DCanvas();
+        UpdatePropertiesPanel();
+        return catalogDataCleared;
+    }
+
     private void ApplyProperties_Click(object sender, RoutedEventArgs e)
     {
         var selectedComponents = GetSelectedComponents();
@@ -35,13 +51,7 @@ public partial class MainWindow
 
         try
         {
-            var catalogDataCleared = selectedComponents.Count == 1
-                ? ApplySingleComponentProperties(component)
-                : ApplySharedPropertiesToSelection(selectedComponents);
-
-            UpdateViewport();
-            Update2DCanvas();
-            UpdatePropertiesPanel();
+            var catalogDataCleared = ApplyPropertiesForTesting();
             ActionLogService.Instance.Log(LogCategory.Property, "Properties applied",
                 $"Primary: {component.Name}, Count: {selectedComponents.Count}");
             var successMessage = selectedComponents.Count == 1
@@ -358,24 +368,6 @@ public partial class MainWindow
 
     private void OpenReference_Click(object sender, RoutedEventArgs e)
     {
-        var url = ReferenceUrlTextBox.Text?.Trim();
-        if (string.IsNullOrWhiteSpace(url))
-        {
-            MessageBox.Show("No reference URL is set for this component.", "Reference", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        try
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = url,
-                UseShellExecute = true
-            });
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Unable to open URL: {ex.Message}", "Reference", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
+        TryOpenReferenceTarget(ReferenceUrlTextBox.Text, missingReferenceMessage: "No reference URL is set for this component.");
     }
 }

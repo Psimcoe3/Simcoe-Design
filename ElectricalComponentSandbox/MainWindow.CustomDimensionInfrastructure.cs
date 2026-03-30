@@ -137,18 +137,21 @@ public partial class MainWindow
             return;
         }
 
+        var selectedComponents = GetSelectedComponents();
+        var selectedComponentIds = selectedComponents
+            .Select(component => component.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        var selectedCount = selectedComponentIds.Count == 0
+            ? 0
+            : _customDimensionAnnotations.Count(annotation =>
+                (!string.IsNullOrEmpty(annotation.Start.ComponentId) && selectedComponentIds.Contains(annotation.Start.ComponentId)) ||
+                (!string.IsNullOrEmpty(annotation.End.ComponentId) && selectedComponentIds.Contains(annotation.End.ComponentId)));
+
         CustomDimensionModeButton.Content = _isAddingCustomDimension
             ? "Cancel Custom Dimension"
             : "Add Custom Dimension";
 
-        var selected = _viewModel?.SelectedComponent;
-        var selectedCount = selected == null
-            ? 0
-            : _customDimensionAnnotations.Count(annotation =>
-                string.Equals(annotation.Start.ComponentId, selected.Id, StringComparison.Ordinal) ||
-                string.Equals(annotation.End.ComponentId, selected.Id, StringComparison.Ordinal));
-
-        ClearCustomDimensionsButton.IsEnabled = selected == null
+        ClearCustomDimensionsButton.IsEnabled = selectedComponents.Count == 0
             ? _customDimensionAnnotations.Count > 0
             : selectedCount > 0;
 
@@ -160,9 +163,62 @@ public partial class MainWindow
             return;
         }
 
-        CustomDimensionModeTextBlock.Text = selected == null
+        CustomDimensionModeTextBlock.Text = selectedComponents.Count == 0
             ? $"Custom dimensions total: {_customDimensionAnnotations.Count}"
             : $"Custom dimensions on selected: {selectedCount}";
+    }
+
+    internal void AddCustomDimensionForTesting(ElectricalComponent? startComponent, ElectricalComponent? endComponent, char axis = 'X')
+    {
+        _customDimensionAnnotations.Add(new CustomDimensionAnnotation
+        {
+            Start = CreateCustomDimensionAnchorForTesting(startComponent),
+            End = CreateCustomDimensionAnchorForTesting(endComponent),
+            Axis = axis
+        });
+    }
+
+    internal int ClearCustomDimensionsForTesting()
+    {
+        var selectedComponents = GetSelectedComponents();
+        var removed = RemoveCustomDimensionsForSelection(selectedComponents);
+        UpdateCustomDimensionUiState();
+        return removed;
+    }
+
+    internal (string SummaryText, bool CanClear) GetCustomDimensionUiStateForTesting()
+    {
+        UpdateCustomDimensionUiState();
+        return (CustomDimensionModeTextBlock?.Text ?? string.Empty, ClearCustomDimensionsButton?.IsEnabled ?? false);
+    }
+
+    private static CustomDimensionAnchor CreateCustomDimensionAnchorForTesting(ElectricalComponent? component)
+    {
+        var worldPoint = component?.Position ?? new Point3D();
+        return new CustomDimensionAnchor
+        {
+            ComponentId = component?.Id,
+            LocalPoint = worldPoint,
+            WorldPoint = worldPoint
+        };
+    }
+
+    private int RemoveCustomDimensionsForSelection(IReadOnlyList<ElectricalComponent> selectedComponents)
+    {
+        if (selectedComponents.Count == 0)
+        {
+            var removedAll = _customDimensionAnnotations.Count;
+            _customDimensionAnnotations.Clear();
+            return removedAll;
+        }
+
+        var selectedComponentIds = selectedComponents
+            .Select(component => component.Id)
+            .ToHashSet(StringComparer.Ordinal);
+
+        return _customDimensionAnnotations.RemoveAll(annotation =>
+            (!string.IsNullOrEmpty(annotation.Start.ComponentId) && selectedComponentIds.Contains(annotation.Start.ComponentId)) ||
+            (!string.IsNullOrEmpty(annotation.End.ComponentId) && selectedComponentIds.Contains(annotation.End.ComponentId)));
     }
 
     private bool ShouldIgnoreHitVisual(Viewport3DHelper.HitResult hit)

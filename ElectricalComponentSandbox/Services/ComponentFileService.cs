@@ -34,6 +34,25 @@ public class ComponentFileService
     {
         await SerializeComponentAsync(component, filePath, includeTypeInfo: false);
     }
+
+    public async Task ExportToJsonAsync(IReadOnlyList<ElectricalComponent> components, string filePath)
+    {
+        try
+        {
+            var settings = new JsonSerializerSettings
+            {
+                TypeNameHandling = TypeNameHandling.None,
+                Formatting = Formatting.Indented
+            };
+
+            var json = JsonConvert.SerializeObject(components, settings);
+            await File.WriteAllTextAsync(filePath, json);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Failed to save component: {ex.Message}", ex);
+        }
+    }
     
     private async Task SerializeComponentAsync(ElectricalComponent component, string filePath, bool includeTypeInfo)
     {

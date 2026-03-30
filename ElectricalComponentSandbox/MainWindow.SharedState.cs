@@ -131,6 +131,7 @@ public partial class MainWindow
         _revitIntrospectionService = RevitGeometryMeasurementIntrospectionService.CreateDefault(_revitIntrospectionOptions);
         _customDimensionSnapMode = GetSelectedCustomDimensionSnapMode();
         InitializeStratusImperialDefaults();
+        InitializeReferenceMenu();
         ApplyDesktopPaneLayout();
         UpdateCustomDimensionUiState();
         InitializeCanvasInteractionController();

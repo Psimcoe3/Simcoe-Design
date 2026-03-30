@@ -205,30 +205,62 @@ public partial class MainWindow
 
     private void SelectByType_Click(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.SelectedComponent == null)
+        var matches = SelectByTypeForTesting();
+        if (matches.Count == 0)
         {
             MessageBox.Show("Select a component first to filter by its type.",
                 "Select by Type", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        var matches = _viewModel.SelectionFilter.SelectByType(
-            _viewModel.Components, _viewModel.SelectedComponent.Type);
-        ApplySelectionResult(matches, $"Selected {matches.Count} {_viewModel.SelectedComponent.Type} component(s)");
+        var selectedTypes = GetSelectedComponents().Select(component => component.Type).Distinct().ToList();
+        var typeSummary = selectedTypes.Count == 1
+            ? selectedTypes[0].ToString()
+            : string.Join(", ", selectedTypes);
+        ApplySelectionResult(matches, $"Selected {matches.Count} component(s) matching type set: {typeSummary}");
     }
 
     private void SelectSimilar_Click(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.SelectedComponent == null)
+        var matches = SelectSimilarForTesting();
+        if (matches.Count == 0)
         {
             MessageBox.Show("Select a component first.",
                 "Select Similar", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        var matches = _viewModel.SelectionFilter.SelectSimilar(
-            _viewModel.Components, _viewModel.SelectedComponent);
         ApplySelectionResult(matches, $"Selected {matches.Count} similar component(s)");
+    }
+
+    internal IReadOnlyList<ElectricalComponent> SelectByTypeForTesting()
+    {
+        var selected = GetSelectedComponents();
+        if (selected.Count == 0)
+            return Array.Empty<ElectricalComponent>();
+
+        var selectedTypes = selected.Select(component => component.Type).Distinct().ToHashSet();
+        return _viewModel.Components
+            .Where(component => selectedTypes.Contains(component.Type))
+            .ToList();
+    }
+
+    internal IReadOnlyList<ElectricalComponent> SelectSimilarForTesting()
+    {
+        var selected = GetSelectedComponents();
+        if (selected.Count == 0)
+            return Array.Empty<ElectricalComponent>();
+
+        var signatures = selected
+            .Select(component => (component.Type, component.LayerId))
+            .Distinct()
+            .ToHashSet();
+        var selectedIds = selected.Select(component => component.Id).ToHashSet(StringComparer.Ordinal);
+
+        return _viewModel.Components
+            .Where(component => signatures.Contains((component.Type, component.LayerId)) || selectedIds.Contains(component.Id))
+            .DistinctBy(component => component.Id)
+            .ToList();
     }
 
     private void QuickSelect_Click(object sender, RoutedEventArgs e)
@@ -245,16 +277,13 @@ public partial class MainWindow
 
     private void BulkEditProperties_Click(object sender, RoutedEventArgs e)
     {
-        if (!_viewModel.SelectedComponentIds.Any())
+        var selected = GetSelectedComponents();
+        if (selected.Count == 0)
         {
             MessageBox.Show("Select components first (window/crossing selection or Select by Layer/Type).",
                 "Bulk Edit", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-
-        var selected = _viewModel.Components
-            .Where(c => _viewModel.SelectedComponentIds.Contains(c.Id))
-            .ToList();
 
         var change = new BulkPropertyChange();
         bool anyChange = false;
@@ -278,6 +307,15 @@ public partial class MainWindow
             anyChange = true;
         }
 
+        // Material
+        var materialInput = PromptInput("Bulk Edit – Material",
+            "New material (leave blank to skip):", "");
+        if (!string.IsNullOrWhiteSpace(materialInput))
+        {
+            change.Material = materialInput;
+            anyChange = true;
+        }
+
         // Color
         var colorInput = PromptInput("Bulk Edit – Color",
             "New color hex (e.g. #FF0000, leave blank to skip):", "");
@@ -287,21 +325,62 @@ public partial class MainWindow
             anyChange = true;
         }
 
+        // Line weight
+        var lineWeightInput = PromptInput("Bulk Edit – Line Weight",
+            "New line weight in mm (leave blank to skip):", "");
+        if (!string.IsNullOrWhiteSpace(lineWeightInput) && double.TryParse(lineWeightInput, out double lineWeight))
+        {
+            change.LineWeight = lineWeight;
+            anyChange = true;
+        }
+
         if (!anyChange) return;
+
+        ApplyBulkPropertyChange(selected, change, showCompletionDialog: true);
+    }
+
+    internal bool ApplyBulkPropertyChangeForTesting(BulkPropertyChange change)
+        => ApplyBulkPropertyChange(GetSelectedComponents(), change, showCompletionDialog: false);
+
+    private bool ApplyBulkPropertyChange(IReadOnlyList<ElectricalComponent> selected, BulkPropertyChange change, bool showCompletionDialog)
+    {
+        if (selected.Count == 0 || !HasBulkPropertyChange(change))
+            return false;
 
         _viewModel.UndoRedo.Execute(
             new BulkPropertyChangeAction(_viewModel.SelectionFilter, selected, change));
 
         QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
 
-        var summary = new System.Text.StringBuilder();
-        summary.Append($"Updated {selected.Count} component(s):");
-        if (change.LayerId != null) summary.Append($"\n  Layer → {change.LayerId}");
-        if (change.Elevation.HasValue) summary.Append($"\n  Elevation → {change.Elevation:F1} ft");
-        if (change.Color != null) summary.Append($"\n  Color → {change.Color}");
+        ActionLogService.Instance.Log(LogCategory.Edit, "Bulk edit applied",
+            $"Count: {selected.Count}, Changes: {BuildBulkEditSummary(change)}");
 
-        MessageBox.Show(summary.ToString(),
-            "Bulk Edit Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+        if (showCompletionDialog)
+        {
+            MessageBox.Show($"Updated {selected.Count} component(s):\n{BuildBulkEditSummary(change)}",
+                "Bulk Edit Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        return true;
+    }
+
+    private static bool HasBulkPropertyChange(BulkPropertyChange change)
+        => change.LayerId != null ||
+           change.Elevation.HasValue ||
+           change.Material != null ||
+           change.Color != null ||
+           change.LineWeight.HasValue;
+
+    private static string BuildBulkEditSummary(BulkPropertyChange change)
+    {
+        var summary = new StringBuilder();
+        if (change.LayerId != null) summary.AppendLine($"  Layer -> {change.LayerId}");
+        if (change.Elevation.HasValue) summary.AppendLine($"  Elevation -> {change.Elevation:F1} ft");
+        if (change.Material != null) summary.AppendLine($"  Material -> {change.Material}");
+        if (change.Color != null) summary.AppendLine($"  Color -> {change.Color}");
+        if (change.LineWeight.HasValue) summary.AppendLine($"  Line Weight -> {change.LineWeight:F2} mm");
+
+        return summary.ToString().TrimEnd();
     }
 
     private void ApplySelectionResult(IReadOnlyList<ElectricalComponent> matches, string message)

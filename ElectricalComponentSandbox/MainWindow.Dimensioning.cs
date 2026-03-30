@@ -13,6 +13,8 @@ namespace ElectricalComponentSandbox;
 
 public partial class MainWindow
 {
+    internal void UpdatePropertiesPanelForTesting() => UpdatePropertiesPanel();
+
     private DimensionAxisOffsets GetDimensionAxisOffsets(ElectricalComponent component)
     {
         if (!_dimensionOffsetsByComponentId.TryGetValue(component.Id, out var offsets))
@@ -1052,6 +1054,7 @@ public partial class MainWindow
         ManufacturerTextBox.Text = component.Parameters.Manufacturer;
         PartNumberTextBox.Text = component.Parameters.PartNumber;
         ReferenceUrlTextBox.Text = component.Parameters.ReferenceUrl;
+        UpdateReferenceAssignmentUi(new[] { component });
         UpdateSelectedDimensionsDisplay(component);
 
         var layer = _viewModel.Layers.FirstOrDefault(current => current.Id == component.LayerId);
@@ -1094,6 +1097,7 @@ public partial class MainWindow
         ManufacturerTextBox.Text = TryGetSharedValue(components, component => component.Parameters.Manufacturer, value => value) ?? string.Empty;
         PartNumberTextBox.Text = TryGetSharedValue(components, component => component.Parameters.PartNumber, value => value) ?? string.Empty;
         ReferenceUrlTextBox.Text = TryGetSharedValue(components, component => component.Parameters.ReferenceUrl, value => value) ?? string.Empty;
+        UpdateReferenceAssignmentUi(components);
         UpdateSelectedDimensionsDisplay(components);
 
         var sharedLayerId = TryGetSharedValue(components, component => component.LayerId, value => value);
@@ -1165,6 +1169,7 @@ public partial class MainWindow
         ManufacturerTextBox.Text = string.Empty;
         PartNumberTextBox.Text = string.Empty;
         ReferenceUrlTextBox.Text = string.Empty;
+        UpdateReferenceAssignmentUi(Array.Empty<ElectricalComponent>());
         LayerComboBox.SelectedItem = null;
         ConduitProperties.Visibility = Visibility.Collapsed;
         ClearBendPointsButton.IsEnabled = false;

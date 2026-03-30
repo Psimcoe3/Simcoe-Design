@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows.Media.Media3D;
 using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.Services;
+using Newtonsoft.Json.Linq;
 
 namespace ElectricalComponentSandbox.Tests.Services;
 
@@ -99,6 +100,26 @@ public class ComponentFileServiceTests : IDisposable
         Assert.True(File.Exists(filePath));
         var json = await File.ReadAllTextAsync(filePath);
         Assert.Contains("Export Test", json);
+    }
+
+    [Fact]
+    public async Task ExportToJson_MultipleComponents_CreatesJsonArray()
+    {
+        var components = new ElectricalComponent[]
+        {
+            new ConduitComponent { Name = "Conduit 1" },
+            new BoxComponent { Name = "Box 1" }
+        };
+        var filePath = Path.Combine(_tempDir, "export-multiple.json");
+
+        await _service.ExportToJsonAsync(components, filePath);
+
+        Assert.True(File.Exists(filePath));
+        var json = await File.ReadAllTextAsync(filePath);
+        var array = JArray.Parse(json);
+        Assert.Equal(2, array.Count);
+        Assert.Equal("Conduit 1", array[0]?["Name"]?.Value<string>());
+        Assert.Equal("Box 1", array[1]?["Name"]?.Value<string>());
     }
 
     [Fact]

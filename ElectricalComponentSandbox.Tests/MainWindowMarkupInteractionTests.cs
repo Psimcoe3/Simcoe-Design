@@ -11,29 +11,32 @@ public partial class MainWindowMarkupInteractionTests
 {
     private static T RunOnSta<T>(Func<T> action)
     {
-        T? result = default;
-        Exception? exception = null;
-
-        var thread = new Thread(() =>
+        lock (WpfStaTestSynchronization.MainWindowLock)
         {
-            try
+            T? result = default;
+            Exception? exception = null;
+
+            var thread = new Thread(() =>
             {
-                result = action();
-            }
-            catch (Exception ex)
-            {
-                exception = ex;
-            }
-        });
+                try
+                {
+                    result = action();
+                }
+                catch (Exception ex)
+                {
+                    exception = ex;
+                }
+            });
 
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
+            thread.Join();
 
-        if (exception != null)
-            throw new Xunit.Sdk.XunitException($"STA test failed: {exception}");
+            if (exception != null)
+                throw new Xunit.Sdk.XunitException($"STA test failed: {exception}");
 
-        return result!;
+            return result!;
+        }
     }
 
     private static T RunWithSelectedMarkupWindow<T>(
@@ -61,6 +64,27 @@ public partial class MainWindowMarkupInteractionTests
             }
         });
     }
+
+        private static MarkupRecord CreateGroupedRectangle(Rect bounds, string? groupId)
+        {
+            var markup = new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                BoundingRect = bounds,
+                Appearance = new MarkupAppearance
+                {
+                    StrokeWidth = 1.0,
+                    FontSize = 12.0
+                }
+            };
+            markup.Vertices.Add(bounds.TopLeft);
+            markup.Vertices.Add(bounds.BottomRight);
+
+            if (!string.IsNullOrWhiteSpace(groupId))
+                markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = groupId;
+
+            return markup;
+        }
 
     [Fact]
     public void GetMarkupHandleOverlayMode_PrefersDirectGeometryOverVerticesAndResize()

@@ -160,26 +160,16 @@ public partial class MainWindow
 
     private void ClearCustomDimensions_Click(object sender, RoutedEventArgs e)
     {
-        int removed;
-        var selected = _viewModel.SelectedComponent;
-        if (selected != null)
-        {
-            removed = _customDimensionAnnotations.RemoveAll(annotation =>
-                string.Equals(annotation.Start.ComponentId, selected.Id, StringComparison.Ordinal) ||
-                string.Equals(annotation.End.ComponentId, selected.Id, StringComparison.Ordinal));
-        }
-        else
-        {
-            removed = _customDimensionAnnotations.Count;
-            _customDimensionAnnotations.Clear();
-        }
+        var selectedComponents = GetSelectedComponents();
+        var removed = RemoveCustomDimensionsForSelection(selectedComponents);
 
         if (removed > 0)
         {
+            var selectionScope = selectedComponents.Count == 0
+                ? "all components"
+                : $"selected count: {selectedComponents.Count}";
             ActionLogService.Instance.Log(LogCategory.Edit, "Custom dimensions cleared",
-                selected == null
-                    ? $"Removed: {removed} (all components)"
-                    : $"Component: {selected.Name}, Removed: {removed}");
+                $"Removed: {removed}, Scope: {selectionScope}");
             UpdateViewport();
         }
 

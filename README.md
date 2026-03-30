@@ -17,6 +17,7 @@ A desktop application for designing and editing parametric electrical constructi
 - **2D Drawing + Markup Canvas**: Hybrid WPF/Skia drawing surface with grip editing, measurement markup, and PDF/image underlays
 - **Undo/Redo**: Command-driven editing across component and markup workflows
 - **Interactive Conduit Bending**: Click and drag to create complex conduit paths with multiple bends (NEW!)
+- **Local Reference Library**: Curated repo-relative access to electrical reference PDFs and folders from the top menu
 
 ### Technology Stack
 
@@ -92,6 +93,14 @@ Alternatively, open `ElectricalComponentSandbox.slnx` in Visual Studio and build
 - **Save As**: Save to a new file (File → Save As or Ctrl+Shift+S)
 - **Export JSON**: Export component to JSON format (File → Export JSON or Ctrl+E)
 
+#### Reference Library
+
+- Use the **References** top menu to open the local reference library shipped in your workspace under `References/docs`
+- The first pass surfaces the `2026_national_electrical_estimator_ebook.pdf` file directly and exposes the `Electrical Material` folder plus its current top-level files/folders
+- The existing component-side **Reference URL** field still works and now also supports local repo-relative file or folder paths such as `References/docs/2026_national_electrical_estimator_ebook.pdf`
+- The properties panel now also includes a curated reference picker plus a suggested-reference button so you can populate the Reference URL field from the local catalog before applying changes to the current selection
+- Reference assets are workspace-local and are not copied into the app build or publish output in this pass
+
 #### Grid and Snap
 
 - Toggle grid visibility from View menu
@@ -163,7 +172,7 @@ dotnet test ElectricalComponentSandbox.Tests/ElectricalComponentSandbox.Tests.cs
 
 *Note: Tests require Windows OS to run due to WPF framework dependencies.*
 
-Current validated baseline: **707/707 tests passing**.
+Current validated baseline: **745/745 tests passing**.
 
 ### Future Enhancements
 

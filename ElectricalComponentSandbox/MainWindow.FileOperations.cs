@@ -120,10 +120,11 @@ public partial class MainWindow
     private async void ExportJson_Click(object sender, RoutedEventArgs e)
     {
         ActionLogService.Instance.Log(LogCategory.FileOperation, "Export JSON requested");
-        if (_viewModel.SelectedComponent == null)
+        var selectedComponents = GetSelectedComponents();
+        if (selectedComponents.Count == 0)
         {
             ActionLogService.Instance.Log(LogCategory.FileOperation, "Export JSON aborted", "No component selected");
-            MessageBox.Show("Please select a component to export.", "No Component", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Please select one or more components to export.", "No Component", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         
@@ -137,9 +138,12 @@ public partial class MainWindow
         {
             try
             {
-                await _viewModel.FileService.ExportToJsonAsync(_viewModel.SelectedComponent, dialog.FileName);
+                await ExportSelectedComponentsToJsonForTesting(dialog.FileName);
                 ActionLogService.Instance.Log(LogCategory.FileOperation, "JSON exported", $"File: {dialog.FileName}");
-                MessageBox.Show("Component exported successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                var successMessage = selectedComponents.Count == 1
+                    ? "Component exported successfully!"
+                    : $"Exported {selectedComponents.Count} components successfully!";
+                MessageBox.Show(successMessage, "Success", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
@@ -148,6 +152,24 @@ public partial class MainWindow
             }
         }
     }
+
+    internal async Task ExportSelectedComponentsToJsonForTesting(string filePath)
+    {
+        var selectedComponents = GetSelectedComponents();
+        if (selectedComponents.Count == 0)
+            throw new InvalidOperationException("No components selected for export.");
+
+        if (selectedComponents.Count == 1)
+        {
+            await _viewModel.FileService.ExportToJsonAsync(selectedComponents[0], filePath);
+            return;
+        }
+
+        await _viewModel.FileService.ExportToJsonAsync(selectedComponents, filePath);
+    }
+
+    internal void ExportSelectedComponentsToJsonSynchronouslyForTesting(string filePath)
+        => ExportSelectedComponentsToJsonForTesting(filePath).GetAwaiter().GetResult();
     
     private async void ExportBomCsv_Click(object sender, RoutedEventArgs e)
     {

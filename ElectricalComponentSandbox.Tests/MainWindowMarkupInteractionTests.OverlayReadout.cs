@@ -10,6 +10,27 @@ namespace ElectricalComponentSandbox.Tests;
 public partial class MainWindowMarkupInteractionTests
 {
     [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_ResizeDrag_MarksActiveResizeGripHot()
+    {
+        var hotGripPoints = RunWithSelectedMarkupWindow(
+            CreateGroupedRectangle(new Rect(0, 0, 10, 10), null),
+            (window, _, _) =>
+            {
+                var renderer = new OverlayRecordingRenderer();
+
+                var began = window.BeginSelectedMarkupResizeDragForTesting(new Point(10, 10));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+
+                Assert.True(began);
+                return renderer.HotGripPoints.ToList();
+            });
+
+        var hotGrip = Assert.Single(hotGripPoints);
+        Assert.Equal(10, hotGrip.X, 6);
+        Assert.Equal(10, hotGrip.Y, 6);
+    }
+
+    [Fact]
     public void DrawSelectedMarkupOverlayForTesting_LineStyleVertexDrag_RendersGeometryReadout()
     {
         var outcome = RunWithSelectedMarkupWindow(

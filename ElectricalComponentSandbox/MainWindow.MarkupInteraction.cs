@@ -51,14 +51,19 @@ public partial class MainWindow
         => TryStartMarkupArcAngleDrag(canvasPoint);
     internal bool BeginSelectedMarkupRadiusDragForTesting(Point canvasPoint)
         => TryStartMarkupRadiusDrag(canvasPoint);
+    internal bool BeginSelectedMarkupResizeDragForTesting(Point canvasPoint)
+        => TryStartMarkupResizeDrag(canvasPoint);
     internal void UpdateDraggedMarkupArcAnglePreviewForTesting(Point canvasPoint)
         => UpdateDraggedMarkupArcAnglePreview(canvasPoint);
     internal void UpdateDraggedMarkupRadiusPreviewForTesting(Point canvasPoint)
         => UpdateDraggedMarkupRadiusPreview(canvasPoint);
+    internal void UpdateMarkupResizePreviewForTesting(Point canvasPoint)
+        => UpdateMarkupResizePreview(canvasPoint);
     internal bool BeginSelectedMarkupVertexDragForTesting(Point canvasPoint)
         => TryStartMarkupVertexDrag(canvasPoint);
     internal void UpdateDraggedMarkupVertexPreviewForTesting(Point canvasPoint)
         => UpdateDraggedMarkupVertexPreview(canvasPoint);
+    internal void FinishMarkupResizeDragForTesting() => FinishMarkupResizeDrag();
     internal void FinishMarkupArcAngleDragForTesting() => FinishMarkupArcAngleDrag();
     internal void FinishMarkupRadiusDragForTesting() => FinishMarkupRadiusDrag();
     internal void FinishMarkupVertexDragForTesting() => FinishMarkupVertexDrag();

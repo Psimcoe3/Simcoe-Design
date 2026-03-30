@@ -10,6 +10,50 @@ namespace ElectricalComponentSandbox.Tests;
 public partial class MainWindowMarkupInteractionTests
 {
     [Fact]
+    public void ResizeDragForTesting_GroupedRectangles_ResizesGroupAndSupportsUndo()
+    {
+        var selectedMarkup = CreateGroupedRectangle(new Rect(0, 0, 10, 10), "group-1");
+        var peerMarkup = CreateGroupedRectangle(new Rect(20, 20, 10, 10), "group-1");
+
+        var outcome = RunWithSelectedMarkupWindow(
+            selectedMarkup,
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupResizeDragForTesting(new Point(30, 30));
+                window.UpdateMarkupResizePreviewForTesting(new Point(40, 50));
+                window.FinishMarkupResizeDragForTesting();
+
+                var editedPrimary = (markup.Vertices[0], markup.Vertices[1], markup.Appearance.StrokeWidth);
+                var editedPeer = (peerMarkup.Vertices[0], peerMarkup.Vertices[1], peerMarkup.Appearance.StrokeWidth);
+
+                viewModel.Undo();
+
+                var undonePrimary = (markup.Vertices[0], markup.Vertices[1], markup.Appearance.StrokeWidth);
+                var undonePeer = (peerMarkup.Vertices[0], peerMarkup.Vertices[1], peerMarkup.Appearance.StrokeWidth);
+                return (began, editedPrimary, editedPeer, undonePrimary, undonePeer);
+            },
+            viewModel => viewModel.Markups.Add(peerMarkup));
+
+        Assert.True(outcome.began);
+        Assert.Equal(new Point(0, 0), outcome.editedPrimary.Item1);
+        Assert.Equal(13.333333333333334, outcome.editedPrimary.Item2.X, 6);
+        Assert.Equal(16.666666666666668, outcome.editedPrimary.Item2.Y, 6);
+        Assert.Equal(26.666666666666668, outcome.editedPeer.Item1.X, 6);
+        Assert.Equal(33.333333333333336, outcome.editedPeer.Item1.Y, 6);
+        Assert.Equal(40, outcome.editedPeer.Item2.X, 6);
+        Assert.Equal(50, outcome.editedPeer.Item2.Y, 6);
+        Assert.True(outcome.editedPrimary.Item3 > 1.0);
+        Assert.True(outcome.editedPeer.Item3 > 1.0);
+
+        Assert.Equal(new Point(0, 0), outcome.undonePrimary.Item1);
+        Assert.Equal(new Point(10, 10), outcome.undonePrimary.Item2);
+        Assert.Equal(new Point(20, 20), outcome.undonePeer.Item1);
+        Assert.Equal(new Point(30, 30), outcome.undonePeer.Item2);
+        Assert.Equal(1.0, outcome.undonePrimary.Item3, 6);
+        Assert.Equal(1.0, outcome.undonePeer.Item3, 6);
+    }
+
+    [Fact]
     public void DirectVertexDragForTesting_LineStyleDimension_UsesPolarSnapAndSupportsUndo()
     {
         var outcome = RunWithSelectedMarkupWindow(

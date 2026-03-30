@@ -212,6 +212,7 @@
                 <MenuItem Header="Run NEC Design Check..." Click="RunNecCheck_Click"/>
                 <MenuItem Header="Export Electrical Report..." Click="ExportElectricalReport_Click"/>
             </MenuItem>
+            <MenuItem x:Name="ReferencesMenuItem" Header="References"/>
             <MenuItem Header="Markup">
                 <MenuItem Header="Add Callout..." Click="AddCallout_Click"/>
                 <MenuItem Header="Add Leader Note..." Click="AddLeaderNote_Click"/>
@@ -794,6 +795,12 @@
                                 <TextBlock Text="Reference URL:"/>
                                 <TextBox x:Name="ReferenceUrlTextBox"/>
                                 <Button x:Name="OpenReferenceButton" Content="Open Reference" Click="OpenReference_Click" Margin="0,4,0,0"/>
+                                <TextBlock Text="Curated References:"/>
+                                <ComboBox x:Name="ReferenceCatalogComboBox" DisplayMemberPath="DisplayName" SelectedValuePath="RelativePath"/>
+                                <WrapPanel Margin="0,4,0,0">
+                                    <Button x:Name="AssignReferenceButton" Content="Use Selected Reference" Click="AssignSelectedReference_Click" Margin="0,0,6,0"/>
+                                    <Button x:Name="SuggestedReferenceButton" Content="Use Suggested Reference" Click="ApplySuggestedReference_Click"/>
+                                </WrapPanel>
                                 
                                 <!-- Conduit-specific Properties -->
                                 <StackPanel x:Name="ConduitProperties" Visibility="Collapsed">

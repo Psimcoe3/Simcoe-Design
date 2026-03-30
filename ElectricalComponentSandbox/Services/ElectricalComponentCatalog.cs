@@ -8,6 +8,9 @@ namespace ElectricalComponentSandbox.Services;
 /// </summary>
 public static class ElectricalComponentCatalog
 {
+    private const string EstimatorReferencePath = @"References\docs\2026_national_electrical_estimator_ebook.pdf";
+    private const string ElectricalCodeReferencePath = @"References\docs\Electrical Material\NFPA 70 2023.pdf";
+
     public static class Profiles
     {
         public const string ConduitEmt = "conduit_emt";
@@ -489,6 +492,52 @@ public static class ElectricalComponentCatalog
             CableTrayComponent tray => InferTrayProfile(tray),
             HangerComponent hanger => InferHangerProfile(hanger),
             _ => DefaultProfileByType.TryGetValue(component.Type, out var profile) ? profile : string.Empty
+        };
+    }
+
+    public static string? GetSuggestedLocalReference(IReadOnlyList<ElectricalComponent> components)
+    {
+        if (components.Count == 0)
+            return null;
+
+        var first = GetSuggestedLocalReference(components[0]);
+        if (string.IsNullOrWhiteSpace(first))
+            return null;
+
+        for (var index = 1; index < components.Count; index++)
+        {
+            if (!string.Equals(first, GetSuggestedLocalReference(components[index]), StringComparison.OrdinalIgnoreCase))
+                return null;
+        }
+
+        return first;
+    }
+
+    public static string? GetSuggestedLocalReference(ElectricalComponent component)
+    {
+        return GetProfile(component) switch
+        {
+            Profiles.BoxJunction or
+            Profiles.BoxPull or
+            Profiles.BoxFloor or
+            Profiles.BoxDisconnectSwitch or
+            Profiles.PanelLighting or
+            Profiles.PanelDistribution or
+            Profiles.PanelSwitchboard or
+            Profiles.PanelMcc => EstimatorReferencePath,
+            Profiles.ConduitEmt or
+            Profiles.ConduitPvc or
+            Profiles.ConduitRigidMetal or
+            Profiles.ConduitFlexibleMetal or
+            Profiles.TrayLadder or
+            Profiles.TrayWireMesh or
+            Profiles.TraySolidBottom or
+            Profiles.SupportUnistrut or
+            Profiles.SupportWallBracket or
+            Profiles.SupportTrapeze or
+            Profiles.HangerThreadedRod or
+            Profiles.HangerSeismicBrace => ElectricalCodeReferencePath,
+            _ => null
         };
     }
 
