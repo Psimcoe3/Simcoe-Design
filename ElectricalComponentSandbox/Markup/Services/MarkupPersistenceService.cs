@@ -72,6 +72,9 @@ public class MarkupPersistenceService
                 new XAttribute("type", m.Type.ToString()),
                 new XAttribute("layer", m.LayerId));
 
+            if (!string.IsNullOrWhiteSpace(m.AssignedTo))
+                el.Add(new XAttribute("assignedTo", m.AssignedTo));
+
             if (!string.IsNullOrEmpty(m.TextContent))
                 el.Add(new XElement("text", m.TextContent));
 
@@ -102,6 +105,22 @@ public class MarkupPersistenceService
                 new XAttribute("subject", m.Metadata.Subject),
                 new XAttribute("author", m.Metadata.Author)));
 
+            if (m.Replies.Count > 0)
+            {
+                var repliesElement = new XElement("replies");
+                foreach (var reply in m.Replies)
+                {
+                    repliesElement.Add(new XElement("reply",
+                        new XAttribute("id", reply.Id),
+                        new XAttribute("author", reply.Author),
+                        new XAttribute("createdUtc", reply.CreatedUtc.ToString("O")),
+                        new XAttribute("modifiedUtc", reply.ModifiedUtc.ToString("O")),
+                        reply.Text));
+                }
+
+                el.Add(repliesElement);
+            }
+
             root.Add(el);
         }
 
@@ -123,6 +142,7 @@ public class MarkupPersistenceService
                 Id = (string?)el.Attribute("id") ?? Guid.NewGuid().ToString(),
                 Type = Enum.TryParse<MarkupType>((string?)el.Attribute("type"), out var t) ? t : MarkupType.Polyline,
                 LayerId = (string?)el.Attribute("layer") ?? "markup-default",
+                AssignedTo = (string?)el.Attribute("assignedTo"),
                 TextContent = (string?)el.Element("text") ?? string.Empty,
                 Radius = (double?)el.Element("radius") ?? 0,
                 RotationDegrees = (double?)el.Element("rotation") ?? 0
@@ -157,6 +177,28 @@ public class MarkupPersistenceService
                 record.Metadata.Author = (string?)metadata.Attribute("author") ?? string.Empty;
             }
 
+            var replies = el.Element("replies");
+            if (replies != null)
+            {
+                foreach (var replyElement in replies.Elements("reply"))
+                {
+                    var reply = new MarkupReply
+                    {
+                        Id = (string?)replyElement.Attribute("id") ?? Guid.NewGuid().ToString(),
+                        Author = (string?)replyElement.Attribute("author") ?? string.Empty,
+                        Text = replyElement.Value ?? string.Empty,
+                        CreatedUtc = DateTime.TryParse((string?)replyElement.Attribute("createdUtc"), out var createdUtc)
+                            ? createdUtc
+                            : DateTime.UtcNow,
+                        ModifiedUtc = DateTime.TryParse((string?)replyElement.Attribute("modifiedUtc"), out var modifiedUtc)
+                            ? modifiedUtc
+                            : DateTime.UtcNow
+                    };
+
+                    record.Replies.Add(reply);
+                }
+            }
+
             record.UpdateBoundingRect();
             results.Add(record);
         }
@@ -177,9 +219,11 @@ internal class MarkupDto
     public double RotationDegrees { get; set; }
     public string TextContent { get; set; } = string.Empty;
     public string LayerId { get; set; } = string.Empty;
+    public string? AssignedTo { get; set; }
     public MarkupAppearance? Appearance { get; set; }
     public MarkupMetadata? Metadata { get; set; }
     public List<string> CutoutIds { get; set; } = new();
+    public List<MarkupReply> Replies { get; set; } = new();
 
     public static MarkupDto FromRecord(MarkupRecord r) => new()
     {
@@ -190,9 +234,11 @@ internal class MarkupDto
         RotationDegrees = r.RotationDegrees,
         TextContent = r.TextContent,
         LayerId = r.LayerId,
+        AssignedTo = r.AssignedTo,
         Appearance = r.Appearance,
         Metadata = r.Metadata,
-        CutoutIds = r.CutoutIds
+        CutoutIds = r.CutoutIds,
+        Replies = r.Replies
     };
 
     public MarkupRecord ToRecord()
@@ -205,9 +251,11 @@ internal class MarkupDto
             RotationDegrees = RotationDegrees,
             TextContent = TextContent,
             LayerId = LayerId,
+            AssignedTo = AssignedTo,
             Appearance = Appearance ?? new MarkupAppearance(),
             Metadata = Metadata ?? new MarkupMetadata(),
-            CutoutIds = CutoutIds ?? new List<string>()
+            CutoutIds = CutoutIds ?? new List<string>(),
+            Replies = Replies ?? new List<MarkupReply>()
         };
 
         foreach (var v in Vertices)

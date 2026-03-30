@@ -104,11 +104,18 @@ Alternatively, open `ElectricalComponentSandbox.slnx` in Visual Studio and build
 
 #### Sheets
 
-- The left panel now includes a minimal **Sheets** browser so the project can hold multiple persisted sheets instead of a single implicit canvas
+- The left panel now includes a **Project Browser** tree so the project can hold multiple persisted sheets instead of a single implicit canvas
 - Markups, PDF underlays, named views, and page setup are now sheet-scoped and switch with the active sheet, while electrical components remain project-global in this first document-model pass
 - The sheet browser now supports add, rename, delete, and up/down reorder actions, and deleting a non-active sheet preserves the current active sheet
 - The last active sheet is now persisted in `.ecproj` saves and restored on reopen
+- Each sheet now expands to show its saved named views directly in the left rail, and selecting a named view from another sheet switches to that sheet and restores the saved camera/2D state
 - The **Markups** tab can now review either the current sheet or all sheets across the project, includes a sheet column in the markup list, and automatically reveals cross-sheet markup selections in their owning sheet
+- The **Markups** tab now also includes grouped issue buckets that summarize the current visible review set by sheet, status, or author and let you pivot the markup list to a single bucket without changing the broader review scope
+- The **Markups** tab now also exposes a first-pass threaded review surface for the selected issue: you can add replies, see reply counts in the list, search reply text from the Markups search box, and export/import reply metadata through the current markup persistence and XFDF paths
+- Approve, reject, resolve, and visible-set review actions now also write status-audit entries into that same thread, so status history and discussion stay in one place and undo restores both the status and its audit entry together
+- Markup issues now support explicit assignees in the same review flow: you can assign the selected issue or bulk-assign the current visible review set, assignee text is searchable from the Markups tab, assignment state is shown in the list/details UI, and assignment changes are recorded as undoable audit entries in the shared thread and round-trip through the current JSON, XML, and XFDF persistence paths
+- Bulk review actions now operate on the currently visible review set, so **Resolve Visible** and **Void Visible** follow the active scope and filters
+- XFDF export now uses the current review scope and filters instead of exporting only the raw active-sheet markup collection
 - Older `.ecproj` files still load: legacy single-sheet markup, underlay, and named-view state is migrated into the first sheet automatically
 
 #### Grid and Snap
@@ -182,7 +189,7 @@ dotnet test ElectricalComponentSandbox.Tests/ElectricalComponentSandbox.Tests.cs
 
 *Note: Tests require Windows OS to run due to WPF framework dependencies.*
 
-Current validated baseline: **759/759 tests passing**.
+Current validated baseline: **776/776 tests passing**.
 
 ### Future Enhancements
 

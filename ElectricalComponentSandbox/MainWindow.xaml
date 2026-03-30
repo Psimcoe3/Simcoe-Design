@@ -6,6 +6,7 @@
     xmlns:local="clr-namespace:ElectricalComponentSandbox"
     xmlns:converters="clr-namespace:ElectricalComponentSandbox.Converters"
     xmlns:rendering="clr-namespace:ElectricalComponentSandbox.Rendering"
+    xmlns:viewModels="clr-namespace:ElectricalComponentSandbox.ViewModels"
     xmlns:h="http://helix-toolkit.org/wpf"
     mc:Ignorable="d"
     Icon="app.ico"
@@ -34,6 +35,16 @@
             <Setter Property="Margin" Value="5"/>
             <Setter Property="Padding" Value="5"/>
         </Style>
+        <Style x:Key="ProjectBrowserTreeItemStyle" TargetType="TreeViewItem">
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+            <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}"/>
+        </Style>
+        <HierarchicalDataTemplate DataType="{x:Type viewModels:ProjectBrowserSheetItemViewModel}" ItemsSource="{Binding Children}">
+            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
+        </HierarchicalDataTemplate>
+        <DataTemplate DataType="{x:Type viewModels:ProjectBrowserNamedViewItemViewModel}">
+            <TextBlock Text="{Binding DisplayName}" Margin="2,0,0,0"/>
+        </DataTemplate>
         <Style x:Key="MobileTopActionButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Height" Value="44"/>
             <Setter Property="MinWidth" Value="44"/>
@@ -222,6 +233,9 @@
                 <MenuItem Header="Approve Selected" Click="ApproveMarkup_Click"/>
                 <MenuItem Header="Reject Selected" Click="RejectMarkup_Click"/>
                 <MenuItem Header="Resolve Selected" Click="ResolveMarkup_Click"/>
+                <MenuItem Header="Assign Selected..." Click="AssignSelectedMarkup_Click"/>
+                <MenuItem Header="Assign Visible..." Click="AssignVisibleMarkups_Click"/>
+                <MenuItem Header="Reply To Selected..." Click="AddMarkupReply_Click"/>
                 <Separator/>
                 <MenuItem Header="Markup Summary..." Click="MarkupSummary_Click"/>
             </MenuItem>
@@ -447,7 +461,7 @@
             <!-- Library Browser + Layers -->
             <Border x:Name="LibraryPanelContainer" Grid.Column="0" BorderBrush="Gray" BorderThickness="0,0,1,0">
                 <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="Sheets" 
+                    <TextBlock DockPanel.Dock="Top" Text="Project Browser" 
                              FontWeight="Bold" FontSize="14" 
                              Padding="10" Background="LightGray"/>
                     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="5">
@@ -460,10 +474,13 @@
                         <Button x:Name="MoveSheetDownButton" Content="Down" Click="MoveSheetDown_Click" Padding="5,2" Margin="2"/>
                         <TextBlock x:Name="ActiveSheetSummaryTextBlock" VerticalAlignment="Center" Margin="8,0,0,0" Text="1 sheet"/>
                     </StackPanel>
-                    <ListBox x:Name="SheetListBox" DockPanel.Dock="Top" Height="110"
-                           ItemsSource="{Binding Sheets}"
-                           DisplayMemberPath="DisplayName"
-                           SelectionChanged="SheetListBox_SelectionChanged"/>
+                          <TreeView x:Name="ProjectBrowserTreeView"
+                              DockPanel.Dock="Top"
+                              Height="170"
+                              Margin="5,0,5,5"
+                              ItemsSource="{Binding ProjectBrowserItems}"
+                              ItemContainerStyle="{StaticResource ProjectBrowserTreeItemStyle}"
+                              SelectedItemChanged="ProjectBrowserTreeView_SelectedItemChanged"/>
 
                     <TextBlock DockPanel.Dock="Top" Text="Component Library" 
                              FontWeight="Bold" FontSize="14" 
@@ -868,7 +885,7 @@
                                           SelectionChanged="MarkupLayerFilter_Changed"/>
                                 <TextBlock Text="Search:" VerticalAlignment="Center" FontSize="11"/>
                                 <TextBox x:Name="MarkupSearchBox" Width="122" FontSize="11" Margin="3,0,8,0"
-                                         ToolTip="Search labels, subjects, layers, and authors"
+                                         ToolTip="Search labels, subjects, layers, authors, and reply text"
                                          TextChanged="MarkupSearch_Changed"/>
                             </StackPanel>
                             <!-- Counts -->
@@ -886,6 +903,44 @@
                                 <TextBlock FontSize="10" Foreground="Gray" Margin="8,0,0,0"
                                            Text="{Binding MarkupTool.FilteredCount, StringFormat='Filtered: {0}'}"/>
                             </StackPanel>
+                            <Border DockPanel.Dock="Top"
+                                    Margin="4,0,4,6"
+                                    Padding="8"
+                                    Background="#FFF7F7F8"
+                                    BorderBrush="#FFD0D7DE"
+                                    BorderThickness="1">
+                                <DockPanel>
+                                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="Issue Buckets:" FontWeight="Bold" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="Group By:" VerticalAlignment="Center" FontSize="11"/>
+                                        <ComboBox x:Name="MarkupIssueGroupModeCombo"
+                                                  Width="96"
+                                                  FontSize="11"
+                                                  Margin="3,0,8,0"
+                                                  ItemsSource="{Binding MarkupTool.IssueGroupModeOptions}"
+                                                  SelectedItem="{Binding MarkupTool.IssueGroupMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                        <Button Content="All Buckets"
+                                                Padding="8,2"
+                                                Margin="0,0,8,0"
+                                            Command="{Binding MarkupTool.ClearIssueGroupCommand}"/>
+                                        <TextBlock Text="{Binding MarkupTool.SelectedIssueGroupSummary}" FontSize="11" Foreground="Gray" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <ListView x:Name="MarkupIssueGroupListView"
+                                              Margin="0,8,0,0"
+                                              Height="108"
+                                              ItemsSource="{Binding MarkupTool.IssueGroups}"
+                                              SelectedItem="{Binding MarkupTool.SelectedIssueGroup, Mode=TwoWay}">
+                                        <ListView.View>
+                                            <GridView>
+                                                <GridViewColumn Header="Bucket" DisplayMemberBinding="{Binding DisplayName}" Width="150"/>
+                                                <GridViewColumn Header="Details" DisplayMemberBinding="{Binding SecondaryText}" Width="130"/>
+                                                <GridViewColumn Header="Count" DisplayMemberBinding="{Binding Count}" Width="48"/>
+                                                <GridViewColumn Header="Open" DisplayMemberBinding="{Binding OpenCount}" Width="48"/>
+                                            </GridView>
+                                        </ListView.View>
+                                    </ListView>
+                                </DockPanel>
+                            </Border>
                             <!-- Actions -->
                             <WrapPanel DockPanel.Dock="Top" Margin="4,4,4,6">
                                 <Button Content="Edit Geometry"
@@ -918,11 +973,78 @@
                                         Margin="0,0,6,4"
                                         IsEnabled="{Binding MarkupTool.HasPathVertexDeleteCandidate}"
                                         ToolTip="{Binding MarkupTool.SelectedMarkupPathDeleteSummary}"/>
-                                <Button Content="Resolve" Command="{Binding MarkupTool.ApproveSelectedCommand}" Padding="8,2" Margin="0,0,6,4"/>
-                                <Button Content="Void" Command="{Binding MarkupTool.RejectSelectedCommand}" Padding="8,2" Margin="0,0,6,4"/>
+                                <Button Content="Add Reply"
+                                        Click="AddMarkupReply_Click"
+                                        Padding="8,2"
+                                        Margin="0,0,6,4"
+                                        IsEnabled="{Binding MarkupTool.HasSelectedMarkup}"
+                                        ToolTip="Add a threaded review reply to the selected markup"/>
+                                <Button Content="Assign"
+                                        Click="AssignSelectedMarkup_Click"
+                                        Padding="8,2"
+                                        Margin="0,0,6,4"
+                                        IsEnabled="{Binding MarkupTool.HasSelectedMarkup}"
+                                        ToolTip="Assign the selected markup to a reviewer"/>
+                                <Button Content="Assign Visible"
+                                        Click="AssignVisibleMarkups_Click"
+                                        Padding="8,2"
+                                        Margin="0,0,6,4"
+                                        ToolTip="Assign all currently visible markups to a reviewer"/>
+                                <Button Content="Approve" Click="ApproveMarkup_Click" Padding="8,2" Margin="0,0,6,4"/>
+                                <Button Content="Reject" Click="RejectMarkup_Click" Padding="8,2" Margin="0,0,6,4"/>
+                                <Button Content="Resolve" Click="ResolveMarkup_Click" Padding="8,2" Margin="0,0,6,4"/>
+                                <Button Content="Resolve Visible" Click="ResolveVisibleMarkups_Click" Padding="8,2" Margin="0,0,6,4"/>
+                                <Button Content="Void Visible" Click="VoidVisibleMarkups_Click" Padding="8,2" Margin="0,0,6,4"/>
                                 <Button Content="Delete" Click="DeleteComponent_Click" Padding="8,2" Margin="0,0,6,4"/>
                                 <Button Content="Clear Filters" Command="{Binding MarkupTool.ClearFiltersCommand}" Padding="8,2" Margin="0,0,6,4"/>
                             </WrapPanel>
+                            <Border DockPanel.Dock="Top"
+                                    Margin="4,0,4,6"
+                                    Padding="8"
+                                    Background="#FFF7F7F8"
+                                    BorderBrush="#FFD0D7DE"
+                                    BorderThickness="1"
+                                    Visibility="{Binding MarkupTool.SelectedMarkup, Converter={StaticResource NotNullToVisibilityConverter}}">
+                                <StackPanel>
+                                    <TextBlock Text="Assignment" FontWeight="Bold" FontSize="11" Margin="0,0,0,4"/>
+                                    <TextBlock Text="{Binding MarkupTool.SelectedMarkupAssignmentSummary}" TextWrapping="Wrap"/>
+                                    <TextBlock Margin="0,6,0,0">
+                                        <Run Text="Current Assignee: " FontWeight="SemiBold"/>
+                                        <Run Text="{Binding MarkupTool.SelectedMarkupAssignedTo}"/>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+                            <Border DockPanel.Dock="Top"
+                                    Margin="4,0,4,6"
+                                    Padding="8"
+                                    Background="#FFF7F7F8"
+                                    BorderBrush="#FFD0D7DE"
+                                    BorderThickness="1"
+                                    Visibility="{Binding MarkupTool.SelectedMarkup, Converter={StaticResource NotNullToVisibilityConverter}}">
+                                <StackPanel>
+                                    <TextBlock Text="Review Thread" FontWeight="Bold" FontSize="11" Margin="0,0,0,4"/>
+                                    <TextBlock Text="{Binding MarkupTool.SelectedMarkupReplySummary}" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding MarkupTool.SelectedMarkupReplySearchSummary}" Foreground="Gray" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="164" Margin="0,8,0,0">
+                                        <ItemsControl ItemsSource="{Binding MarkupTool.SelectedMarkupReplies}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Margin="0,0,0,6" Padding="6" Background="#FFFFFFFF" BorderBrush="#FFD8DEE4" BorderThickness="1">
+                                                        <StackPanel>
+                                                            <TextBlock Margin="0,0,0,2">
+                                                                <Run Text="{Binding Author}" FontWeight="SemiBold"/>
+                                                                <Run Text="  "/>
+                                                                <Run Text="{Binding CreatedDisplayText}" Foreground="Gray"/>
+                                                            </TextBlock>
+                                                            <TextBlock Text="{Binding Text}" TextWrapping="Wrap"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </StackPanel>
+                            </Border>
                             <Border DockPanel.Dock="Top"
                                     Margin="4,0,4,6"
                                     Padding="8"
@@ -1158,6 +1280,8 @@
                                         <GridViewColumn Header="Subject" DisplayMemberBinding="{Binding Metadata.Subject}" Width="118"/>
                                         <GridViewColumn Header="Layer" DisplayMemberBinding="{Binding LayerDisplayText}" Width="102"/>
                                         <GridViewColumn Header="Author" DisplayMemberBinding="{Binding Metadata.Author}" Width="92"/>
+                                        <GridViewColumn Header="Assignee" DisplayMemberBinding="{Binding AssignedToDisplayText}" Width="96"/>
+                                        <GridViewColumn Header="Replies" DisplayMemberBinding="{Binding ReplyCountDisplayText}" Width="52"/>
                                         <GridViewColumn Header="Modified" DisplayMemberBinding="{Binding ModifiedDisplayText}" Width="118"/>
                                     </GridView>
                                 </ListView.View>

@@ -108,7 +108,9 @@ public partial class MainWindow
                 nv.CameraFieldOfView = persp.FieldOfView;
         }
         _viewModel.NamedViews.Add(nv);
+        _viewModel.RefreshProjectBrowserItems();
         RebuildNamedViewMenuItems();
+        SyncSheetBrowserSelection();
     }
 
     private void ManageNamedViews_Click(object sender, RoutedEventArgs e)
@@ -124,7 +126,9 @@ public partial class MainWindow
         if (int.TryParse(input, out int indexToDelete) && indexToDelete >= 1 && indexToDelete <= _viewModel.NamedViews.Count)
         {
             _viewModel.NamedViews.RemoveAt(indexToDelete - 1);
+            _viewModel.RefreshProjectBrowserItems();
             RebuildNamedViewMenuItems();
+            SyncSheetBrowserSelection();
         }
     }
 

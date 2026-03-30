@@ -8,6 +8,213 @@ namespace ElectricalComponentSandbox.Tests.ViewModels;
 public partial class MainViewModelTests
 {
     [Fact]
+    public void MarkupTool_SelectedMarkup_ExposesReplyThreadDetails()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Metadata = new MarkupMetadata
+            {
+                Label = "Panel note",
+                Author = "Author"
+            },
+            Replies =
+            {
+                new MarkupReply
+                {
+                    Author = "Reviewer A",
+                    Text = "Need revised clearance dimensions.",
+                    CreatedUtc = new DateTime(2026, 3, 28, 18, 0, 0, DateTimeKind.Utc),
+                    ModifiedUtc = new DateTime(2026, 3, 28, 18, 0, 0, DateTimeKind.Utc)
+                },
+                new MarkupReply
+                {
+                    Author = "Reviewer B",
+                    Text = "Confirmed on sheet E2.",
+                    CreatedUtc = new DateTime(2026, 3, 29, 18, 0, 0, DateTimeKind.Utc),
+                    ModifiedUtc = new DateTime(2026, 3, 29, 18, 0, 0, DateTimeKind.Utc)
+                }
+            }
+        };
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasSelectedMarkupReplies);
+        Assert.Equal(2, vm.MarkupTool.SelectedMarkupReplyCount);
+        Assert.Equal(2, vm.MarkupTool.SelectedMarkupReplies.Count);
+        Assert.Equal("Reviewer A", vm.MarkupTool.SelectedMarkupReplies[0].Author);
+        Assert.Equal("Need revised clearance dimensions.", vm.MarkupTool.SelectedMarkupReplies[0].Text);
+        Assert.Contains("Latest by Reviewer B", vm.MarkupTool.SelectedMarkupReplySummary);
+        Assert.Equal("Reply text participates in Markups search filtering.", vm.MarkupTool.SelectedMarkupReplySearchSummary);
+    }
+
+    [Fact]
+    public void MarkupTool_LabelSearch_MatchesReplyText()
+    {
+        var vm = new MainViewModel();
+        var matchingMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Metadata = new MarkupMetadata { Label = "Issue A" },
+            Replies =
+            {
+                new MarkupReply
+                {
+                    Author = "Reviewer",
+                    Text = "Fire alarm homerun rerouted to avoid beam pocket."
+                }
+            }
+        };
+        var otherMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Metadata = new MarkupMetadata { Label = "Issue B" }
+        };
+
+        vm.Markups.Add(matchingMarkup);
+        vm.Markups.Add(otherMarkup);
+
+        vm.MarkupTool.LabelSearch = "beam pocket";
+
+        Assert.Single(vm.MarkupTool.FilteredMarkups);
+        Assert.Same(matchingMarkup, vm.MarkupTool.FilteredMarkups[0]);
+    }
+
+    [Fact]
+    public void TryApplySelectedMarkupStatus_AddsStatusAuditReply()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Status = MarkupStatus.Open,
+            Metadata = new MarkupMetadata { Label = "Issue A" }
+        };
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        var changed = vm.TryApplySelectedMarkupStatus(MarkupStatus.Resolved, "Reviewer");
+
+        Assert.True(changed);
+        Assert.Equal(MarkupStatus.Resolved, markup.Status);
+        Assert.Equal("Status changed: Open -> Resolved", markup.StatusNote);
+        Assert.Single(markup.Replies);
+        Assert.Equal("Reviewer", markup.Replies[0].Author);
+        Assert.Equal("Status changed: Open -> Resolved", markup.Replies[0].Text);
+        Assert.Single(vm.MarkupTool.SelectedMarkupReplies);
+    }
+
+    [Fact]
+    public void ApplyFilteredMarkupStatus_AddsAuditRepliesToVisibleMarkupsOnly()
+    {
+        var vm = new MainViewModel();
+        var visibleMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Status = MarkupStatus.Open,
+            Metadata = new MarkupMetadata { Label = "Visible" }
+        };
+        var filteredOutMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Status = MarkupStatus.Open,
+            Metadata = new MarkupMetadata { Label = "Filtered Out" }
+        };
+
+        vm.Markups.Add(visibleMarkup);
+        vm.Markups.Add(filteredOutMarkup);
+        vm.MarkupTool.LabelSearch = "Visible";
+
+        var changedCount = vm.ApplyFilteredMarkupStatus(MarkupStatus.Void, "Coordinator");
+
+        Assert.Equal(1, changedCount);
+        Assert.Equal(MarkupStatus.Void, visibleMarkup.Status);
+        Assert.Single(visibleMarkup.Replies);
+        Assert.Equal("Status changed: Open -> Void", visibleMarkup.Replies[0].Text);
+        Assert.Equal(MarkupStatus.Open, filteredOutMarkup.Status);
+        Assert.Empty(filteredOutMarkup.Replies);
+    }
+
+    [Fact]
+    public void TryAssignSelectedMarkup_AddsAssignmentAuditReply()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Metadata = new MarkupMetadata { Label = "Issue A" }
+        };
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        var changed = vm.TryAssignSelectedMarkup("Field Crew", "Coordinator");
+
+        Assert.True(changed);
+        Assert.Equal("Field Crew", markup.AssignedTo);
+        Assert.Single(markup.Replies);
+        Assert.Equal("Assignment changed: (unassigned) -> Field Crew", markup.Replies[0].Text);
+        Assert.Equal("Field Crew", vm.MarkupTool.SelectedMarkupAssignedTo);
+    }
+
+    [Fact]
+    public void ApplyFilteredMarkupAssignment_UpdatesOnlyVisibleMarkups()
+    {
+        var vm = new MainViewModel();
+        var visibleMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Metadata = new MarkupMetadata { Label = "Visible" }
+        };
+        var filteredOutMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Metadata = new MarkupMetadata { Label = "Hidden" }
+        };
+
+        vm.Markups.Add(visibleMarkup);
+        vm.Markups.Add(filteredOutMarkup);
+        vm.MarkupTool.LabelSearch = "Visible";
+
+        var changedCount = vm.ApplyFilteredMarkupAssignment("Reviewer B", "Coordinator");
+
+        Assert.Equal(1, changedCount);
+        Assert.Equal("Reviewer B", visibleMarkup.AssignedTo);
+        Assert.Single(visibleMarkup.Replies);
+        Assert.Equal("Assignment changed: (unassigned) -> Reviewer B", visibleMarkup.Replies[0].Text);
+        Assert.Null(filteredOutMarkup.AssignedTo);
+        Assert.Empty(filteredOutMarkup.Replies);
+    }
+
+    [Fact]
+    public void MarkupTool_LabelSearch_MatchesAssignedTo()
+    {
+        var vm = new MainViewModel();
+        var matchingMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            AssignedTo = "Coordinator",
+            Metadata = new MarkupMetadata { Label = "Issue A" }
+        };
+        var otherMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Metadata = new MarkupMetadata { Label = "Issue B" }
+        };
+
+        vm.Markups.Add(matchingMarkup);
+        vm.Markups.Add(otherMarkup);
+
+        vm.MarkupTool.LabelSearch = "coordinator";
+
+        Assert.Single(vm.MarkupTool.FilteredMarkups);
+        Assert.Same(matchingMarkup, vm.MarkupTool.FilteredMarkups[0]);
+    }
+
+    [Fact]
     public void MarkupTool_SelectedStructuredMarkup_ExposesAnnotationMetadata()
     {
         var vm = new MainViewModel();
@@ -646,5 +853,144 @@ public partial class MainViewModelTests
         Assert.True(revealed);
         Assert.Equal(firstSheet?.Id, vm.SelectedSheet?.Id);
         Assert.Same(firstMarkup, vm.MarkupTool.SelectedMarkup);
+    }
+
+    [Fact]
+    public void MarkupTool_ResolveVisibleCommand_CurrentSheetScope_OnlyUpdatesActiveSheet()
+    {
+        var vm = new MainViewModel();
+        var firstMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Status = MarkupStatus.Open,
+            Vertices = { new Point(0, 0), new Point(5, 5) }
+        };
+        firstMarkup.UpdateBoundingRect();
+        vm.AddMarkup(firstMarkup);
+
+        vm.AddSheet("Review");
+        var secondMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            Status = MarkupStatus.Open,
+            TextContent = "Needs review",
+            Vertices = { new Point(10, 10) }
+        };
+        secondMarkup.UpdateBoundingRect();
+        vm.AddMarkup(secondMarkup);
+
+        vm.MarkupTool.ResolveVisibleCommand.Execute(null);
+
+        Assert.Equal(MarkupStatus.Open, firstMarkup.Status);
+        Assert.Equal(MarkupStatus.Resolved, secondMarkup.Status);
+    }
+
+    [Fact]
+    public void GetFilteredReviewMarkups_AllSheetsScope_UsesCurrentFilters()
+    {
+        var vm = new MainViewModel();
+        var firstMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Status = MarkupStatus.Open,
+            Vertices = { new Point(0, 0), new Point(6, 6) }
+        };
+        firstMarkup.Metadata.Label = "Open item";
+        firstMarkup.UpdateBoundingRect();
+        vm.AddMarkup(firstMarkup);
+        var firstSheet = vm.SelectedSheet;
+
+        var secondSheet = vm.AddSheet("Review");
+        var secondMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            Status = MarkupStatus.Resolved,
+            TextContent = "Done",
+            Vertices = { new Point(12, 12) }
+        };
+        secondMarkup.Metadata.Label = "Resolved item";
+        secondMarkup.UpdateBoundingRect();
+        vm.AddMarkup(secondMarkup);
+
+        vm.MarkupTool.ReviewScope = MarkupReviewScope.AllSheets;
+        vm.MarkupTool.StatusFilter = MarkupRecord.GetStatusDisplayText(MarkupStatus.Resolved);
+
+        var filtered = vm.GetFilteredReviewMarkups();
+
+        var markup = Assert.Single(filtered);
+        Assert.Same(secondMarkup, markup);
+        Assert.Equal(secondSheet?.DisplayName, markup.ReviewSheetDisplayText);
+        Assert.DoesNotContain(filtered, item => item.ReviewSheetDisplayText == firstSheet?.DisplayName);
+    }
+
+    [Fact]
+    public void MarkupTool_IssueGroups_GroupVisibleReviewSetBySheet()
+    {
+        var vm = new MainViewModel();
+        var firstMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Status = MarkupStatus.Open,
+            Vertices = { new Point(0, 0), new Point(6, 6) }
+        };
+        firstMarkup.UpdateBoundingRect();
+        vm.AddMarkup(firstMarkup);
+        var firstSheet = vm.SelectedSheet;
+
+        var secondSheet = vm.AddSheet("Review");
+        var secondMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            Status = MarkupStatus.InProgress,
+            TextContent = "Pending",
+            Vertices = { new Point(12, 12) }
+        };
+        secondMarkup.UpdateBoundingRect();
+        vm.AddMarkup(secondMarkup);
+
+        vm.MarkupTool.ReviewScope = MarkupReviewScope.AllSheets;
+        vm.MarkupTool.IssueGroupMode = MarkupIssueGroupMode.Sheet;
+
+        Assert.NotNull(firstSheet);
+        Assert.NotNull(secondSheet);
+        Assert.Equal(2, vm.MarkupTool.IssueGroups.Count);
+        Assert.Contains(vm.MarkupTool.IssueGroups, group => group.DisplayName == firstSheet.DisplayName && group.Count == 1 && group.OpenCount == 1);
+        Assert.Contains(vm.MarkupTool.IssueGroups, group => group.DisplayName == secondSheet.DisplayName && group.Count == 1 && group.OpenCount == 1);
+    }
+
+    [Fact]
+    public void MarkupTool_SelectedIssueGroup_FiltersVisibleMarkupList()
+    {
+        var vm = new MainViewModel();
+        var firstMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Status = MarkupStatus.Open,
+            Vertices = { new Point(0, 0), new Point(6, 6) }
+        };
+        firstMarkup.Metadata.Author = "Paul";
+        firstMarkup.UpdateBoundingRect();
+        vm.AddMarkup(firstMarkup);
+
+        var secondMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            Status = MarkupStatus.Resolved,
+            TextContent = "Done",
+            Vertices = { new Point(12, 12) }
+        };
+        secondMarkup.Metadata.Author = "Casey";
+        secondMarkup.UpdateBoundingRect();
+        vm.AddMarkup(secondMarkup);
+
+        vm.MarkupTool.IssueGroupMode = MarkupIssueGroupMode.Author;
+        var authorGroup = Assert.Single(vm.MarkupTool.IssueGroups.Where(group => group.DisplayName == "Paul"));
+
+        vm.MarkupTool.SelectedIssueGroup = authorGroup;
+
+        var filtered = vm.GetFilteredReviewMarkups();
+        var markup = Assert.Single(filtered);
+        Assert.Same(firstMarkup, markup);
+        Assert.Equal("Paul | 1 issue(s)", vm.MarkupTool.SelectedIssueGroupSummary);
     }
 }

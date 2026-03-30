@@ -83,6 +83,28 @@ public class MarkupMetadata
 }
 
 /// <summary>
+/// A threaded review reply attached to a markup issue.
+/// </summary>
+public class MarkupReply
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Author { get; set; } = string.Empty;
+    public string Text { get; set; } = string.Empty;
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime ModifiedUtc { get; set; } = DateTime.UtcNow;
+    public string CreatedDisplayText => FormatUtcForDisplay(CreatedUtc);
+    public string ModifiedDisplayText => FormatUtcForDisplay(ModifiedUtc);
+
+    internal static string FormatUtcForDisplay(DateTime utc)
+    {
+        if (utc == default)
+            return string.Empty;
+
+        return utc.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
+    }
+}
+
+/// <summary>
 /// A parametric markup record stored on the annotation layer.
 /// Uses Document-space (PDF points) coordinates.
 /// </summary>
@@ -155,6 +177,16 @@ public class MarkupRecord
     /// </summary>
     public string? StatusNote { get; set; }
 
+    /// <summary>
+    /// Discussion replies attached to this markup issue.
+    /// </summary>
+    public List<MarkupReply> Replies { get; set; } = new();
+
+    /// <summary>
+    /// Current assignee for the markup issue.
+    /// </summary>
+    public string? AssignedTo { get; set; }
+
     // ── Layer + style ─────────────────────────────────────────────────────────
 
     /// <summary>Layer this markup belongs to</summary>
@@ -165,8 +197,11 @@ public class MarkupRecord
     public string TypeDisplayText => GetTypeDisplayText(Type);
     public string StatusDisplayText => GetStatusDisplayText(Status);
     public string LayerDisplayText => LayerId;
+    public string AssignedToDisplayText => string.IsNullOrWhiteSpace(AssignedTo) ? "(unassigned)" : AssignedTo;
     public string CreatedDisplayText => FormatUtcForDisplay(Metadata.CreatedUtc);
     public string ModifiedDisplayText => FormatUtcForDisplay(Metadata.ModifiedUtc);
+    public int ReplyCount => Replies.Count;
+    public string ReplyCountDisplayText => ReplyCount.ToString(CultureInfo.CurrentCulture);
     [JsonIgnore]
     public string ReviewSheetDisplayText { get; set; } = string.Empty;
 
@@ -207,9 +242,6 @@ public class MarkupRecord
 
     private static string FormatUtcForDisplay(DateTime utc)
     {
-        if (utc == default)
-            return string.Empty;
-
-        return utc.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
+        return MarkupReply.FormatUtcForDisplay(utc);
     }
 }

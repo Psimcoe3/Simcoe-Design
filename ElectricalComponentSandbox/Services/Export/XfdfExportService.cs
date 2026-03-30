@@ -147,6 +147,9 @@ public class XfdfExportService
         // Status as custom attribute
         w.WriteAttributeString("customstatus", m.StatusDisplayText);
 
+        if (!string.IsNullOrWhiteSpace(m.AssignedTo))
+            w.WriteAttributeString("assignedto", m.AssignedTo);
+
         // Contents (label / text)
         if (!string.IsNullOrEmpty(m.Metadata.Label) || !string.IsNullOrEmpty(m.TextContent))
         {
@@ -155,6 +158,23 @@ public class XfdfExportService
             w.WriteEndElement();
 
             w.WriteElementString("contents", m.TextContent ?? m.Metadata.Label);
+        }
+
+        if (m.Replies.Count > 0)
+        {
+            w.WriteStartElement("replies");
+            foreach (var reply in m.Replies)
+            {
+                w.WriteStartElement("reply");
+                w.WriteAttributeString("id", reply.Id);
+                w.WriteAttributeString("author", reply.Author);
+                w.WriteAttributeString("created", reply.CreatedUtc.ToString("O"));
+                w.WriteAttributeString("modified", reply.ModifiedUtc.ToString("O"));
+                w.WriteCData(reply.Text);
+                w.WriteEndElement();
+            }
+
+            w.WriteEndElement();
         }
 
         // Vertices for polyline/polygon/line
@@ -223,6 +243,7 @@ public class XfdfExportService
 
         record.Metadata.Author = el.GetAttribute("title") ?? string.Empty;
         record.Metadata.Subject = el.GetAttribute("subject") ?? string.Empty;
+        record.AssignedTo = el.GetAttribute("assignedto");
         record.Appearance.StrokeColor = el.GetAttribute("color") ?? "#FF0000";
 
         if (double.TryParse(el.GetAttribute("width"), NumberStyles.Float, CultureInfo.InvariantCulture, out double w))
@@ -299,6 +320,34 @@ public class XfdfExportService
         var contents = el.SelectSingleNode("contents") ?? el.SelectSingleNode("*[local-name()='contents']");
         if (contents != null)
             record.TextContent = contents.InnerText;
+
+        var replies = el.SelectNodes("./*[local-name()='replies']/*[local-name()='reply']");
+        if (replies != null)
+        {
+            foreach (XmlNode replyNode in replies)
+            {
+                if (replyNode is not XmlElement replyElement)
+                    continue;
+
+                var reply = new MarkupReply
+                {
+                    Id = replyElement.GetAttribute("id"),
+                    Author = replyElement.GetAttribute("author") ?? string.Empty,
+                    Text = replyElement.InnerText ?? string.Empty
+                };
+
+                if (string.IsNullOrEmpty(reply.Id))
+                    reply.Id = Guid.NewGuid().ToString();
+
+                if (DateTime.TryParse(replyElement.GetAttribute("created"), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var createdUtc))
+                    reply.CreatedUtc = createdUtc;
+
+                if (DateTime.TryParse(replyElement.GetAttribute("modified"), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var modifiedUtc))
+                    reply.ModifiedUtc = modifiedUtc;
+
+                record.Replies.Add(reply);
+            }
+        }
 
         record.UpdateBoundingRect();
         return record;

@@ -331,4 +331,28 @@ public partial class MainViewModelTests
         Assert.Equal(thirdSheet.Id, vm.SelectedSheet?.Id);
         Assert.Equal(2, vm.Sheets.Count);
     }
+
+    [Fact]
+    public void ProjectBrowserItems_ReflectSheetsAndSheetScopedNamedViews()
+    {
+        var vm = new MainViewModel();
+        vm.NamedViews.Add(new NamedView { Name = "Sheet 1 View", Zoom = 1.1 });
+        var firstSheet = vm.SelectedSheet;
+
+        var secondSheet = vm.AddSheet("Review Sheet");
+        vm.NamedViews.Add(new NamedView { Name = "Sheet 2 View", Zoom = 2.0 });
+        vm.RefreshProjectBrowserItems();
+
+        Assert.NotNull(firstSheet);
+        Assert.NotNull(secondSheet);
+        Assert.Equal(2, vm.ProjectBrowserItems.Count);
+        Assert.Equal(firstSheet.DisplayName, vm.ProjectBrowserItems[0].DisplayName);
+        Assert.Equal(secondSheet.DisplayName, vm.ProjectBrowserItems[1].DisplayName);
+        Assert.Single(vm.ProjectBrowserItems[0].Children);
+        Assert.Single(vm.ProjectBrowserItems[1].Children);
+        Assert.Equal("Sheet 1 View", vm.ProjectBrowserItems[0].Children[0].DisplayName);
+        Assert.Equal("Sheet 2 View", vm.ProjectBrowserItems[1].Children[0].DisplayName);
+        Assert.False(vm.ProjectBrowserItems[0].IsSelected);
+        Assert.True(vm.ProjectBrowserItems[1].IsSelected);
+    }
 }

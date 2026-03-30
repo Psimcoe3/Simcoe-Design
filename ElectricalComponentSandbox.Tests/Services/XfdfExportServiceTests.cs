@@ -63,9 +63,18 @@ public class XfdfExportServiceTests
         {
             Id = "roundtrip-1",
             Type = MarkupType.Rectangle,
+            AssignedTo = "Field Team",
             Metadata = { Author = "Tester", Subject = "Electrical" },
             Appearance = { StrokeColor = "#0000FF", StrokeWidth = 3.0, Opacity = 0.8 },
-            BoundingRect = new Rect(10, 20, 90, 60)
+            BoundingRect = new Rect(10, 20, 90, 60),
+            Replies =
+            {
+                new MarkupReply
+                {
+                    Author = "Coordinator",
+                    Text = "Need updated panel schedule before closeout."
+                }
+            }
         };
 
         var xfdf = _svc.Export(new[] { original });
@@ -77,9 +86,13 @@ public class XfdfExportServiceTests
         Assert.Equal("roundtrip-1", result.Id);
         Assert.Equal(MarkupType.Rectangle, result.Type);
         Assert.Equal("Tester", result.Metadata.Author);
+        Assert.Equal("Field Team", result.AssignedTo);
         Assert.Equal("#0000FF", result.Appearance.StrokeColor);
         Assert.Equal(3.0, result.Appearance.StrokeWidth);
         Assert.Equal(0.8, result.Appearance.Opacity);
+        Assert.Single(result.Replies);
+        Assert.Equal("Coordinator", result.Replies[0].Author);
+        Assert.Equal("Need updated panel schedule before closeout.", result.Replies[0].Text);
     }
 
     [Fact]

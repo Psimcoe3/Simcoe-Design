@@ -426,16 +426,128 @@ public class MarkupStatusAction : IUndoableAction
     private readonly Markup.Models.MarkupRecord _markup;
     private readonly Markup.Models.MarkupStatus _oldStatus;
     private readonly Markup.Models.MarkupStatus _newStatus;
+    private readonly string? _oldStatusNote;
+    private readonly string? _newStatusNote;
+    private readonly DateTime _oldModifiedUtc;
+    private readonly DateTime _newModifiedUtc;
+    private readonly Markup.Models.MarkupReply? _auditReply;
 
     public string Description => $"Change markup status: {_markup.Metadata.Label}";
 
-    public MarkupStatusAction(Markup.Models.MarkupRecord markup, Markup.Models.MarkupStatus newStatus)
+    public MarkupStatusAction(
+        Markup.Models.MarkupRecord markup,
+        Markup.Models.MarkupStatus newStatus,
+        string? newStatusNote = null,
+        Markup.Models.MarkupReply? auditReply = null,
+        DateTime? modifiedUtc = null)
     {
         _markup = markup;
         _oldStatus = markup.Status;
         _newStatus = newStatus;
+        _oldStatusNote = markup.StatusNote;
+        _newStatusNote = newStatusNote;
+        _oldModifiedUtc = markup.Metadata.ModifiedUtc;
+        _newModifiedUtc = modifiedUtc ?? DateTime.UtcNow;
+        _auditReply = auditReply;
     }
 
-    public void Execute() => _markup.Status = _newStatus;
-    public void Undo() => _markup.Status = _oldStatus;
+    public void Execute()
+    {
+        _markup.Status = _newStatus;
+        _markup.StatusNote = _newStatusNote;
+        _markup.Metadata.ModifiedUtc = _newModifiedUtc;
+
+        if (_auditReply != null && !_markup.Replies.Any(existing => string.Equals(existing.Id, _auditReply.Id, StringComparison.Ordinal)))
+            _markup.Replies.Add(_auditReply);
+    }
+
+    public void Undo()
+    {
+        _markup.Status = _oldStatus;
+        _markup.StatusNote = _oldStatusNote;
+        _markup.Metadata.ModifiedUtc = _oldModifiedUtc;
+
+        if (_auditReply != null)
+            _markup.Replies.RemoveAll(existing => string.Equals(existing.Id, _auditReply.Id, StringComparison.Ordinal));
+    }
+}
+
+/// <summary>
+/// Undoable addition of a markup reply.
+/// </summary>
+public class MarkupReplyAction : IUndoableAction
+{
+    private readonly Markup.Models.MarkupRecord _markup;
+    private readonly Markup.Models.MarkupReply _reply;
+    private readonly DateTime _oldModifiedUtc;
+
+    public string Description => $"Add markup reply: {_markup.Metadata.Label}";
+
+    public MarkupReplyAction(Markup.Models.MarkupRecord markup, Markup.Models.MarkupReply reply)
+    {
+        _markup = markup;
+        _reply = reply;
+        _oldModifiedUtc = markup.Metadata.ModifiedUtc;
+    }
+
+    public void Execute()
+    {
+        if (!_markup.Replies.Any(existing => string.Equals(existing.Id, _reply.Id, StringComparison.Ordinal)))
+            _markup.Replies.Add(_reply);
+
+        _markup.Metadata.ModifiedUtc = _reply.ModifiedUtc;
+    }
+
+    public void Undo()
+    {
+        _markup.Replies.RemoveAll(existing => string.Equals(existing.Id, _reply.Id, StringComparison.Ordinal));
+        _markup.Metadata.ModifiedUtc = _oldModifiedUtc;
+    }
+}
+
+/// <summary>
+/// Undoable markup assignment change.
+/// </summary>
+public class MarkupAssignmentAction : IUndoableAction
+{
+    private readonly Markup.Models.MarkupRecord _markup;
+    private readonly string? _oldAssignedTo;
+    private readonly string? _newAssignedTo;
+    private readonly DateTime _oldModifiedUtc;
+    private readonly DateTime _newModifiedUtc;
+    private readonly Markup.Models.MarkupReply? _auditReply;
+
+    public string Description => $"Assign markup: {_markup.Metadata.Label}";
+
+    public MarkupAssignmentAction(
+        Markup.Models.MarkupRecord markup,
+        string? newAssignedTo,
+        Markup.Models.MarkupReply? auditReply = null,
+        DateTime? modifiedUtc = null)
+    {
+        _markup = markup;
+        _oldAssignedTo = markup.AssignedTo;
+        _newAssignedTo = newAssignedTo;
+        _oldModifiedUtc = markup.Metadata.ModifiedUtc;
+        _newModifiedUtc = modifiedUtc ?? DateTime.UtcNow;
+        _auditReply = auditReply;
+    }
+
+    public void Execute()
+    {
+        _markup.AssignedTo = _newAssignedTo;
+        _markup.Metadata.ModifiedUtc = _newModifiedUtc;
+
+        if (_auditReply != null && !_markup.Replies.Any(existing => string.Equals(existing.Id, _auditReply.Id, StringComparison.Ordinal)))
+            _markup.Replies.Add(_auditReply);
+    }
+
+    public void Undo()
+    {
+        _markup.AssignedTo = _oldAssignedTo;
+        _markup.Metadata.ModifiedUtc = _oldModifiedUtc;
+
+        if (_auditReply != null)
+            _markup.Replies.RemoveAll(existing => string.Equals(existing.Id, _auditReply.Id, StringComparison.Ordinal));
+    }
 }

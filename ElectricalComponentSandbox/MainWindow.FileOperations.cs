@@ -297,27 +297,32 @@ public partial class MainWindow
 
     private void ExportXfdf_Click(object sender, RoutedEventArgs e)
     {
-        if (!_viewModel.Markups.Any())
+        var reviewMarkups = _viewModel.GetFilteredReviewMarkups();
+        if (reviewMarkups.Count == 0)
         {
-            MessageBox.Show("No markups to export.", "Export XFDF",
+            MessageBox.Show("No markups to export in the current review scope/filter.", "Export XFDF",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
+        var scopeLabel = _viewModel.MarkupTool.ReviewScope == ViewModels.MarkupReviewScope.AllSheets
+            ? "all-sheets-markups"
+            : $"{_viewModel.SelectedSheet?.Number?.ToLowerInvariant() ?? "sheet"}-markups";
+
         var dlg = new SaveFileDialog
         {
             Filter = "XFDF Files (*.xfdf)|*.xfdf",
-            FileName = "markups.xfdf",
+            FileName = $"{scopeLabel}.xfdf",
             Title = "Export XFDF Markups"
         };
         if (dlg.ShowDialog() != true) return;
 
         try
         {
-            _viewModel.XfdfService.ExportToFile(_viewModel.Markups, dlg.FileName);
+            _viewModel.XfdfService.ExportToFile(reviewMarkups, dlg.FileName);
             ActionLogService.Instance.Log(LogCategory.FileOperation, "XFDF exported",
-                $"File: {dlg.FileName}, Markups: {_viewModel.Markups.Count}");
-            MessageBox.Show($"Exported {_viewModel.Markups.Count} markup(s) to XFDF.",
+                $"File: {dlg.FileName}, Scope: {_viewModel.MarkupTool.ReviewScope}, Markups: {reviewMarkups.Count}");
+            MessageBox.Show($"Exported {reviewMarkups.Count} markup(s) to XFDF from {_viewModel.MarkupTool.ReviewScope}.",
                 "Export XFDF", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)

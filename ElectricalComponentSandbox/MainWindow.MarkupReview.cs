@@ -33,6 +33,15 @@ public partial class MainWindow
         return selectedMarkup != null && selectedMarkup.Vertices.Count < previousVertexCount;
     }
 
+    internal bool ExecuteAddMarkupReplyCommandForTesting(string replyText, string? author = null)
+        => TryAddReplyToSelectedMarkup(replyText, author ?? "Test Reviewer", showFeedbackIfUnavailable: false);
+
+    internal bool ExecuteSetSelectedMarkupStatusForTesting(MarkupStatus newStatus, string? author = null)
+        => TrySetSelectedMarkupStatus(newStatus, author ?? "Test Reviewer", showFeedbackIfUnavailable: false);
+
+    internal bool ExecuteAssignSelectedMarkupForTesting(string? assignee, string? actor = null)
+        => TryAssignSelectedMarkup(assignee, actor ?? "Test Reviewer", showFeedbackIfUnavailable: false);
+
     private void EditSelectedMarkupGeometry_Click(object sender, RoutedEventArgs e)
     {
         TryEditSelectedMarkupGeometry(showFeedbackIfUnsupported: true);
@@ -65,36 +74,175 @@ public partial class MainWindow
 
     private void ApproveMarkup_Click(object sender, RoutedEventArgs e)
     {
-        SetSelectedMarkupStatus(MarkupStatus.Approved, "Approve");
+        TrySetSelectedMarkupStatus(MarkupStatus.Approved, Environment.UserName, showFeedbackIfUnavailable: true);
     }
 
     private void RejectMarkup_Click(object sender, RoutedEventArgs e)
     {
-        SetSelectedMarkupStatus(MarkupStatus.Rejected, "Reject");
+        TrySetSelectedMarkupStatus(MarkupStatus.Rejected, Environment.UserName, showFeedbackIfUnavailable: true);
     }
 
     private void ResolveMarkup_Click(object sender, RoutedEventArgs e)
     {
-        SetSelectedMarkupStatus(MarkupStatus.Resolved, "Resolve");
+        TrySetSelectedMarkupStatus(MarkupStatus.Resolved, Environment.UserName, showFeedbackIfUnavailable: true);
     }
 
-    private void SetSelectedMarkupStatus(MarkupStatus newStatus, string action)
+    private void AssignSelectedMarkup_Click(object sender, RoutedEventArgs e)
+    {
+        var defaultValue = _viewModel.MarkupTool.SelectedMarkup?.AssignedTo ?? Environment.UserName;
+        var input = PromptInput("Assign Markup", "Enter assignee name. Leave blank to clear assignment:", defaultValue);
+        if (input == null)
+            return;
+
+        TryAssignSelectedMarkup(input, Environment.UserName, showFeedbackIfUnavailable: true);
+    }
+
+    private void AssignVisibleMarkups_Click(object sender, RoutedEventArgs e)
+    {
+        var input = PromptInput("Assign Visible Markups", "Enter assignee name for all visible issues. Leave blank to clear assignment:", Environment.UserName);
+        if (input == null)
+            return;
+
+        TryAssignVisibleMarkups(input, Environment.UserName);
+    }
+
+    private void ResolveVisibleMarkups_Click(object sender, RoutedEventArgs e)
+    {
+        TrySetVisibleMarkupStatus(MarkupStatus.Resolved, "Resolve Visible", Environment.UserName);
+    }
+
+    private void VoidVisibleMarkups_Click(object sender, RoutedEventArgs e)
+    {
+        TrySetVisibleMarkupStatus(MarkupStatus.Void, "Void Visible", Environment.UserName);
+    }
+
+    private void AddMarkupReply_Click(object sender, RoutedEventArgs e)
+    {
+        var defaultReply = _viewModel.MarkupTool.SelectedMarkup?.Replies.LastOrDefault()?.Text ?? string.Empty;
+        var input = PromptInput("Add Markup Reply", "Enter reply text:", defaultReply);
+        if (string.IsNullOrWhiteSpace(input))
+            return;
+
+        TryAddReplyToSelectedMarkup(input, Environment.UserName, showFeedbackIfUnavailable: true);
+    }
+
+    private bool TryAddReplyToSelectedMarkup(string replyText, string author, bool showFeedbackIfUnavailable)
     {
         var markup = _viewModel.MarkupTool.SelectedMarkup;
         if (markup == null)
         {
-            MessageBox.Show("Select a markup first.", action,
-                MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
+            if (showFeedbackIfUnavailable)
+            {
+                MessageBox.Show("Select a markup first.", "Add Reply",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
         }
 
-        _viewModel.UndoRedo.Execute(new MarkupStatusAction(markup, newStatus));
-        markup.Metadata.ModifiedUtc = System.DateTime.UtcNow;
+        if (string.IsNullOrWhiteSpace(replyText))
+            return false;
+
+        var utcNow = DateTime.UtcNow;
+        var reply = new MarkupReply
+        {
+            Author = string.IsNullOrWhiteSpace(author) ? Environment.UserName : author,
+            Text = replyText.Trim(),
+            CreatedUtc = utcNow,
+            ModifiedUtc = utcNow
+        };
+
+        _viewModel.UndoRedo.Execute(new MarkupReplyAction(markup, reply));
 
         ActionLogService.Instance.Log(LogCategory.Component,
-            $"Markup {action.ToLowerInvariant()}d", $"Id: {markup.Id}");
+            "Markup replied", $"Id: {markup.Id}");
+
+        _viewModel.MarkupTool.RefreshReviewContext();
+        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+        return true;
+    }
+
+    private bool TrySetSelectedMarkupStatus(MarkupStatus newStatus, string actor, bool showFeedbackIfUnavailable)
+    {
+        var markup = _viewModel.MarkupTool.SelectedMarkup;
+        if (markup == null)
+        {
+            if (showFeedbackIfUnavailable)
+            {
+                MessageBox.Show("Select a markup first.", MarkupRecord.GetStatusDisplayText(newStatus),
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        if (!_viewModel.TryApplySelectedMarkupStatus(newStatus, actor))
+            return false;
+
+        ActionLogService.Instance.Log(LogCategory.Component,
+            $"Markup {MarkupRecord.GetStatusDisplayText(newStatus).ToLowerInvariant()}", $"Id: {markup.Id}");
 
         QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+        return true;
+    }
+
+    private bool TrySetVisibleMarkupStatus(MarkupStatus newStatus, string action, string actor)
+    {
+        var updatedCount = _viewModel.ApplyFilteredMarkupStatus(newStatus, actor);
+        if (updatedCount == 0)
+        {
+            MessageBox.Show("No visible markups were eligible for that status change.", action,
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return false;
+        }
+
+        ActionLogService.Instance.Log(LogCategory.Component,
+            $"Markup {action.ToLowerInvariant()}", $"Count: {updatedCount}");
+
+        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+        return true;
+    }
+
+    private bool TryAssignSelectedMarkup(string? assignee, string actor, bool showFeedbackIfUnavailable)
+    {
+        var markup = _viewModel.MarkupTool.SelectedMarkup;
+        if (markup == null)
+        {
+            if (showFeedbackIfUnavailable)
+            {
+                MessageBox.Show("Select a markup first.", "Assign Markup",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        if (!_viewModel.TryAssignSelectedMarkup(assignee, actor))
+            return false;
+
+        ActionLogService.Instance.Log(LogCategory.Component,
+            "Markup assigned", $"Id: {markup.Id}, Assignee: {markup.AssignedToDisplayText}");
+
+        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+        return true;
+    }
+
+    private bool TryAssignVisibleMarkups(string? assignee, string actor)
+    {
+        var updatedCount = _viewModel.ApplyFilteredMarkupAssignment(assignee, actor);
+        if (updatedCount == 0)
+        {
+            MessageBox.Show("No visible markups were eligible for that assignment change.", "Assign Visible Markups",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return false;
+        }
+
+        var assigneeDisplay = string.IsNullOrWhiteSpace(assignee) ? "(unassigned)" : assignee.Trim();
+        ActionLogService.Instance.Log(LogCategory.Component,
+            "Visible markups assigned", $"Count: {updatedCount}, Assignee: {assigneeDisplay}");
+
+        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+        return true;
     }
 
     private void MarkupSummary_Click(object sender, RoutedEventArgs e)

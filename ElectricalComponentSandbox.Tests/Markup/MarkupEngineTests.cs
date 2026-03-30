@@ -730,7 +730,16 @@ public class MarkupPersistenceServiceTests
                 Type = MarkupType.Circle,
                 Vertices = new List<Point> { new(50, 50) },
                 Radius = 25,
-                Metadata = new MarkupMetadata { Label = "Junction" }
+                AssignedTo = "QA",
+                Metadata = new MarkupMetadata { Label = "Junction" },
+                Replies =
+                {
+                    new MarkupReply
+                    {
+                        Author = "Reviewer",
+                        Text = "Confirm field clearance before install."
+                    }
+                }
             }
         };
 
@@ -744,6 +753,10 @@ public class MarkupPersistenceServiceTests
         Assert.Equal(2.5, loaded[0].Metadata.Depth);
         Assert.Equal(MarkupType.Circle, loaded[1].Type);
         Assert.Equal(25, loaded[1].Radius);
+        Assert.Equal("QA", loaded[1].AssignedTo);
+        Assert.Single(loaded[1].Replies);
+        Assert.Equal("Reviewer", loaded[1].Replies[0].Author);
+        Assert.Equal("Confirm field clearance before install.", loaded[1].Replies[0].Text);
     }
 
     [Fact]
@@ -756,8 +769,17 @@ public class MarkupPersistenceServiceTests
             {
                 Type = MarkupType.Polygon,
                 Vertices = new List<Point> { new(0, 0), new(10, 0), new(10, 10) },
+                AssignedTo = "Coordinator",
                 Appearance = new MarkupAppearance { StrokeColor = "#00FF00", StrokeWidth = 3.0 },
-                Metadata = new MarkupMetadata { Label = "Area 1", Subject = "Floor", Author = "JD" }
+                Metadata = new MarkupMetadata { Label = "Area 1", Subject = "Floor", Author = "JD" },
+                Replies =
+                {
+                    new MarkupReply
+                    {
+                        Author = "QA",
+                        Text = "Waiting on revised dimension callout."
+                    }
+                }
             }
         };
 
@@ -771,6 +793,9 @@ public class MarkupPersistenceServiceTests
         Assert.Equal(3.0, loaded[0].Appearance.StrokeWidth);
         Assert.Equal("Area 1", loaded[0].Metadata.Label);
         Assert.Equal("JD", loaded[0].Metadata.Author);
+        Assert.Equal("Coordinator", loaded[0].AssignedTo);
+        Assert.Single(loaded[0].Replies);
+        Assert.Equal("QA", loaded[0].Replies[0].Author);
     }
 
     [Fact]

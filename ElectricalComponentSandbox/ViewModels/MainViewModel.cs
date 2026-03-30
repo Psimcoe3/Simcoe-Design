@@ -31,6 +31,7 @@ public class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<ElectricalComponent> LibraryComponents { get; } = new();
     public ObservableCollection<Layer> Layers { get; } = new();
     public ObservableCollection<DrawingSheet> Sheets { get; } = new();
+    public ObservableCollection<ProjectBrowserSheetItemViewModel> ProjectBrowserItems { get; } = new();
 
     // ── Markup / 2D annotation ────────────────────────────────────────────────
 
@@ -386,7 +387,11 @@ public class MainViewModel : INotifyPropertyChanged
         InitializeLayers();
         InitializeStyles();
         InitializeSheets();
-        MarkupTool = new MarkupToolViewModel(Markups, GetProjectReviewMarkups);
+        MarkupTool = new MarkupToolViewModel(
+            Markups,
+            GetProjectReviewMarkups,
+            status => TryApplySelectedMarkupStatus(status, Environment.UserName),
+            status => ApplyFilteredMarkupStatus(status, Environment.UserName));
         LayerManager = new LayerManagerViewModel(Layers);
     }
     
@@ -431,6 +436,7 @@ public class MainViewModel : INotifyPropertyChanged
         Sheets.Add(defaultSheet);
         LoadSheetState(defaultSheet);
         SelectedSheet = defaultSheet;
+        RefreshProjectBrowserItems();
         RefreshMarkupReviewContext();
     }
 
@@ -491,6 +497,7 @@ public class MainViewModel : INotifyPropertyChanged
 
         Sheets.Add(sheet);
         SelectSheet(sheet);
+        RefreshProjectBrowserItems();
         RefreshMarkupReviewContext();
 
         ActionLogService.Instance.Log(LogCategory.View, "Sheet added",
@@ -513,6 +520,7 @@ public class MainViewModel : INotifyPropertyChanged
 
         sheet.Number = normalizedNumber;
         sheet.Name = normalizedName;
+        RefreshProjectBrowserItems();
         UpdateSheetMarkupReviewContext(sheet);
         MarkupTool?.RefreshReviewContext();
         OnPropertyChanged(nameof(Sheets));
@@ -554,6 +562,7 @@ public class MainViewModel : INotifyPropertyChanged
         }
 
         RefreshMarkupReviewContext();
+    RefreshProjectBrowserItems();
         OnPropertyChanged(nameof(Sheets));
 
         ActionLogService.Instance.Log(LogCategory.View, "Sheet deleted",
@@ -575,6 +584,7 @@ public class MainViewModel : INotifyPropertyChanged
             return false;
 
         Sheets.Move(index, targetIndex);
+        RefreshProjectBrowserItems();
         RefreshMarkupReviewContext();
         OnPropertyChanged(nameof(Sheets));
 
@@ -592,6 +602,7 @@ public class MainViewModel : INotifyPropertyChanged
         LoadSheetState(sheet);
         SelectedSheet = sheet;
         ClearComponentSelection();
+        RefreshProjectBrowserItems();
         RefreshMarkupReviewContext();
 
         ActionLogService.Instance.Log(LogCategory.View, "Sheet selected",
@@ -605,11 +616,98 @@ public class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(Sheets));
     }
 
+    public void RefreshProjectBrowserItems()
+    {
+        ProjectBrowserItems.Clear();
+
+        foreach (var sheet in Sheets)
+        {
+            var sheetItem = new ProjectBrowserSheetItemViewModel(sheet)
+            {
+                IsExpanded = true,
+                IsSelected = ReferenceEquals(sheet, SelectedSheet)
+            };
+
+            foreach (var namedView in GetNamedViewsForSheet(sheet))
+            {
+                sheetItem.Children.Add(new ProjectBrowserNamedViewItemViewModel(sheet, namedView));
+            }
+
+            ProjectBrowserItems.Add(sheetItem);
+        }
+
+        OnPropertyChanged(nameof(ProjectBrowserItems));
+    }
+
     public IReadOnlyList<MarkupRecord> GetReviewMarkups()
     {
         return MarkupTool.ReviewScope == MarkupReviewScope.AllSheets
             ? GetProjectReviewMarkups()
             : Markups.ToList();
+    }
+
+    public IReadOnlyList<MarkupRecord> GetFilteredReviewMarkups()
+        => MarkupTool.GetFilteredReviewMarkups();
+
+    public bool TryApplySelectedMarkupStatus(MarkupStatus newStatus, string actor)
+    {
+        var markup = MarkupTool.SelectedMarkup;
+        if (markup == null)
+            return false;
+
+        return TryApplyMarkupStatus(markup, newStatus, actor);
+    }
+
+    public int ApplyFilteredMarkupStatus(MarkupStatus newStatus, string actor)
+    {
+        var markups = GetFilteredReviewMarkups()
+            .Where(markup => markup.Status != newStatus)
+            .ToList();
+
+        if (markups.Count == 0)
+            return 0;
+
+        var actions = markups
+            .Select(markup => (IUndoableAction)CreateMarkupStatusAction(markup, newStatus, actor))
+            .ToList();
+
+        UndoRedo.Execute(actions.Count == 1
+            ? actions[0]
+            : new CompositeAction($"Set {markups.Count} markup statuses to {MarkupRecord.GetStatusDisplayText(newStatus)}", actions));
+
+        MarkupTool.RefreshReviewContext();
+        return markups.Count;
+    }
+
+    public bool TryAssignSelectedMarkup(string? assignee, string actor)
+    {
+        var markup = MarkupTool.SelectedMarkup;
+        if (markup == null)
+            return false;
+
+        return TryApplyMarkupAssignment(markup, assignee, actor);
+    }
+
+    public int ApplyFilteredMarkupAssignment(string? assignee, string actor)
+    {
+        var normalizedAssignee = NormalizeAssignee(assignee);
+        var markups = GetFilteredReviewMarkups()
+            .Where(markup => !string.Equals(NormalizeAssignee(markup.AssignedTo), normalizedAssignee, StringComparison.Ordinal))
+            .ToList();
+
+        if (markups.Count == 0)
+            return 0;
+
+        var actions = markups
+            .Select(markup => (IUndoableAction)CreateMarkupAssignmentAction(markup, normalizedAssignee, actor))
+            .ToList();
+
+        UndoRedo.Execute(actions.Count == 1
+            ? actions[0]
+            : new CompositeAction($"Assign {markups.Count} markups", actions));
+
+        MarkupTool.RefreshReviewContext();
+        return markups.Count;
     }
 
     public string GetMarkupSheetDisplayName(MarkupRecord markup)
@@ -648,6 +746,69 @@ public class MainViewModel : INotifyPropertyChanged
 
         MarkupTool.SelectedMarkup = activeMarkup;
         return true;
+    }
+
+    private bool TryApplyMarkupStatus(MarkupRecord markup, MarkupStatus newStatus, string actor)
+    {
+        if (markup.Status == newStatus)
+            return false;
+
+        UndoRedo.Execute(CreateMarkupStatusAction(markup, newStatus, actor));
+        MarkupTool.RefreshReviewContext();
+        return true;
+    }
+
+    private bool TryApplyMarkupAssignment(MarkupRecord markup, string? assignee, string actor)
+    {
+        var normalizedAssignee = NormalizeAssignee(assignee);
+        if (string.Equals(NormalizeAssignee(markup.AssignedTo), normalizedAssignee, StringComparison.Ordinal))
+            return false;
+
+        UndoRedo.Execute(CreateMarkupAssignmentAction(markup, normalizedAssignee, actor));
+        MarkupTool.RefreshReviewContext();
+        return true;
+    }
+
+    private static MarkupStatusAction CreateMarkupStatusAction(MarkupRecord markup, MarkupStatus newStatus, string actor)
+    {
+        var utcNow = DateTime.UtcNow;
+        var oldStatus = markup.Status;
+        var author = string.IsNullOrWhiteSpace(actor) ? Environment.UserName : actor;
+        var auditText = $"Status changed: {MarkupRecord.GetStatusDisplayText(oldStatus)} -> {MarkupRecord.GetStatusDisplayText(newStatus)}";
+        var auditReply = new MarkupReply
+        {
+            Author = author,
+            Text = auditText,
+            CreatedUtc = utcNow,
+            ModifiedUtc = utcNow
+        };
+
+        return new MarkupStatusAction(markup, newStatus, auditText, auditReply, utcNow);
+    }
+
+    private static MarkupAssignmentAction CreateMarkupAssignmentAction(MarkupRecord markup, string? assignee, string actor)
+    {
+        var utcNow = DateTime.UtcNow;
+        var author = string.IsNullOrWhiteSpace(actor) ? Environment.UserName : actor;
+        var oldAssignedTo = NormalizeAssignee(markup.AssignedTo);
+        var newAssignedTo = NormalizeAssignee(assignee);
+        var oldDisplay = string.IsNullOrWhiteSpace(oldAssignedTo) ? "(unassigned)" : oldAssignedTo;
+        var newDisplay = string.IsNullOrWhiteSpace(newAssignedTo) ? "(unassigned)" : newAssignedTo;
+        var auditReply = new MarkupReply
+        {
+            Author = author,
+            Text = $"Assignment changed: {oldDisplay} -> {newDisplay}",
+            CreatedUtc = utcNow,
+            ModifiedUtc = utcNow
+        };
+
+        return new MarkupAssignmentAction(markup, newAssignedTo, auditReply, utcNow);
+    }
+
+    private static string? NormalizeAssignee(string? assignee)
+    {
+        var normalized = assignee?.Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
     }
 
     /// <summary>
@@ -781,6 +942,7 @@ public class MainViewModel : INotifyPropertyChanged
     {
         ActionLogService.Instance.Log(LogCategory.Edit, "Undo", $"CanUndo: {UndoRedo.CanUndo}");
         UndoRedo.Undo();
+        MarkupTool.RefreshReviewContext();
         OnPropertyChanged(nameof(SelectedComponent));
     }
     
@@ -788,6 +950,7 @@ public class MainViewModel : INotifyPropertyChanged
     {
         ActionLogService.Instance.Log(LogCategory.Edit, "Redo", $"CanRedo: {UndoRedo.CanRedo}");
         UndoRedo.Redo();
+        MarkupTool.RefreshReviewContext();
         OnPropertyChanged(nameof(SelectedComponent));
     }
     
@@ -898,6 +1061,7 @@ public class MainViewModel : INotifyPropertyChanged
 
         LoadSheetState(firstSheet);
         SelectedSheet = firstSheet;
+        RefreshProjectBrowserItems();
         RefreshMarkupReviewContext();
 
         UnitSystemName = project.UnitSystem;
@@ -923,6 +1087,13 @@ public class MainViewModel : INotifyPropertyChanged
                 ? (IEnumerable<MarkupRecord>)Markups
                 : sheet.Markups)
             .ToList();
+    }
+
+    private IReadOnlyList<NamedView> GetNamedViewsForSheet(DrawingSheet sheet)
+    {
+        return ReferenceEquals(sheet, SelectedSheet)
+            ? NamedViews.ToList()
+            : sheet.NamedViews;
     }
 
     private void RefreshMarkupReviewContext()
