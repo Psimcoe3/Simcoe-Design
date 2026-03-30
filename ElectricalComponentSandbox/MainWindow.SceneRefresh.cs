@@ -82,7 +82,11 @@ public partial class MainWindow
     private void MarkupTool_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(MarkupToolViewModel.SelectedMarkup))
+        {
+            UpdateContextualInspector();
+            UpdateCanvasGuidance();
             SkiaBackground.RequestRedraw();
+        }
     }
 
     private void LayerManager_LayerRowChanged(object? sender, LayerRowChangedEventArgs e)

@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using ElectricalComponentSandbox.Markup.Models;
 using ElectricalComponentSandbox.Markup.Services;
 using ElectricalComponentSandbox.Rendering;
@@ -159,5 +160,42 @@ public partial class MainWindowMarkupInteractionTests
         };
 
         Assert.Equal("Diameter 12  Angle 0 deg", MainWindow.BuildLineGeometryReadoutForTesting(markup));
+    }
+
+    [Fact]
+    public void UpdateContextualInspectorForTesting_WithSelectedMarkup_ShowsMarkupInspectorMode()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Status = MarkupStatus.Open,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Panel issue"
+                }
+            },
+            (window, _, _) =>
+            {
+                window.UpdateContextualInspectorForTesting();
+
+                var title = (TextBlock?)window.FindName("InspectorTitleTextBlock");
+                var summary = (TextBlock?)window.FindName("InspectorSummaryTextBlock");
+                var hint = (TextBlock?)window.FindName("InspectorHintTextBlock");
+                var tabs = (TabControl?)window.FindName("RightPanelTabs");
+                var selectedTab = tabs?.SelectedItem as TabItem;
+
+                return (
+                    Title: title?.Text,
+                    Summary: summary?.Text,
+                    Hint: hint?.Text,
+                    SelectedHeader: selectedTab?.Header?.ToString());
+            });
+
+        Assert.Equal("Markup Inspector", outcome.Title);
+        Assert.Contains("Panel issue", outcome.Summary);
+        Assert.Contains("Review & Markups", outcome.SelectedHeader);
+        Assert.Contains("threaded replies", outcome.Hint, StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -138,6 +138,8 @@ public partial class MainWindow
         UpdateCustomDimensionUiState();
         InitializeCanvasInteractionController();
         UpdateWorkspaceOverview();
+        UpdateContextualInspector();
+        UpdateCanvasGuidance();
 
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
         _viewModel.MarkupTool.PropertyChanged += MarkupTool_PropertyChanged;

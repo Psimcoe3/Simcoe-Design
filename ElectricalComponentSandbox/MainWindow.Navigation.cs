@@ -142,6 +142,7 @@ public partial class MainWindow
         }
 
         UpdateWorkspaceOverview();
+        UpdateContextualInspector();
     }
 
     private string GetSelectedLayerSummary(IReadOnlyList<Models.ElectricalComponent> selectedComponents)

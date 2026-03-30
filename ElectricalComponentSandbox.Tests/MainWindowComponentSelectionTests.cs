@@ -494,6 +494,73 @@ public class MainWindowComponentSelectionTests
     }
 
     [Fact]
+    public void UpdateContextualInspectorForTesting_WithComponentSelection_ShowsComponentInspectorMode()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.SetSelectedComponents(selected, selected[0]);
+
+            window.UpdateContextualInspectorForTesting();
+
+            var titleText = FindRequired<TextBlock>(window, "InspectorTitleTextBlock");
+            var summaryText = FindRequired<TextBlock>(window, "InspectorSummaryTextBlock");
+            var hintText = FindRequired<TextBlock>(window, "InspectorHintTextBlock");
+            var rightTabs = FindRequired<TabControl>(window, "RightPanelTabs");
+
+            Assert.Equal("Selection Inspector", titleText.Text);
+            Assert.Contains("Editing 2 selected components", summaryText.Text);
+            Assert.Contains("Component Details", ((TabItem)rightTabs.SelectedItem!).Header?.ToString());
+            Assert.Contains("dimensions", hintText.Text, StringComparison.OrdinalIgnoreCase);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdateCanvasGuidanceForTesting_WithoutComponents_ShowsEmptyStateInBothViews()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.Components.Clear();
+            viewModel.ClearComponentSelection();
+
+            window.UpdateCanvasGuidanceForTesting();
+
+            var planCard = FindRequired<Border>(window, "PlanCanvasGuidanceCard");
+            var viewportCard = FindRequired<Border>(window, "ViewportGuidanceCard");
+            var planTitle = FindRequired<TextBlock>(window, "PlanCanvasGuidanceTitleTextBlock");
+            var viewportTitle = FindRequired<TextBlock>(window, "ViewportGuidanceTitleTextBlock");
+
+            Assert.Equal(Visibility.Visible, planCard.Visibility);
+            Assert.Equal(Visibility.Visible, viewportCard.Visibility);
+            Assert.Contains("2D", planTitle.Text);
+            Assert.Contains("3D", viewportTitle.Text);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdateCanvasGuidanceForTesting_WithReferenceUnderlayAndNoComponents_ShowsTraceGuidance()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.Components.Clear();
+            viewModel.ClearComponentSelection();
+            viewModel.PdfUnderlay = new PdfUnderlay { FilePath = "plan.pdf", PageNumber = 1 };
+
+            window.UpdateCanvasGuidanceForTesting();
+
+            var planTitle = FindRequired<TextBlock>(window, "PlanCanvasGuidanceTitleTextBlock");
+            var planSummary = FindRequired<TextBlock>(window, "PlanCanvasGuidanceSummaryTextBlock");
+            var viewportSummary = FindRequired<TextBlock>(window, "ViewportGuidanceSummaryTextBlock");
+
+            Assert.Contains("Reference drawing", planTitle.Text);
+            Assert.Contains("underlay", planSummary.Text, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("underlay", viewportSummary.Text, StringComparison.OrdinalIgnoreCase);
+            return 0;
+        });
+    }
+
+    [Fact]
     public void ClearCustomDimensionsForTesting_WithMultiSelection_RemovesDimensionsForEntireSelection()
     {
         RunWithSelectedComponentsWindow((window, viewModel, selected) =>

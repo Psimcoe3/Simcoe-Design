@@ -76,6 +76,7 @@ public partial class MainWindow : Window
 
         DrawGripHandles();
         RebuildCanvasInteractionShadowTree(layerVisibilityById);
+        UpdateCanvasGuidance();
     }
 
     private void RebuildSnapGeometryCache(IReadOnlyDictionary<string, bool> layerVisibilityById)

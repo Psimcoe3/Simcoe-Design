@@ -84,6 +84,8 @@ public partial class MainWindow
 
         if (_showComponentLabels)
             AddComponentBillboardLabels(layerVisibilityById);
+
+        UpdateCanvasGuidance();
     }
 
     private static Transform3DGroup CreateComponentTransform(ElectricalComponent component)
