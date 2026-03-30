@@ -63,6 +63,7 @@ public sealed class MarkupIssueGroupItemViewModel
     public required string Key { get; init; }
     public required string DisplayName { get; init; }
     public required string SecondaryText { get; init; }
+    public required string BreakdownText { get; init; }
     public required int Count { get; init; }
     public required int OpenCount { get; init; }
 }
@@ -176,6 +177,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
             OnPropertyChanged();
             OnPropertyChanged(nameof(HasSelectedIssueGroup));
             OnPropertyChanged(nameof(SelectedIssueGroupSummary));
+            OnPropertyChanged(nameof(SelectedIssueGroupBreakdown));
             OnPropertyChanged(nameof(SelectedIssueGroupActionSummary));
             ApplyFilter();
         }
@@ -186,6 +188,10 @@ public class MarkupToolViewModel : INotifyPropertyChanged
     public string SelectedIssueGroupSummary => _selectedIssueGroup == null
         ? "All visible issues"
         : $"{_selectedIssueGroup.DisplayName} | {_selectedIssueGroup.Count} issue(s)";
+
+    public string SelectedIssueGroupBreakdown => _selectedIssueGroup == null
+        ? "Select a bucket to inspect the status and owner mix for one review slice."
+        : _selectedIssueGroup.BreakdownText;
 
     public string SelectedIssueGroupActionSummary => _selectedIssueGroup == null
         ? "Select a bucket to target bulk triage actions to one review slice."
@@ -850,6 +856,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(SelectedIssueGroup));
             OnPropertyChanged(nameof(HasSelectedIssueGroup));
             OnPropertyChanged(nameof(SelectedIssueGroupSummary));
+            OnPropertyChanged(nameof(SelectedIssueGroupBreakdown));
             OnPropertyChanged(nameof(SelectedIssueGroupActionSummary));
             ApplyFilter();
             CommandManager.InvalidateRequerySuggested();
@@ -1390,6 +1397,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
                 OnPropertyChanged(nameof(SelectedIssueGroup));
                 OnPropertyChanged(nameof(HasSelectedIssueGroup));
                 OnPropertyChanged(nameof(SelectedIssueGroupSummary));
+                OnPropertyChanged(nameof(SelectedIssueGroupBreakdown));
                 OnPropertyChanged(nameof(SelectedIssueGroupActionSummary));
             }
             else if (!ReferenceEquals(replacement, _selectedIssueGroup))
@@ -1397,6 +1405,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
                 _selectedIssueGroup = replacement;
                 OnPropertyChanged(nameof(SelectedIssueGroup));
                 OnPropertyChanged(nameof(SelectedIssueGroupSummary));
+                OnPropertyChanged(nameof(SelectedIssueGroupBreakdown));
                 OnPropertyChanged(nameof(SelectedIssueGroupActionSummary));
             }
         }
@@ -1433,14 +1442,64 @@ public class MarkupToolViewModel : INotifyPropertyChanged
             _ => $"Statuses: {markups.Select(markup => MarkupRecord.GetStatusDisplayText(markup.Status)).Distinct(StringComparer.OrdinalIgnoreCase).Count()}"
         };
 
+        var statusMixText = BuildStatusMixText(markups);
+        var assigneeMixText = BuildNamedCountSummary(markups.Select(GetAssigneeGroupValue));
+        var breakdownText = _issueGroupMode switch
+        {
+            MarkupIssueGroupMode.Status => $"Owners: {assigneeMixText}",
+            MarkupIssueGroupMode.Assignee => $"Flow: {statusMixText}",
+            _ => $"Flow: {statusMixText} | Owners: {assigneeMixText}"
+        };
+
         return new MarkupIssueGroupItemViewModel
         {
             Key = key,
             DisplayName = string.IsNullOrWhiteSpace(displayName) ? "(unnamed)" : displayName,
             SecondaryText = secondaryText,
+            BreakdownText = breakdownText,
             Count = markups.Count,
             OpenCount = markups.Count(markup => markup.Status is MarkupStatus.Open or MarkupStatus.InProgress)
         };
+    }
+
+    private static string BuildStatusMixText(IReadOnlyList<MarkupRecord> markups)
+    {
+        var counts = markups
+            .GroupBy(markup => markup.Status)
+            .Select(group => (Name: MarkupRecord.GetStatusDisplayText(group.Key), Count: group.Count()))
+            .OrderByDescending(group => group.Count)
+            .ThenBy(group => group.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return BuildCountRollup(counts);
+    }
+
+    private static string BuildNamedCountSummary(IEnumerable<string> values)
+    {
+        var counts = values
+            .GroupBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .Select(group => (Name: group.First(), Count: group.Count()))
+            .OrderByDescending(group => group.Count)
+            .ThenBy(group => group.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return BuildCountRollup(counts);
+    }
+
+    private static string BuildCountRollup(IReadOnlyList<(string Name, int Count)> counts)
+    {
+        if (counts.Count == 0)
+            return "none";
+
+        var visibleEntries = counts
+            .Take(2)
+            .Select(entry => $"{entry.Name} {entry.Count}");
+        var summary = string.Join(", ", visibleEntries);
+        var additionalGroups = counts.Count - 2;
+        if (additionalGroups > 0)
+            summary += $" +{additionalGroups} more";
+
+        return summary;
     }
 
     private bool MatchesIssueGroup(MarkupRecord markup, MarkupIssueGroupItemViewModel group)

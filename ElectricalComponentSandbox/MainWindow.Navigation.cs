@@ -140,6 +140,8 @@ public partial class MainWindow
                           "";
             OrthoStatusText.Text = mode;
         }
+
+        UpdateWorkspaceOverview();
     }
 
     private string GetSelectedLayerSummary(IReadOnlyList<Models.ElectricalComponent> selectedComponents)

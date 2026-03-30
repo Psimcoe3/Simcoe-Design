@@ -23,6 +23,11 @@
     <SolidColorBrush x:Key="MobileSurfaceAltBrush" Color="#F2F2F7"/>
     <SolidColorBrush x:Key="MobileBorderBrush" Color="#C6C6C8"/>
     <SolidColorBrush x:Key="MobileMutedTextBrush" Color="#8E8E93"/>
+    <SolidColorBrush x:Key="ShellSurfaceBrush" Color="#FFF7F8FA"/>
+    <SolidColorBrush x:Key="ShellCardBrush" Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="ShellBorderBrush" Color="#FFD8DEE4"/>
+    <SolidColorBrush x:Key="ShellPrimaryTextBrush" Color="#FF1F2933"/>
+    <SolidColorBrush x:Key="ShellMutedTextBrush" Color="#FF52606D"/>
         
         <Style TargetType="Button">
             <Setter Property="Margin" Value="5"/>
@@ -64,6 +69,15 @@
             <Setter Property="Foreground" Value="{StaticResource MobileMutedTextBrush}"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <Style x:Key="QuickActionButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Margin" Value="4"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="Background" Value="{StaticResource ShellCardBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
         </Style>
     </Window.Resources>
     
@@ -449,6 +463,115 @@
                 <Button x:Name="MobilePropertiesButton" Content="Properties&#10;Edit" Click="MobilePropertiesButton_Click" Style="{StaticResource MobileNavButtonStyle}"/>
             </UniformGrid>
         </Border>
+
+        <Border x:Name="DesktopWorkspaceOverview"
+                DockPanel.Dock="Top"
+                Margin="12,12,12,8"
+                Padding="14"
+                Background="{StaticResource ShellSurfaceBrush}"
+                BorderBrush="{StaticResource ShellBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.2*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Margin="0,0,14,0">
+                    <TextBlock Text="Guided Workspace"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource ShellPrimaryTextBrush}"
+                               Margin="0"/>
+                    <TextBlock Text="Key project context, current focus, and the next likely action stay visible here so first-time users do not need to decode every menu first."
+                               TextWrapping="Wrap"
+                               Foreground="{StaticResource ShellMutedTextBrush}"
+                               Margin="0,6,0,0"/>
+                </StackPanel>
+                <Border Grid.Column="1"
+                        Margin="0,0,10,0"
+                        Padding="12"
+                        Background="{StaticResource ShellCardBrush}"
+                        BorderBrush="{StaticResource ShellBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <StackPanel>
+                        <TextBlock Text="Workspace"
+                                   FontSize="11"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource ShellMutedTextBrush}"
+                                   Margin="0"/>
+                        <TextBlock x:Name="WorkspaceOverviewTitleTextBlock"
+                                   Text="No active drawing sheet"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource ShellPrimaryTextBrush}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,6,0,0"/>
+                        <TextBlock x:Name="WorkspaceOverviewDetailTextBlock"
+                                   Text="Add a sheet or open a project to begin."
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource ShellMutedTextBrush}"
+                                   Margin="0,4,0,0"/>
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="2"
+                        Margin="0,0,10,0"
+                        Padding="12"
+                        Background="{StaticResource ShellCardBrush}"
+                        BorderBrush="{StaticResource ShellBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <StackPanel>
+                        <TextBlock Text="Focus"
+                                   FontSize="11"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource ShellMutedTextBrush}"
+                                   Margin="0"/>
+                        <TextBlock x:Name="WorkspaceFocusTextBlock"
+                                   Text="Nothing is selected yet."
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource ShellPrimaryTextBrush}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="3"
+                        Padding="12"
+                        Background="{StaticResource ShellCardBrush}"
+                        BorderBrush="{StaticResource ShellBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <StackPanel>
+                        <TextBlock Text="Next Best Step"
+                                   FontSize="11"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource ShellMutedTextBrush}"
+                                   Margin="0"/>
+                        <TextBlock x:Name="WorkspaceNextStepTextBlock"
+                                   Text="Import a reference drawing or add the first component."
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource ShellPrimaryTextBrush}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,6,0,0"/>
+                        <TextBlock Text="Review Snapshot"
+                                   FontSize="11"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource ShellMutedTextBrush}"
+                                   Margin="0,10,0,0"/>
+                        <TextBlock x:Name="WorkspaceReviewTextBlock"
+                                   Text="No review issues yet."
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource ShellMutedTextBrush}"
+                                   Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
         
         <!-- Main Content -->
         <Grid x:Name="MainContentGrid">
@@ -461,7 +584,38 @@
             <!-- Library Browser + Layers -->
             <Border x:Name="LibraryPanelContainer" Grid.Column="0" BorderBrush="Gray" BorderThickness="0,0,1,0">
                 <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="Project Browser" 
+                    <Border DockPanel.Dock="Top"
+                            Margin="8,8,8,4"
+                            Padding="10"
+                            Background="{StaticResource ShellSurfaceBrush}"
+                            BorderBrush="{StaticResource ShellBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8">
+                        <StackPanel>
+                            <TextBlock Text="Start Here"
+                                       FontSize="15"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource ShellPrimaryTextBrush}"
+                                       Margin="0"/>
+                            <TextBlock x:Name="WorkspaceGuidanceTextBlock"
+                                       Text="Start with a reference drawing, then place a few parts or sketch a conduit run."
+                                       TextWrapping="Wrap"
+                                       Foreground="{StaticResource ShellMutedTextBrush}"
+                                       Margin="0,6,0,0"/>
+                            <UniformGrid Columns="2" Margin="0,8,0,0">
+                                <Button Style="{StaticResource QuickActionButtonStyle}" Content="Import Drawing" Click="ImportPdf_Click"/>
+                                <Button Style="{StaticResource QuickActionButtonStyle}" Content="Add Conduit" Click="AddConduit_Click"/>
+                                <Button Style="{StaticResource QuickActionButtonStyle}" Content="Draw Route" Click="DrawConduit_Click"/>
+                                <Button Style="{StaticResource QuickActionButtonStyle}" Content="Add Review Note" Click="AddCallout_Click"/>
+                            </UniformGrid>
+                            <TextBlock x:Name="WorkspaceHintTextBlock"
+                                       Text="Recommended path: import a sheet, add or route components, then review issues in the Markups tab."
+                                       TextWrapping="Wrap"
+                                       Foreground="{StaticResource ShellMutedTextBrush}"
+                                       Margin="0,8,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock DockPanel.Dock="Top" Text="Project &amp; Sheets" 
                              FontWeight="Bold" FontSize="14" 
                              Padding="10" Background="LightGray"/>
                     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="5">
@@ -482,7 +636,7 @@
                               ItemContainerStyle="{StaticResource ProjectBrowserTreeItemStyle}"
                               SelectedItemChanged="ProjectBrowserTreeView_SelectedItemChanged"/>
 
-                    <TextBlock DockPanel.Dock="Top" Text="Component Library" 
+                    <TextBlock DockPanel.Dock="Top" Text="Parts Catalog" 
                              FontWeight="Bold" FontSize="14" 
                              Padding="10" Background="LightGray"/>
                     <ListBox x:Name="LibraryListBox" DockPanel.Dock="Top" Height="200"
@@ -492,7 +646,7 @@
                            MouseDoubleClick="LibraryItem_DoubleClick"/>
                     
                     <!-- Layers Panel -->
-                    <TextBlock DockPanel.Dock="Top" Text="Layers" 
+                    <TextBlock DockPanel.Dock="Top" Text="Visibility &amp; Layers" 
                              FontWeight="Bold" FontSize="14" 
                              Padding="10" Background="LightGray"/>
                     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="5">
@@ -936,8 +1090,9 @@
                                               SelectedItem="{Binding MarkupTool.SelectedIssueGroup, Mode=TwoWay}">
                                         <ListView.View>
                                             <GridView>
-                                                <GridViewColumn Header="Bucket" DisplayMemberBinding="{Binding DisplayName}" Width="150"/>
-                                                <GridViewColumn Header="Details" DisplayMemberBinding="{Binding SecondaryText}" Width="130"/>
+                                                <GridViewColumn Header="Bucket" DisplayMemberBinding="{Binding DisplayName}" Width="138"/>
+                                                <GridViewColumn Header="Details" DisplayMemberBinding="{Binding SecondaryText}" Width="118"/>
+                                                <GridViewColumn Header="Mix" DisplayMemberBinding="{Binding BreakdownText}" Width="218"/>
                                                 <GridViewColumn Header="Count" DisplayMemberBinding="{Binding Count}" Width="48"/>
                                                 <GridViewColumn Header="Open" DisplayMemberBinding="{Binding OpenCount}" Width="48"/>
                                             </GridView>
@@ -980,6 +1135,11 @@
                                                Foreground="Gray"
                                                TextWrapping="Wrap"
                                                Text="{Binding MarkupTool.SelectedIssueGroupActionSummary}"/>
+                                    <TextBlock Margin="0,2,0,0"
+                                               FontSize="10"
+                                               Foreground="Gray"
+                                               TextWrapping="Wrap"
+                                               Text="{Binding MarkupTool.SelectedIssueGroupBreakdown}"/>
                                 </DockPanel>
                             </Border>
                             <!-- Actions -->

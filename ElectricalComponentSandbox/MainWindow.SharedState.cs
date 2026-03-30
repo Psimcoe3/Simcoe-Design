@@ -137,6 +137,7 @@ public partial class MainWindow
         ApplyDesktopPaneLayout();
         UpdateCustomDimensionUiState();
         InitializeCanvasInteractionController();
+        UpdateWorkspaceOverview();
 
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
         _viewModel.MarkupTool.PropertyChanged += MarkupTool_PropertyChanged;

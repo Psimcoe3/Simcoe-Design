@@ -454,6 +454,46 @@ public class MainWindowComponentSelectionTests
     }
 
     [Fact]
+    public void UpdateWorkspaceOverviewForTesting_WithNoSelection_ShowsBeginnerGuidance()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.ClearComponentSelection();
+
+            window.UpdateWorkspaceOverviewForTesting();
+
+            var focusText = FindRequired<TextBlock>(window, "WorkspaceFocusTextBlock");
+            var nextStepText = FindRequired<TextBlock>(window, "WorkspaceNextStepTextBlock");
+            var guidanceText = FindRequired<TextBlock>(window, "WorkspaceGuidanceTextBlock");
+
+            Assert.Contains("Nothing is selected yet", focusText.Text);
+            Assert.Contains("Choose a component from the catalog or start a conduit route", nextStepText.Text);
+            Assert.Contains("Start with a reference drawing", guidanceText.Text);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdateWorkspaceOverviewForTesting_WithMultiSelection_ShowsGroupEditingGuidance()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.SetSelectedComponents(selected, selected[0]);
+
+            window.UpdateWorkspaceOverviewForTesting();
+
+            var focusText = FindRequired<TextBlock>(window, "WorkspaceFocusTextBlock");
+            var nextStepText = FindRequired<TextBlock>(window, "WorkspaceNextStepTextBlock");
+            var hintText = FindRequired<TextBlock>(window, "WorkspaceHintTextBlock");
+
+            Assert.Contains("2 components are selected", focusText.Text);
+            Assert.Contains("Refine the current selection", nextStepText.Text);
+            Assert.Contains("edit the selection", hintText.Text);
+            return 0;
+        });
+    }
+
+    [Fact]
     public void ClearCustomDimensionsForTesting_WithMultiSelection_RemovesDimensionsForEntireSelection()
     {
         RunWithSelectedComponentsWindow((window, viewModel, selected) =>

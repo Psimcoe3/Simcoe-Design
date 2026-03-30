@@ -37,6 +37,7 @@ public partial class MainWindow
 
             TopMenu.Visibility = Visibility.Collapsed;
             DesktopToolBar.Visibility = Visibility.Collapsed;
+            DesktopWorkspaceOverview.Visibility = Visibility.Collapsed;
             MobileTopBar.Visibility = Visibility.Visible;
             MobileBottomNav.Visibility = Visibility.Visible;
             PdfControlsPanel.Visibility = Visibility.Collapsed;
@@ -54,6 +55,7 @@ public partial class MainWindow
         {
             TopMenu.Visibility = Visibility.Visible;
             DesktopToolBar.Visibility = Visibility.Visible;
+            DesktopWorkspaceOverview.Visibility = Visibility.Visible;
             MobileTopBar.Visibility = Visibility.Collapsed;
             MobileBottomNav.Visibility = Visibility.Collapsed;
             PdfControlsPanel.Visibility = Visibility.Visible;
@@ -66,6 +68,7 @@ public partial class MainWindow
             MobileViewButton.Content = "Mobile View";
             _isMobileView = false;
             ApplyDesktopPaneLayout();
+            UpdateWorkspaceOverview();
             ActionLogService.Instance.Log(LogCategory.View, "Mobile view disabled");
         }
     }
@@ -163,6 +166,7 @@ public partial class MainWindow
         MobilePropertiesButton.Content = isIOS ? "Properties\nEdit" : "Properties";
 
         UpdateMobileNavigationVisuals();
+        UpdateWorkspaceOverview();
     }
 
     private void SetMobilePane(MobilePane pane)

@@ -1102,6 +1102,46 @@ public partial class MainViewModelTests
     }
 
     [Fact]
+    public void MarkupTool_IssueGroups_ExposeStatusAndOwnerMixForSheetBuckets()
+    {
+        var vm = new MainViewModel();
+        var firstMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Status = MarkupStatus.Open,
+            AssignedTo = "Field Crew",
+            Vertices = { new Point(0, 0), new Point(6, 6) }
+        };
+        firstMarkup.UpdateBoundingRect();
+        vm.AddMarkup(firstMarkup);
+
+        var secondMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            Status = MarkupStatus.Open,
+            AssignedTo = "Field Crew",
+            TextContent = "Pending",
+            Vertices = { new Point(12, 12) }
+        };
+        secondMarkup.UpdateBoundingRect();
+        vm.AddMarkup(secondMarkup);
+
+        var thirdMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Status = MarkupStatus.Resolved,
+            Vertices = { new Point(18, 18) }
+        };
+        thirdMarkup.UpdateBoundingRect();
+        vm.AddMarkup(thirdMarkup);
+
+        vm.MarkupTool.IssueGroupMode = MarkupIssueGroupMode.Sheet;
+
+        var group = Assert.Single(vm.MarkupTool.IssueGroups.Where(item => item.Count == 2));
+        Assert.Equal("Flow: Open 2 | Owners: Field Crew 2", group.BreakdownText);
+    }
+
+    [Fact]
     public void MarkupTool_SelectedIssueGroup_FiltersVisibleMarkupList()
     {
         var vm = new MainViewModel();
@@ -1202,5 +1242,48 @@ public partial class MainViewModelTests
         var markup = Assert.Single(filtered);
         Assert.Same(assignedMarkup, markup);
         Assert.Equal("Field Crew | 1 issue(s)", vm.MarkupTool.SelectedIssueGroupSummary);
+    }
+
+    [Fact]
+    public void MarkupTool_SelectedIssueGroupBreakdown_UsesBucketMixForAssigneeBuckets()
+    {
+        var vm = new MainViewModel();
+        var firstMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            AssignedTo = "Field Crew",
+            Status = MarkupStatus.Open,
+            Vertices = { new Point(0, 0), new Point(6, 6) }
+        };
+        firstMarkup.UpdateBoundingRect();
+        vm.AddMarkup(firstMarkup);
+
+        var secondMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            AssignedTo = "Field Crew",
+            Status = MarkupStatus.Open,
+            TextContent = "Pending",
+            Vertices = { new Point(12, 12) }
+        };
+        secondMarkup.UpdateBoundingRect();
+        vm.AddMarkup(secondMarkup);
+
+        var thirdMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            AssignedTo = "Field Crew",
+            Status = MarkupStatus.Resolved,
+            Vertices = { new Point(18, 18) }
+        };
+        thirdMarkup.UpdateBoundingRect();
+        vm.AddMarkup(thirdMarkup);
+
+        vm.MarkupTool.IssueGroupMode = MarkupIssueGroupMode.Assignee;
+        var assigneeGroup = Assert.Single(vm.MarkupTool.IssueGroups.Where(group => group.DisplayName == "Field Crew"));
+
+        vm.MarkupTool.SelectedIssueGroup = assigneeGroup;
+
+        Assert.Equal("Flow: Open 2, Resolved 1", vm.MarkupTool.SelectedIssueGroupBreakdown);
     }
 }

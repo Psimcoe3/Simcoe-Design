@@ -117,6 +117,7 @@ Alternatively, open `ElectricalComponentSandbox.slnx` in Visual Studio and build
 - The selected-issue thread now visually separates manual discussion from audit/system history: manual replies keep the standard reply card treatment, status and assignment workflow events now carry explicit reply subtypes with distinct badges/card styling, older generic audit entries still load correctly, and the subtype distinction persists through undo, JSON/XML saves, and XFDF round-trips
 - The Markups review surface now treats assignee as a first-class navigation pivot: the filter bar includes an assignee filter with explicit `(unassigned)` handling, issue buckets can group the visible review set by assignee, and selecting an assignee bucket narrows the markup list to the current owner slice without clearing broader scope/filter context
 - Issue buckets now also expose direct bulk triage actions: once a bucket is selected, you can assign, approve, reject, resolve, or void that bucket from the bucket panel itself, and those commands target only the selected review slice instead of the broader visible set
+- Issue buckets now also surface a quick mix summary before you act: each bucket shows its current status/owner mix in the bucket list, and the selected-bucket helper text calls out that same flow/ownership breakdown so reviewers can see why a bucket is hot before bulk triage
 - Bulk review actions now operate on the currently visible review set, so **Resolve Visible** and **Void Visible** follow the active scope and filters
 - XFDF export now uses the current review scope and filters instead of exporting only the raw active-sheet markup collection
 - Older `.ecproj` files still load: legacy single-sheet markup, underlay, and named-view state is migrated into the first sheet automatically
@@ -192,7 +193,7 @@ dotnet test ElectricalComponentSandbox.Tests/ElectricalComponentSandbox.Tests.cs
 
 *Note: Tests require Windows OS to run due to WPF framework dependencies.*
 
-Current validated baseline: **787/787 tests passing**.
+Current validated baseline: **789/789 tests passing**.
 
 ### Future Enhancements
 
