@@ -113,6 +113,7 @@ public class MarkupPersistenceService
                     repliesElement.Add(new XElement("reply",
                         new XAttribute("id", reply.Id),
                         new XAttribute("author", reply.Author),
+                        new XAttribute("kind", reply.EntryKindKey),
                         new XAttribute("createdUtc", reply.CreatedUtc.ToString("O")),
                         new XAttribute("modifiedUtc", reply.ModifiedUtc.ToString("O")),
                         reply.Text));
@@ -186,6 +187,7 @@ public class MarkupPersistenceService
                     {
                         Id = (string?)replyElement.Attribute("id") ?? Guid.NewGuid().ToString(),
                         Author = (string?)replyElement.Attribute("author") ?? string.Empty,
+                        Kind = MarkupReply.ParseKind((string?)replyElement.Attribute("kind")),
                         Text = replyElement.Value ?? string.Empty,
                         CreatedUtc = DateTime.TryParse((string?)replyElement.Attribute("createdUtc"), out var createdUtc)
                             ? createdUtc

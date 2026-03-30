@@ -649,6 +649,9 @@ public class MainViewModel : INotifyPropertyChanged
     public IReadOnlyList<MarkupRecord> GetFilteredReviewMarkups()
         => MarkupTool.GetFilteredReviewMarkups();
 
+    public IReadOnlyList<MarkupRecord> GetSelectedIssueGroupReviewMarkups()
+        => MarkupTool.GetSelectedIssueGroupMarkups();
+
     public bool TryApplySelectedMarkupStatus(MarkupStatus newStatus, string actor)
     {
         var markup = MarkupTool.SelectedMarkup;
@@ -663,6 +666,21 @@ public class MainViewModel : INotifyPropertyChanged
         var markups = GetFilteredReviewMarkups()
             .Where(markup => markup.Status != newStatus)
             .ToList();
+
+        return ApplyMarkupStatus(markups, newStatus, actor);
+    }
+
+    public int ApplySelectedIssueGroupStatus(MarkupStatus newStatus, string actor)
+    {
+        var markups = GetSelectedIssueGroupReviewMarkups()
+            .Where(markup => markup.Status != newStatus)
+            .ToList();
+
+        return ApplyMarkupStatus(markups, newStatus, actor);
+    }
+
+    private int ApplyMarkupStatus(IReadOnlyList<MarkupRecord> markups, MarkupStatus newStatus, string actor)
+    {
 
         if (markups.Count == 0)
             return 0;
@@ -694,6 +712,22 @@ public class MainViewModel : INotifyPropertyChanged
         var markups = GetFilteredReviewMarkups()
             .Where(markup => !string.Equals(NormalizeAssignee(markup.AssignedTo), normalizedAssignee, StringComparison.Ordinal))
             .ToList();
+
+        return ApplyMarkupAssignment(markups, normalizedAssignee, actor);
+    }
+
+    public int ApplySelectedIssueGroupAssignment(string? assignee, string actor)
+    {
+        var normalizedAssignee = NormalizeAssignee(assignee);
+        var markups = GetSelectedIssueGroupReviewMarkups()
+            .Where(markup => !string.Equals(NormalizeAssignee(markup.AssignedTo), normalizedAssignee, StringComparison.Ordinal))
+            .ToList();
+
+        return ApplyMarkupAssignment(markups, normalizedAssignee, actor);
+    }
+
+    private int ApplyMarkupAssignment(IReadOnlyList<MarkupRecord> markups, string? normalizedAssignee, string actor)
+    {
 
         if (markups.Count == 0)
             return 0;
@@ -779,7 +813,7 @@ public class MainViewModel : INotifyPropertyChanged
         {
             Author = author,
             Text = auditText,
-            IsAuditEntry = true,
+            Kind = MarkupReplyKind.StatusAudit,
             CreatedUtc = utcNow,
             ModifiedUtc = utcNow
         };
@@ -799,7 +833,7 @@ public class MainViewModel : INotifyPropertyChanged
         {
             Author = author,
             Text = $"Assignment changed: {oldDisplay} -> {newDisplay}",
-            IsAuditEntry = true,
+            Kind = MarkupReplyKind.AssignmentAudit,
             CreatedUtc = utcNow,
             ModifiedUtc = utcNow
         };

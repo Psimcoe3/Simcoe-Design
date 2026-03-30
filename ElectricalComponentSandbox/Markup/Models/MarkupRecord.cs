@@ -85,17 +85,81 @@ public class MarkupMetadata
 /// <summary>
 /// A threaded review reply attached to a markup issue.
 /// </summary>
+public enum MarkupReplyKind
+{
+    Manual,
+    Audit,
+    StatusAudit,
+    AssignmentAudit
+}
+
 public class MarkupReply
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Author { get; set; } = string.Empty;
     public string Text { get; set; } = string.Empty;
-    public bool IsAuditEntry { get; set; }
+    public MarkupReplyKind Kind { get; set; } = MarkupReplyKind.Manual;
+    public bool IsAuditEntry
+    {
+        get => Kind != MarkupReplyKind.Manual;
+        set
+        {
+            if (!value)
+            {
+                Kind = MarkupReplyKind.Manual;
+            }
+            else if (Kind == MarkupReplyKind.Manual)
+            {
+                Kind = MarkupReplyKind.Audit;
+            }
+        }
+    }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime ModifiedUtc { get; set; } = DateTime.UtcNow;
-    public string EntryTypeDisplayText => IsAuditEntry ? "Audit" : "Reply";
+    public string EntryKindKey => GetKindKey(Kind);
+    public string EntryTypeDisplayText => GetKindDisplayText(Kind);
+    public string EntrySummaryDisplayText => GetKindSummaryDisplayText(Kind);
     public string CreatedDisplayText => FormatUtcForDisplay(CreatedUtc);
     public string ModifiedDisplayText => FormatUtcForDisplay(ModifiedUtc);
+
+    public static string GetKindKey(MarkupReplyKind kind) => kind switch
+    {
+        MarkupReplyKind.Manual => "manual",
+        MarkupReplyKind.StatusAudit => "status-audit",
+        MarkupReplyKind.AssignmentAudit => "assignment-audit",
+        _ => "audit"
+    };
+
+    public static string GetKindDisplayText(MarkupReplyKind kind) => kind switch
+    {
+        MarkupReplyKind.Manual => "Reply",
+        MarkupReplyKind.StatusAudit => "Status",
+        MarkupReplyKind.AssignmentAudit => "Assignment",
+        _ => "Audit"
+    };
+
+    public static string GetKindSummaryDisplayText(MarkupReplyKind kind) => kind switch
+    {
+        MarkupReplyKind.Manual => "reply",
+        MarkupReplyKind.StatusAudit => "status update",
+        MarkupReplyKind.AssignmentAudit => "assignment update",
+        _ => "audit update"
+    };
+
+    public static MarkupReplyKind ParseKind(string? serializedKind, bool legacyIsAuditEntry = false)
+    {
+        if (string.IsNullOrWhiteSpace(serializedKind))
+            return legacyIsAuditEntry ? MarkupReplyKind.Audit : MarkupReplyKind.Manual;
+
+        return serializedKind.Trim().ToLowerInvariant() switch
+        {
+            "manual" => MarkupReplyKind.Manual,
+            "status-audit" => MarkupReplyKind.StatusAudit,
+            "assignment-audit" => MarkupReplyKind.AssignmentAudit,
+            "audit" => MarkupReplyKind.Audit,
+            _ => legacyIsAuditEntry ? MarkupReplyKind.Audit : MarkupReplyKind.Manual
+        };
+    }
 
     internal static string FormatUtcForDisplay(DateTime utc)
     {

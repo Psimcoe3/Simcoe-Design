@@ -72,6 +72,7 @@ public class XfdfExportServiceTests
                 new MarkupReply
                 {
                     Author = "Coordinator",
+                    Kind = MarkupReplyKind.AssignmentAudit,
                     Text = "Need updated panel schedule before closeout."
                 }
             }
@@ -92,6 +93,8 @@ public class XfdfExportServiceTests
         Assert.Equal(0.8, result.Appearance.Opacity);
         Assert.Single(result.Replies);
         Assert.Equal("Coordinator", result.Replies[0].Author);
+        Assert.True(result.Replies[0].IsAuditEntry);
+        Assert.Equal(MarkupReplyKind.AssignmentAudit, result.Replies[0].Kind);
         Assert.Equal("Need updated panel schedule before closeout.", result.Replies[0].Text);
     }
 

@@ -883,9 +883,13 @@
                                           ItemsSource="{Binding MarkupTool.LayerFilterOptions}"
                                           SelectedItem="{Binding MarkupTool.LayerFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                           SelectionChanged="MarkupLayerFilter_Changed"/>
+                                <TextBlock Text="Assignee:" VerticalAlignment="Center" FontSize="11"/>
+                                <ComboBox x:Name="MarkupAssigneeFilterCombo" Width="118" FontSize="11" Margin="3,0,8,0"
+                                          ItemsSource="{Binding MarkupTool.AssigneeFilterOptions}"
+                                          SelectedItem="{Binding MarkupTool.AssigneeFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                 <TextBlock Text="Search:" VerticalAlignment="Center" FontSize="11"/>
                                 <TextBox x:Name="MarkupSearchBox" Width="122" FontSize="11" Margin="3,0,8,0"
-                                         ToolTip="Search labels, subjects, layers, authors, and reply text"
+                                         ToolTip="Search labels, subjects, layers, assignees, authors, and reply text"
                                          TextChanged="MarkupSearch_Changed"/>
                             </StackPanel>
                             <!-- Counts -->
@@ -914,7 +918,7 @@
                                         <TextBlock Text="Issue Buckets:" FontWeight="Bold" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                         <TextBlock Text="Group By:" VerticalAlignment="Center" FontSize="11"/>
                                         <ComboBox x:Name="MarkupIssueGroupModeCombo"
-                                                  Width="96"
+                                                  Width="108"
                                                   FontSize="11"
                                                   Margin="3,0,8,0"
                                                   ItemsSource="{Binding MarkupTool.IssueGroupModeOptions}"
@@ -939,6 +943,43 @@
                                             </GridView>
                                         </ListView.View>
                                     </ListView>
+                                    <WrapPanel Margin="0,8,0,0">
+                                        <Button Content="Assign Bucket"
+                                                Click="AssignSelectedIssueGroup_Click"
+                                                Padding="8,2"
+                                                Margin="0,0,6,4"
+                                                IsEnabled="{Binding MarkupTool.HasSelectedIssueGroup}"
+                                                ToolTip="Assign every issue in the selected bucket"/>
+                                        <Button Content="Approve Bucket"
+                                            Click="ApproveSelectedIssueGroup_Click"
+                                            Padding="8,2"
+                                            Margin="0,0,6,4"
+                                            IsEnabled="{Binding MarkupTool.HasSelectedIssueGroup}"
+                                            ToolTip="Approve every eligible issue in the selected bucket"/>
+                                        <Button Content="Reject Bucket"
+                                            Click="RejectSelectedIssueGroup_Click"
+                                            Padding="8,2"
+                                            Margin="0,0,6,4"
+                                            IsEnabled="{Binding MarkupTool.HasSelectedIssueGroup}"
+                                            ToolTip="Reject every eligible issue in the selected bucket"/>
+                                        <Button Content="Resolve Bucket"
+                                                Click="ResolveSelectedIssueGroup_Click"
+                                                Padding="8,2"
+                                                Margin="0,0,6,4"
+                                                IsEnabled="{Binding MarkupTool.HasSelectedIssueGroup}"
+                                                ToolTip="Resolve every eligible issue in the selected bucket"/>
+                                        <Button Content="Void Bucket"
+                                                Click="VoidSelectedIssueGroup_Click"
+                                                Padding="8,2"
+                                                Margin="0,0,6,4"
+                                                IsEnabled="{Binding MarkupTool.HasSelectedIssueGroup}"
+                                                ToolTip="Void every eligible issue in the selected bucket"/>
+                                    </WrapPanel>
+                                    <TextBlock Margin="0,2,0,0"
+                                               FontSize="10"
+                                               Foreground="Gray"
+                                               TextWrapping="Wrap"
+                                               Text="{Binding MarkupTool.SelectedIssueGroupActionSummary}"/>
                                 </DockPanel>
                             </Border>
                             <!-- Actions -->
@@ -1035,9 +1076,17 @@
                                                                 <Setter Property="Background" Value="#FFFFFFFF"/>
                                                                 <Setter Property="BorderBrush" Value="#FFD8DEE4"/>
                                                                 <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsAuditEntry}" Value="True">
+                                                                    <DataTrigger Binding="{Binding EntryKindKey}" Value="audit">
                                                                         <Setter Property="Background" Value="#FFF4F7FA"/>
                                                                         <Setter Property="BorderBrush" Value="#FFB8C2CC"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding EntryKindKey}" Value="status-audit">
+                                                                        <Setter Property="Background" Value="#FFF2F8F2"/>
+                                                                        <Setter Property="BorderBrush" Value="#FFB6D4B6"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding EntryKindKey}" Value="assignment-audit">
+                                                                        <Setter Property="Background" Value="#FFF9F4EC"/>
+                                                                        <Setter Property="BorderBrush" Value="#FFD9C4A5"/>
                                                                     </DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
@@ -1055,9 +1104,17 @@
                                                                             <Setter Property="Background" Value="#FFEAF2FF"/>
                                                                             <Setter Property="BorderBrush" Value="#FFBDD3FF"/>
                                                                             <Style.Triggers>
-                                                                                <DataTrigger Binding="{Binding IsAuditEntry}" Value="True">
+                                                                                <DataTrigger Binding="{Binding EntryKindKey}" Value="audit">
                                                                                     <Setter Property="Background" Value="#FFE9EEF3"/>
                                                                                     <Setter Property="BorderBrush" Value="#FFBCC7D2"/>
+                                                                                </DataTrigger>
+                                                                                <DataTrigger Binding="{Binding EntryKindKey}" Value="status-audit">
+                                                                                    <Setter Property="Background" Value="#FFE7F4E7"/>
+                                                                                    <Setter Property="BorderBrush" Value="#FFB1CFAF"/>
+                                                                                </DataTrigger>
+                                                                                <DataTrigger Binding="{Binding EntryKindKey}" Value="assignment-audit">
+                                                                                    <Setter Property="Background" Value="#FFFCE9D6"/>
+                                                                                    <Setter Property="BorderBrush" Value="#FFDDBA88"/>
                                                                                 </DataTrigger>
                                                                             </Style.Triggers>
                                                                         </Style>

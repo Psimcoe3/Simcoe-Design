@@ -54,7 +54,8 @@ public enum MarkupIssueGroupMode
 {
     Sheet,
     Status,
-    Author
+    Author,
+    Assignee
 }
 
 public sealed class MarkupIssueGroupItemViewModel
@@ -71,8 +72,11 @@ public sealed class MarkupReplyItemViewModel
     public required string Id { get; init; }
     public required string Author { get; init; }
     public required string Text { get; init; }
+    public required MarkupReplyKind Kind { get; init; }
+    public required string EntryKindKey { get; init; }
     public required bool IsAuditEntry { get; init; }
     public required string EntryTypeDisplayText { get; init; }
+    public required string EntrySummaryDisplayText { get; init; }
     public required string CreatedDisplayText { get; init; }
     public required string ModifiedDisplayText { get; init; }
 }
@@ -101,6 +105,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
     private string          _statusFilter = "All";
     private string          _typeFilter   = "All";
     private string          _layerFilter  = "All";
+    private string          _assigneeFilter = "All";
     private string          _labelSearch  = string.Empty;
     private MarkupRecord?   _selectedMarkup;
     private MarkupIssueGroupItemViewModel? _selectedIssueGroup;
@@ -140,7 +145,8 @@ public class MarkupToolViewModel : INotifyPropertyChanged
     [
         MarkupIssueGroupMode.Sheet,
         MarkupIssueGroupMode.Status,
-        MarkupIssueGroupMode.Author
+        MarkupIssueGroupMode.Author,
+        MarkupIssueGroupMode.Assignee
     ];
 
     public MarkupIssueGroupMode IssueGroupMode
@@ -170,6 +176,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
             OnPropertyChanged();
             OnPropertyChanged(nameof(HasSelectedIssueGroup));
             OnPropertyChanged(nameof(SelectedIssueGroupSummary));
+            OnPropertyChanged(nameof(SelectedIssueGroupActionSummary));
             ApplyFilter();
         }
     }
@@ -179,6 +186,10 @@ public class MarkupToolViewModel : INotifyPropertyChanged
     public string SelectedIssueGroupSummary => _selectedIssueGroup == null
         ? "All visible issues"
         : $"{_selectedIssueGroup.DisplayName} | {_selectedIssueGroup.Count} issue(s)";
+
+    public string SelectedIssueGroupActionSummary => _selectedIssueGroup == null
+        ? "Select a bucket to target bulk triage actions to one review slice."
+        : $"Bucket actions target {_selectedIssueGroup.Count} issue(s) in {_selectedIssueGroup.DisplayName}.";
 
     /// <summary>Valid status filter values for the Markups panel</summary>
     public IReadOnlyList<string> StatusFilterOptions { get; } = new[]
@@ -200,6 +211,9 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
     /// <summary>Distinct layer IDs represented by the current markup set</summary>
     public ObservableCollection<string> LayerFilterOptions { get; } = new() { "All" };
+
+    /// <summary>Distinct assignees represented by the current review source.</summary>
+    public ObservableCollection<string> AssigneeFilterOptions { get; } = new() { "All" };
 
     // ── Active tool ───────────────────────────────────────────────────────────
 
@@ -278,6 +292,24 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>"All" or an assignee display value.</summary>
+    public string AssigneeFilter
+    {
+        get => _assigneeFilter;
+        set
+        {
+            _assigneeFilter = string.IsNullOrWhiteSpace(value) ? "All" : value;
+            if (_assigneeFilter != "All" &&
+                !AssigneeFilterOptions.Contains(_assigneeFilter, StringComparer.OrdinalIgnoreCase))
+            {
+                _assigneeFilter = "All";
+            }
+
+            OnPropertyChanged();
+            ApplyFilter();
+        }
+    }
+
     /// <summary>Free-text search against Label and TextContent</summary>
     public string LabelSearch
     {
@@ -323,6 +355,10 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
     public int SelectedMarkupManualReplyCount => _selectedMarkup?.Replies.Count(reply => !reply.IsAuditEntry) ?? 0;
 
+    public int SelectedMarkupStatusAuditReplyCount => _selectedMarkup?.Replies.Count(reply => reply.Kind == MarkupReplyKind.StatusAudit) ?? 0;
+
+    public int SelectedMarkupAssignmentAuditReplyCount => _selectedMarkup?.Replies.Count(reply => reply.Kind == MarkupReplyKind.AssignmentAudit) ?? 0;
+
     public string SelectedMarkupReplySummary
     {
         get
@@ -338,8 +374,20 @@ public class MarkupToolViewModel : INotifyPropertyChanged
                 .First();
 
             var entryLabel = SelectedMarkupReplyCount == 1 ? "entry" : "entries";
-            var latestLabel = latest.IsAuditEntry ? "audit update" : "reply";
-            return $"{SelectedMarkupReplyCount} {entryLabel}: {SelectedMarkupManualReplyCount} replies, {SelectedMarkupAuditReplyCount} audit updates. Latest {latestLabel} by {latest.Author} on {latest.ModifiedDisplayText}";
+            var summaryParts = new List<string>();
+            if (SelectedMarkupManualReplyCount > 0)
+                summaryParts.Add($"{SelectedMarkupManualReplyCount} replies");
+            if (SelectedMarkupStatusAuditReplyCount > 0)
+                summaryParts.Add($"{SelectedMarkupStatusAuditReplyCount} status updates");
+            if (SelectedMarkupAssignmentAuditReplyCount > 0)
+                summaryParts.Add($"{SelectedMarkupAssignmentAuditReplyCount} assignment updates");
+
+            var remainingAuditCount = SelectedMarkupAuditReplyCount - SelectedMarkupStatusAuditReplyCount - SelectedMarkupAssignmentAuditReplyCount;
+            if (remainingAuditCount > 0)
+                summaryParts.Add($"{remainingAuditCount} audit updates");
+
+            var latestLabel = latest.EntrySummaryDisplayText;
+            return $"{SelectedMarkupReplyCount} {entryLabel}: {string.Join(", ", summaryParts)}. Latest {latestLabel} by {latest.Author} on {latest.ModifiedDisplayText}";
         }
     }
 
@@ -749,6 +797,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         _activeSheetMarkups.CollectionChanged += (_, _) =>
         {
             RefreshLayerFilterOptions();
+            RefreshAssigneeFilterOptions();
             ApplyFilter();
             RefreshSelectedMarkupPresentation();
             OnCountsChanged();
@@ -790,26 +839,31 @@ public class MarkupToolViewModel : INotifyPropertyChanged
             _statusFilter = "All";
             _typeFilter = "All";
             _layerFilter = "All";
+            _assigneeFilter = "All";
             _labelSearch = string.Empty;
             _selectedIssueGroup = null;
             OnPropertyChanged(nameof(StatusFilter));
             OnPropertyChanged(nameof(TypeFilter));
             OnPropertyChanged(nameof(LayerFilter));
+            OnPropertyChanged(nameof(AssigneeFilter));
             OnPropertyChanged(nameof(LabelSearch));
             OnPropertyChanged(nameof(SelectedIssueGroup));
             OnPropertyChanged(nameof(HasSelectedIssueGroup));
             OnPropertyChanged(nameof(SelectedIssueGroupSummary));
+            OnPropertyChanged(nameof(SelectedIssueGroupActionSummary));
             ApplyFilter();
             CommandManager.InvalidateRequerySuggested();
         });
 
         RefreshLayerFilterOptions();
+        RefreshAssigneeFilterOptions();
         ApplyFilter();
     }
 
     public void RefreshReviewContext()
     {
         RefreshLayerFilterOptions();
+        RefreshAssigneeFilterOptions();
         ApplyFilter();
         RefreshSelectedMarkupPresentation();
         OnCountsChanged();
@@ -817,6 +871,16 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
     public IReadOnlyList<MarkupRecord> GetFilteredReviewMarkups()
         => FilteredMarkups.ToList();
+
+    public IReadOnlyList<MarkupRecord> GetSelectedIssueGroupMarkups()
+    {
+        if (_selectedIssueGroup == null)
+            return Array.Empty<MarkupRecord>();
+
+        return GetPreBucketFilteredReviewMarkups()
+            .Where(markup => MatchesIssueGroup(markup, _selectedIssueGroup))
+            .ToList();
+    }
 
     public void RefreshSelectedMarkupPresentation()
     {
@@ -829,6 +893,8 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(SelectedMarkupReplyCount));
         OnPropertyChanged(nameof(SelectedMarkupAuditReplyCount));
         OnPropertyChanged(nameof(SelectedMarkupManualReplyCount));
+        OnPropertyChanged(nameof(SelectedMarkupStatusAuditReplyCount));
+        OnPropertyChanged(nameof(SelectedMarkupAssignmentAuditReplyCount));
         OnPropertyChanged(nameof(SelectedMarkupReplySummary));
         OnPropertyChanged(nameof(SelectedMarkupReplySearchSummary));
         OnPropertyChanged(nameof(HasStructuredSelection));
@@ -883,8 +949,11 @@ public class MarkupToolViewModel : INotifyPropertyChanged
                 Id = reply.Id,
                 Author = string.IsNullOrWhiteSpace(reply.Author) ? "Unknown" : reply.Author,
                 Text = reply.Text,
+                Kind = reply.Kind,
+                EntryKindKey = reply.EntryKindKey,
                 IsAuditEntry = reply.IsAuditEntry,
                 EntryTypeDisplayText = reply.EntryTypeDisplayText,
+                EntrySummaryDisplayText = reply.EntrySummaryDisplayText,
                 CreatedDisplayText = reply.CreatedDisplayText,
                 ModifiedDisplayText = reply.ModifiedDisplayText
             });
@@ -900,35 +969,10 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         if (_selectedMarkup != null && !reviewSource.Any(markup => string.Equals(markup.Id, _selectedMarkup.Id, StringComparison.Ordinal)))
             SelectedMarkup = null;
 
-        var filtered = reviewSource.AsEnumerable();
-
-        if (_statusFilter != "All" && TryParseStatusFilter(_statusFilter, out var status))
-            filtered = filtered.Where(m => m.Status == status);
-
-        if (_typeFilter != "All" && TryParseTypeFilter(_typeFilter, out var mtype))
-            filtered = filtered.Where(m => m.Type == mtype);
-
-        if (_layerFilter != "All")
-            filtered = filtered.Where(m => string.Equals(m.LayerId, _layerFilter, StringComparison.OrdinalIgnoreCase));
-
-        if (!string.IsNullOrWhiteSpace(_labelSearch))
-        {
-            var lower = _labelSearch.ToLowerInvariant();
-            filtered = filtered.Where(m =>
-                m.Metadata.Label.Contains(lower, StringComparison.OrdinalIgnoreCase) ||
-                m.TextContent.Contains(lower, StringComparison.OrdinalIgnoreCase) ||
-                m.Metadata.Subject.Contains(lower, StringComparison.OrdinalIgnoreCase) ||
-                m.LayerId.Contains(lower, StringComparison.OrdinalIgnoreCase) ||
-                m.Metadata.Author.Contains(lower, StringComparison.OrdinalIgnoreCase) ||
-                (m.AssignedTo?.Contains(lower, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                (m.StatusNote?.Contains(lower, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                m.Replies.Any(reply =>
-                    reply.Text.Contains(lower, StringComparison.OrdinalIgnoreCase) ||
-                    reply.Author.Contains(lower, StringComparison.OrdinalIgnoreCase)));
-        }
-
-        var groupedSource = filtered.ToList();
+        var groupedSource = GetPreBucketFilteredReviewMarkups();
         RebuildIssueGroups(groupedSource);
+
+        IEnumerable<MarkupRecord> filtered;
 
         if (_selectedIssueGroup != null)
         {
@@ -950,6 +994,41 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
         OnPropertyChanged(nameof(FilteredCount));
         CommandManager.InvalidateRequerySuggested();
+    }
+
+    private IReadOnlyList<MarkupRecord> GetPreBucketFilteredReviewMarkups()
+    {
+        var filtered = GetReviewSourceMarkups().AsEnumerable();
+
+        if (_statusFilter != "All" && TryParseStatusFilter(_statusFilter, out var status))
+            filtered = filtered.Where(markup => markup.Status == status);
+
+        if (_typeFilter != "All" && TryParseTypeFilter(_typeFilter, out var markupType))
+            filtered = filtered.Where(markup => markup.Type == markupType);
+
+        if (_layerFilter != "All")
+            filtered = filtered.Where(markup => string.Equals(markup.LayerId, _layerFilter, StringComparison.OrdinalIgnoreCase));
+
+        if (_assigneeFilter != "All")
+            filtered = filtered.Where(markup => string.Equals(GetAssigneeGroupValue(markup), _assigneeFilter, StringComparison.OrdinalIgnoreCase));
+
+        if (!string.IsNullOrWhiteSpace(_labelSearch))
+        {
+            var lower = _labelSearch.ToLowerInvariant();
+            filtered = filtered.Where(markup =>
+                markup.Metadata.Label.Contains(lower, StringComparison.OrdinalIgnoreCase) ||
+                markup.TextContent.Contains(lower, StringComparison.OrdinalIgnoreCase) ||
+                markup.Metadata.Subject.Contains(lower, StringComparison.OrdinalIgnoreCase) ||
+                markup.LayerId.Contains(lower, StringComparison.OrdinalIgnoreCase) ||
+                markup.Metadata.Author.Contains(lower, StringComparison.OrdinalIgnoreCase) ||
+                (markup.AssignedTo?.Contains(lower, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (markup.StatusNote?.Contains(lower, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                markup.Replies.Any(reply =>
+                    reply.Text.Contains(lower, StringComparison.OrdinalIgnoreCase) ||
+                    reply.Author.Contains(lower, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        return filtered.ToList();
     }
 
     // ── Punch-list operations ─────────────────────────────────────────────────
@@ -1267,6 +1346,27 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         }
     }
 
+    private void RefreshAssigneeFilterOptions()
+    {
+        var assignees = GetReviewSourceMarkups()
+            .Select(GetAssigneeGroupValue)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(assignee => assignee, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        AssigneeFilterOptions.Clear();
+        AssigneeFilterOptions.Add("All");
+        foreach (var assignee in assignees)
+            AssigneeFilterOptions.Add(assignee);
+
+        if (_assigneeFilter != "All" &&
+            !AssigneeFilterOptions.Contains(_assigneeFilter, StringComparer.OrdinalIgnoreCase))
+        {
+            _assigneeFilter = "All";
+            OnPropertyChanged(nameof(AssigneeFilter));
+        }
+    }
+
     private void RebuildIssueGroups(IReadOnlyList<MarkupRecord> source)
     {
         var groups = source
@@ -1290,12 +1390,14 @@ public class MarkupToolViewModel : INotifyPropertyChanged
                 OnPropertyChanged(nameof(SelectedIssueGroup));
                 OnPropertyChanged(nameof(HasSelectedIssueGroup));
                 OnPropertyChanged(nameof(SelectedIssueGroupSummary));
+                OnPropertyChanged(nameof(SelectedIssueGroupActionSummary));
             }
             else if (!ReferenceEquals(replacement, _selectedIssueGroup))
             {
                 _selectedIssueGroup = replacement;
                 OnPropertyChanged(nameof(SelectedIssueGroup));
                 OnPropertyChanged(nameof(SelectedIssueGroupSummary));
+                OnPropertyChanged(nameof(SelectedIssueGroupActionSummary));
             }
         }
     }
@@ -1306,6 +1408,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         {
             MarkupIssueGroupMode.Status => $"status:{markup.Status}",
             MarkupIssueGroupMode.Author => $"author:{GetAuthorGroupValue(markup)}",
+            MarkupIssueGroupMode.Assignee => $"assignee:{GetAssigneeGroupValue(markup)}",
             _ => $"sheet:{markup.ReviewSheetDisplayText}"
         };
     }
@@ -1318,6 +1421,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         {
             MarkupIssueGroupMode.Status => MarkupRecord.GetStatusDisplayText(first.Status),
             MarkupIssueGroupMode.Author => GetAuthorGroupValue(first),
+            MarkupIssueGroupMode.Assignee => GetAssigneeGroupValue(first),
             _ => first.ReviewSheetDisplayText
         };
 
@@ -1325,6 +1429,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         {
             MarkupIssueGroupMode.Status => $"Author groups: {markups.Select(GetAuthorGroupValue).Distinct(StringComparer.OrdinalIgnoreCase).Count()}",
             MarkupIssueGroupMode.Author => $"Sheets: {markups.Select(markup => markup.ReviewSheetDisplayText).Distinct(StringComparer.OrdinalIgnoreCase).Count()}",
+            MarkupIssueGroupMode.Assignee => $"Statuses: {markups.Select(markup => MarkupRecord.GetStatusDisplayText(markup.Status)).Distinct(StringComparer.OrdinalIgnoreCase).Count()}",
             _ => $"Statuses: {markups.Select(markup => MarkupRecord.GetStatusDisplayText(markup.Status)).Distinct(StringComparer.OrdinalIgnoreCase).Count()}"
         };
 
@@ -1343,6 +1448,9 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
     private static string GetAuthorGroupValue(MarkupRecord markup)
         => string.IsNullOrWhiteSpace(markup.Metadata.Author) ? "(unassigned)" : markup.Metadata.Author.Trim();
+
+    private static string GetAssigneeGroupValue(MarkupRecord markup)
+        => string.IsNullOrWhiteSpace(markup.AssignedTo) ? "(unassigned)" : markup.AssignedTo.Trim();
 
     private static bool TryParseStatusFilter(string filter, out MarkupStatus status)
     {

@@ -25,6 +25,7 @@ public partial class MainViewModelTests
                 {
                     Author = "Reviewer A",
                     Text = "Need revised clearance dimensions.",
+                    Kind = MarkupReplyKind.Manual,
                     CreatedUtc = new DateTime(2026, 3, 28, 18, 0, 0, DateTimeKind.Utc),
                     ModifiedUtc = new DateTime(2026, 3, 28, 18, 0, 0, DateTimeKind.Utc)
                 },
@@ -32,6 +33,7 @@ public partial class MainViewModelTests
                 {
                     Author = "Reviewer B",
                     Text = "Confirmed on sheet E2.",
+                    Kind = MarkupReplyKind.StatusAudit,
                     CreatedUtc = new DateTime(2026, 3, 29, 18, 0, 0, DateTimeKind.Utc),
                     ModifiedUtc = new DateTime(2026, 3, 29, 18, 0, 0, DateTimeKind.Utc)
                 }
@@ -44,9 +46,20 @@ public partial class MainViewModelTests
         Assert.True(vm.MarkupTool.HasSelectedMarkupReplies);
         Assert.Equal(2, vm.MarkupTool.SelectedMarkupReplyCount);
         Assert.Equal(2, vm.MarkupTool.SelectedMarkupReplies.Count);
+        Assert.Equal(1, vm.MarkupTool.SelectedMarkupManualReplyCount);
+        Assert.Equal(1, vm.MarkupTool.SelectedMarkupAuditReplyCount);
+        Assert.Equal(1, vm.MarkupTool.SelectedMarkupStatusAuditReplyCount);
+        Assert.Equal(0, vm.MarkupTool.SelectedMarkupAssignmentAuditReplyCount);
         Assert.Equal("Reviewer A", vm.MarkupTool.SelectedMarkupReplies[0].Author);
+        Assert.False(vm.MarkupTool.SelectedMarkupReplies[0].IsAuditEntry);
+        Assert.Equal(MarkupReplyKind.Manual, vm.MarkupTool.SelectedMarkupReplies[0].Kind);
+        Assert.Equal("Reply", vm.MarkupTool.SelectedMarkupReplies[0].EntryTypeDisplayText);
         Assert.Equal("Need revised clearance dimensions.", vm.MarkupTool.SelectedMarkupReplies[0].Text);
-        Assert.Contains("Latest by Reviewer B", vm.MarkupTool.SelectedMarkupReplySummary);
+        Assert.True(vm.MarkupTool.SelectedMarkupReplies[1].IsAuditEntry);
+        Assert.Equal(MarkupReplyKind.StatusAudit, vm.MarkupTool.SelectedMarkupReplies[1].Kind);
+        Assert.Equal("Status", vm.MarkupTool.SelectedMarkupReplies[1].EntryTypeDisplayText);
+        Assert.Contains("1 replies, 1 status updates", vm.MarkupTool.SelectedMarkupReplySummary);
+        Assert.Contains("Latest status update by Reviewer B", vm.MarkupTool.SelectedMarkupReplySummary);
         Assert.Equal("Reply text participates in Markups search filtering.", vm.MarkupTool.SelectedMarkupReplySearchSummary);
     }
 
@@ -103,8 +116,12 @@ public partial class MainViewModelTests
         Assert.Equal("Status changed: Open -> Resolved", markup.StatusNote);
         Assert.Single(markup.Replies);
         Assert.Equal("Reviewer", markup.Replies[0].Author);
+        Assert.True(markup.Replies[0].IsAuditEntry);
+        Assert.Equal(MarkupReplyKind.StatusAudit, markup.Replies[0].Kind);
         Assert.Equal("Status changed: Open -> Resolved", markup.Replies[0].Text);
         Assert.Single(vm.MarkupTool.SelectedMarkupReplies);
+        Assert.True(vm.MarkupTool.SelectedMarkupReplies[0].IsAuditEntry);
+        Assert.Equal("Status", vm.MarkupTool.SelectedMarkupReplies[0].EntryTypeDisplayText);
     }
 
     [Fact]
@@ -133,9 +150,43 @@ public partial class MainViewModelTests
         Assert.Equal(1, changedCount);
         Assert.Equal(MarkupStatus.Void, visibleMarkup.Status);
         Assert.Single(visibleMarkup.Replies);
+        Assert.True(visibleMarkup.Replies[0].IsAuditEntry);
+        Assert.Equal(MarkupReplyKind.StatusAudit, visibleMarkup.Replies[0].Kind);
         Assert.Equal("Status changed: Open -> Void", visibleMarkup.Replies[0].Text);
         Assert.Equal(MarkupStatus.Open, filteredOutMarkup.Status);
         Assert.Empty(filteredOutMarkup.Replies);
+    }
+
+    [Fact]
+    public void ApplySelectedIssueGroupStatus_UpdatesOnlySelectedBucket()
+    {
+        var vm = new MainViewModel();
+        var bucketMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Status = MarkupStatus.Open,
+            Metadata = new MarkupMetadata { Label = "Bucket A", Author = "Paul" }
+        };
+        var otherMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Status = MarkupStatus.Open,
+            Metadata = new MarkupMetadata { Label = "Bucket B", Author = "Casey" }
+        };
+
+        vm.Markups.Add(bucketMarkup);
+        vm.Markups.Add(otherMarkup);
+        vm.MarkupTool.IssueGroupMode = MarkupIssueGroupMode.Author;
+        vm.MarkupTool.SelectedIssueGroup = Assert.Single(vm.MarkupTool.IssueGroups.Where(group => group.DisplayName == "Paul"));
+
+        var changedCount = vm.ApplySelectedIssueGroupStatus(MarkupStatus.Resolved, "Coordinator");
+
+        Assert.Equal(1, changedCount);
+        Assert.Equal(MarkupStatus.Resolved, bucketMarkup.Status);
+        Assert.Single(bucketMarkup.Replies);
+        Assert.Equal(MarkupReplyKind.StatusAudit, bucketMarkup.Replies[0].Kind);
+        Assert.Equal(MarkupStatus.Open, otherMarkup.Status);
+        Assert.Empty(otherMarkup.Replies);
     }
 
     [Fact]
@@ -156,8 +207,12 @@ public partial class MainViewModelTests
         Assert.True(changed);
         Assert.Equal("Field Crew", markup.AssignedTo);
         Assert.Single(markup.Replies);
+        Assert.True(markup.Replies[0].IsAuditEntry);
+        Assert.Equal(MarkupReplyKind.AssignmentAudit, markup.Replies[0].Kind);
         Assert.Equal("Assignment changed: (unassigned) -> Field Crew", markup.Replies[0].Text);
         Assert.Equal("Field Crew", vm.MarkupTool.SelectedMarkupAssignedTo);
+        Assert.True(vm.MarkupTool.SelectedMarkupReplies[0].IsAuditEntry);
+        Assert.Equal("Assignment", vm.MarkupTool.SelectedMarkupReplies[0].EntryTypeDisplayText);
     }
 
     [Fact]
@@ -184,9 +239,43 @@ public partial class MainViewModelTests
         Assert.Equal(1, changedCount);
         Assert.Equal("Reviewer B", visibleMarkup.AssignedTo);
         Assert.Single(visibleMarkup.Replies);
+        Assert.True(visibleMarkup.Replies[0].IsAuditEntry);
+        Assert.Equal(MarkupReplyKind.AssignmentAudit, visibleMarkup.Replies[0].Kind);
         Assert.Equal("Assignment changed: (unassigned) -> Reviewer B", visibleMarkup.Replies[0].Text);
         Assert.Null(filteredOutMarkup.AssignedTo);
         Assert.Empty(filteredOutMarkup.Replies);
+    }
+
+    [Fact]
+    public void ApplySelectedIssueGroupAssignment_UpdatesOnlySelectedBucket()
+    {
+        var vm = new MainViewModel();
+        var bucketMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            AssignedTo = "Field Crew",
+            Metadata = new MarkupMetadata { Label = "Bucket A" }
+        };
+        var otherMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            AssignedTo = "Coordinator",
+            Metadata = new MarkupMetadata { Label = "Bucket B" }
+        };
+
+        vm.Markups.Add(bucketMarkup);
+        vm.Markups.Add(otherMarkup);
+        vm.MarkupTool.IssueGroupMode = MarkupIssueGroupMode.Assignee;
+        vm.MarkupTool.SelectedIssueGroup = Assert.Single(vm.MarkupTool.IssueGroups.Where(group => group.DisplayName == "Field Crew"));
+
+        var changedCount = vm.ApplySelectedIssueGroupAssignment("QA", "Coordinator");
+
+        Assert.Equal(1, changedCount);
+        Assert.Equal("QA", bucketMarkup.AssignedTo);
+        Assert.Single(bucketMarkup.Replies);
+        Assert.Equal(MarkupReplyKind.AssignmentAudit, bucketMarkup.Replies[0].Kind);
+        Assert.Equal("Coordinator", otherMarkup.AssignedTo);
+        Assert.Empty(otherMarkup.Replies);
     }
 
     [Fact]
@@ -212,6 +301,60 @@ public partial class MainViewModelTests
 
         Assert.Single(vm.MarkupTool.FilteredMarkups);
         Assert.Same(matchingMarkup, vm.MarkupTool.FilteredMarkups[0]);
+    }
+
+    [Fact]
+    public void MarkupTool_AssigneeFilter_RestrictsVisibleMarkupList()
+    {
+        var vm = new MainViewModel();
+        var assignedMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            AssignedTo = "Field Crew",
+            Metadata = new MarkupMetadata { Label = "Assigned" }
+        };
+        var unassignedMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Metadata = new MarkupMetadata { Label = "Unassigned" }
+        };
+
+        vm.Markups.Add(assignedMarkup);
+        vm.Markups.Add(unassignedMarkup);
+        vm.MarkupTool.RefreshReviewContext();
+
+        Assert.Contains("Field Crew", vm.MarkupTool.AssigneeFilterOptions);
+        Assert.Contains("(unassigned)", vm.MarkupTool.AssigneeFilterOptions);
+
+        vm.MarkupTool.AssigneeFilter = "Field Crew";
+
+        var filtered = Assert.Single(vm.MarkupTool.FilteredMarkups);
+        Assert.Same(assignedMarkup, filtered);
+    }
+
+    [Fact]
+    public void MarkupTool_AssigneeFilter_MatchesUnassignedMarkup()
+    {
+        var vm = new MainViewModel();
+        var assignedMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            AssignedTo = "Coordinator",
+            Metadata = new MarkupMetadata { Label = "Assigned" }
+        };
+        var unassignedMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            Metadata = new MarkupMetadata { Label = "Unassigned" }
+        };
+
+        vm.Markups.Add(assignedMarkup);
+        vm.Markups.Add(unassignedMarkup);
+
+        vm.MarkupTool.AssigneeFilter = "(unassigned)";
+
+        var filtered = Assert.Single(vm.MarkupTool.FilteredMarkups);
+        Assert.Same(unassignedMarkup, filtered);
     }
 
     [Fact]
@@ -992,5 +1135,72 @@ public partial class MainViewModelTests
         var markup = Assert.Single(filtered);
         Assert.Same(firstMarkup, markup);
         Assert.Equal("Paul | 1 issue(s)", vm.MarkupTool.SelectedIssueGroupSummary);
+    }
+
+    [Fact]
+    public void MarkupTool_IssueGroups_GroupVisibleReviewSetByAssignee()
+    {
+        var vm = new MainViewModel();
+        var assignedMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Status = MarkupStatus.Open,
+            AssignedTo = "Field Crew",
+            Vertices = { new Point(0, 0), new Point(6, 6) }
+        };
+        assignedMarkup.UpdateBoundingRect();
+        vm.AddMarkup(assignedMarkup);
+
+        var unassignedMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            Status = MarkupStatus.Resolved,
+            TextContent = "Done",
+            Vertices = { new Point(12, 12) }
+        };
+        unassignedMarkup.UpdateBoundingRect();
+        vm.AddMarkup(unassignedMarkup);
+
+        vm.MarkupTool.IssueGroupMode = MarkupIssueGroupMode.Assignee;
+
+        Assert.Equal(2, vm.MarkupTool.IssueGroups.Count);
+        Assert.Contains(vm.MarkupTool.IssueGroups, group => group.DisplayName == "Field Crew" && group.Count == 1 && group.OpenCount == 1);
+        Assert.Contains(vm.MarkupTool.IssueGroups, group => group.DisplayName == "(unassigned)" && group.Count == 1 && group.OpenCount == 0);
+    }
+
+    [Fact]
+    public void MarkupTool_SelectedAssigneeIssueGroup_FiltersVisibleMarkupList()
+    {
+        var vm = new MainViewModel();
+        var assignedMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            AssignedTo = "Field Crew",
+            Status = MarkupStatus.InProgress,
+            Vertices = { new Point(0, 0), new Point(6, 6) }
+        };
+        assignedMarkup.UpdateBoundingRect();
+        vm.AddMarkup(assignedMarkup);
+
+        var secondMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            AssignedTo = "Coordinator",
+            Status = MarkupStatus.Open,
+            TextContent = "Pending",
+            Vertices = { new Point(12, 12) }
+        };
+        secondMarkup.UpdateBoundingRect();
+        vm.AddMarkup(secondMarkup);
+
+        vm.MarkupTool.IssueGroupMode = MarkupIssueGroupMode.Assignee;
+        var assigneeGroup = Assert.Single(vm.MarkupTool.IssueGroups.Where(group => group.DisplayName == "Field Crew"));
+
+        vm.MarkupTool.SelectedIssueGroup = assigneeGroup;
+
+        var filtered = vm.GetFilteredReviewMarkups();
+        var markup = Assert.Single(filtered);
+        Assert.Same(assignedMarkup, markup);
+        Assert.Equal("Field Crew | 1 issue(s)", vm.MarkupTool.SelectedIssueGroupSummary);
     }
 }

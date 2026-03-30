@@ -114,6 +114,9 @@ Alternatively, open `ElectricalComponentSandbox.slnx` in Visual Studio and build
 - The **Markups** tab now also exposes a first-pass threaded review surface for the selected issue: you can add replies, see reply counts in the list, search reply text from the Markups search box, and export/import reply metadata through the current markup persistence and XFDF paths
 - Approve, reject, resolve, and visible-set review actions now also write status-audit entries into that same thread, so status history and discussion stay in one place and undo restores both the status and its audit entry together
 - Markup issues now support explicit assignees in the same review flow: you can assign the selected issue or bulk-assign the current visible review set, assignee text is searchable from the Markups tab, assignment state is shown in the list/details UI, and assignment changes are recorded as undoable audit entries in the shared thread and round-trip through the current JSON, XML, and XFDF persistence paths
+- The selected-issue thread now visually separates manual discussion from audit/system history: manual replies keep the standard reply card treatment, status and assignment workflow events now carry explicit reply subtypes with distinct badges/card styling, older generic audit entries still load correctly, and the subtype distinction persists through undo, JSON/XML saves, and XFDF round-trips
+- The Markups review surface now treats assignee as a first-class navigation pivot: the filter bar includes an assignee filter with explicit `(unassigned)` handling, issue buckets can group the visible review set by assignee, and selecting an assignee bucket narrows the markup list to the current owner slice without clearing broader scope/filter context
+- Issue buckets now also expose direct bulk triage actions: once a bucket is selected, you can assign, approve, reject, resolve, or void that bucket from the bucket panel itself, and those commands target only the selected review slice instead of the broader visible set
 - Bulk review actions now operate on the currently visible review set, so **Resolve Visible** and **Void Visible** follow the active scope and filters
 - XFDF export now uses the current review scope and filters instead of exporting only the raw active-sheet markup collection
 - Older `.ecproj` files still load: legacy single-sheet markup, underlay, and named-view state is migrated into the first sheet automatically
@@ -189,7 +192,7 @@ dotnet test ElectricalComponentSandbox.Tests/ElectricalComponentSandbox.Tests.cs
 
 *Note: Tests require Windows OS to run due to WPF framework dependencies.*
 
-Current validated baseline: **776/776 tests passing**.
+Current validated baseline: **787/787 tests passing**.
 
 ### Future Enhancements
 

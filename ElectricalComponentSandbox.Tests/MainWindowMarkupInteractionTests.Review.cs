@@ -1,5 +1,6 @@
 using System.Windows;
 using ElectricalComponentSandbox.Markup.Models;
+using ElectricalComponentSandbox.ViewModels;
 
 namespace ElectricalComponentSandbox.Tests;
 
@@ -21,20 +22,24 @@ public partial class MainWindowMarkupInteractionTests
             (window, viewModel, markup) =>
             {
                 var added = window.ExecuteAddMarkupReplyCommandForTesting("Need revised feeder routing.", "Reviewer");
-                var afterAddReplyCount = markup.Replies.Count;
                 var afterAddReplyText = markup.Replies[0].Text;
+                var afterAddReplyIsAuditEntry = markup.Replies[0].IsAuditEntry;
                 var afterAddVisibleReplyCount = viewModel.MarkupTool.SelectedMarkupReplies.Count;
+                var afterAddVisibleReplyIsAuditEntry = viewModel.MarkupTool.SelectedMarkupReplies[0].IsAuditEntry;
+                var afterAddVisibleReplyType = viewModel.MarkupTool.SelectedMarkupReplies[0].EntryTypeDisplayText;
 
                 viewModel.Undo();
                 var afterUndoReplyCount = markup.Replies.Count;
                 var afterUndoVisibleReplyCount = viewModel.MarkupTool.SelectedMarkupReplies.Count;
-                return (added, afterAddReplyCount, afterAddReplyText, afterAddVisibleReplyCount, afterUndoReplyCount, afterUndoVisibleReplyCount);
+                return (added, afterAddReplyText, afterAddReplyIsAuditEntry, afterAddVisibleReplyCount, afterAddVisibleReplyIsAuditEntry, afterAddVisibleReplyType, afterUndoReplyCount, afterUndoVisibleReplyCount);
             });
 
         Assert.True(outcome.added);
-        Assert.Equal(1, outcome.afterAddReplyCount);
         Assert.Equal("Need revised feeder routing.", outcome.afterAddReplyText);
+        Assert.False(outcome.afterAddReplyIsAuditEntry);
         Assert.Equal(1, outcome.afterAddVisibleReplyCount);
+        Assert.False(outcome.afterAddVisibleReplyIsAuditEntry);
+        Assert.Equal("Reply", outcome.afterAddVisibleReplyType);
         Assert.Equal(0, outcome.afterUndoReplyCount);
         Assert.Equal(0, outcome.afterUndoVisibleReplyCount);
     }
@@ -60,7 +65,9 @@ public partial class MainWindowMarkupInteractionTests
                     Status: markup.Status,
                     StatusNote: markup.StatusNote,
                     ReplyCount: markup.Replies.Count,
-                    VisibleReplyCount: viewModel.MarkupTool.SelectedMarkupReplies.Count);
+                    VisibleReplyCount: viewModel.MarkupTool.SelectedMarkupReplies.Count,
+                    VisibleReplyIsAuditEntry: viewModel.MarkupTool.SelectedMarkupReplies[0].IsAuditEntry,
+                    VisibleReplyType: viewModel.MarkupTool.SelectedMarkupReplies[0].EntryTypeDisplayText);
 
                 viewModel.Undo();
                 var afterUndo = (
@@ -76,6 +83,8 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal("Status changed: Open -> Approved", outcome.afterChange.StatusNote);
         Assert.Equal(1, outcome.afterChange.ReplyCount);
         Assert.Equal(1, outcome.afterChange.VisibleReplyCount);
+        Assert.True(outcome.afterChange.VisibleReplyIsAuditEntry);
+        Assert.Equal("Status", outcome.afterChange.VisibleReplyType);
         Assert.Equal(MarkupStatus.Open, outcome.afterUndo.Status);
         Assert.Null(outcome.afterUndo.StatusNote);
         Assert.Equal(0, outcome.afterUndo.ReplyCount);
@@ -101,7 +110,9 @@ public partial class MainWindowMarkupInteractionTests
                 var afterChange = (
                     AssignedTo: markup.AssignedTo,
                     ReplyCount: markup.Replies.Count,
-                    VisibleReplyCount: viewModel.MarkupTool.SelectedMarkupReplies.Count);
+                    VisibleReplyCount: viewModel.MarkupTool.SelectedMarkupReplies.Count,
+                    VisibleReplyIsAuditEntry: viewModel.MarkupTool.SelectedMarkupReplies[0].IsAuditEntry,
+                    VisibleReplyType: viewModel.MarkupTool.SelectedMarkupReplies[0].EntryTypeDisplayText);
 
                 viewModel.Undo();
                 var afterUndo = (
@@ -115,8 +126,248 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal("Field Crew", outcome.afterChange.AssignedTo);
         Assert.Equal(1, outcome.afterChange.ReplyCount);
         Assert.Equal(1, outcome.afterChange.VisibleReplyCount);
+        Assert.True(outcome.afterChange.VisibleReplyIsAuditEntry);
+        Assert.Equal("Assignment", outcome.afterChange.VisibleReplyType);
         Assert.Null(outcome.afterUndo.AssignedTo);
         Assert.Equal(0, outcome.afterUndo.ReplyCount);
         Assert.Equal(0, outcome.afterUndo.VisibleReplyCount);
+    }
+
+    [Fact]
+    public void ExecuteSetSelectedIssueGroupStatusForTesting_UpdatesOnlySelectedBucketAndSupportsUndo()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Status = MarkupStatus.Open,
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Bucket A",
+                    Author = "Paul"
+                }
+            },
+            (window, viewModel, markup) =>
+            {
+                var otherMarkup = new MarkupRecord
+                {
+                    Type = MarkupType.Rectangle,
+                    Vertices = { new Point(12, 12), new Point(20, 20) },
+                    Status = MarkupStatus.Open,
+                    Metadata = new MarkupMetadata
+                    {
+                        Label = "Bucket B",
+                        Author = "Casey"
+                    }
+                };
+                otherMarkup.UpdateBoundingRect();
+                viewModel.Markups.Add(otherMarkup);
+                viewModel.MarkupTool.IssueGroupMode = MarkupIssueGroupMode.Author;
+                viewModel.MarkupTool.SelectedIssueGroup = Assert.Single(viewModel.MarkupTool.IssueGroups.Where(group => group.DisplayName == "Paul"));
+
+                var changed = window.ExecuteSetSelectedIssueGroupStatusForTesting(MarkupStatus.Resolved, "Reviewer");
+                var afterChange = (
+                    BucketStatus: markup.Status,
+                    OtherStatus: otherMarkup.Status,
+                    ReplyCount: markup.Replies.Count,
+                    OtherReplyCount: otherMarkup.Replies.Count);
+
+                viewModel.Undo();
+                var afterUndo = (
+                    BucketStatus: markup.Status,
+                    OtherStatus: otherMarkup.Status,
+                    ReplyCount: markup.Replies.Count,
+                    OtherReplyCount: otherMarkup.Replies.Count);
+                return (changed, afterChange, afterUndo);
+            });
+
+        Assert.True(outcome.changed);
+        Assert.Equal(MarkupStatus.Resolved, outcome.afterChange.BucketStatus);
+        Assert.Equal(MarkupStatus.Open, outcome.afterChange.OtherStatus);
+        Assert.Equal(1, outcome.afterChange.ReplyCount);
+        Assert.Equal(0, outcome.afterChange.OtherReplyCount);
+        Assert.Equal(MarkupStatus.Open, outcome.afterUndo.BucketStatus);
+        Assert.Equal(MarkupStatus.Open, outcome.afterUndo.OtherStatus);
+        Assert.Equal(0, outcome.afterUndo.ReplyCount);
+        Assert.Equal(0, outcome.afterUndo.OtherReplyCount);
+    }
+
+    [Fact]
+    public void ExecuteAssignSelectedIssueGroupForTesting_UpdatesOnlySelectedBucketAndSupportsUndo()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Bucket A",
+                    Author = "Paul"
+                }
+            },
+            (window, viewModel, markup) =>
+            {
+                var otherMarkup = new MarkupRecord
+                {
+                    Type = MarkupType.Rectangle,
+                    Vertices = { new Point(12, 12), new Point(20, 20) },
+                    Metadata = new MarkupMetadata
+                    {
+                        Label = "Bucket B",
+                        Author = "Casey"
+                    }
+                };
+                otherMarkup.UpdateBoundingRect();
+                viewModel.Markups.Add(otherMarkup);
+                viewModel.MarkupTool.IssueGroupMode = MarkupIssueGroupMode.Author;
+                viewModel.MarkupTool.SelectedIssueGroup = Assert.Single(viewModel.MarkupTool.IssueGroups.Where(group => group.DisplayName == "Paul"));
+
+                var changed = window.ExecuteAssignSelectedIssueGroupForTesting("Field Crew", "Reviewer");
+                var afterChange = (
+                    BucketAssignee: markup.AssignedTo,
+                    OtherAssignee: otherMarkup.AssignedTo,
+                    ReplyCount: markup.Replies.Count,
+                    OtherReplyCount: otherMarkup.Replies.Count);
+
+                viewModel.Undo();
+                var afterUndo = (
+                    BucketAssignee: markup.AssignedTo,
+                    OtherAssignee: otherMarkup.AssignedTo,
+                    ReplyCount: markup.Replies.Count,
+                    OtherReplyCount: otherMarkup.Replies.Count);
+                return (changed, afterChange, afterUndo);
+            });
+
+        Assert.True(outcome.changed);
+        Assert.Equal("Field Crew", outcome.afterChange.BucketAssignee);
+        Assert.Null(outcome.afterChange.OtherAssignee);
+        Assert.Equal(1, outcome.afterChange.ReplyCount);
+        Assert.Equal(0, outcome.afterChange.OtherReplyCount);
+        Assert.Null(outcome.afterUndo.BucketAssignee);
+        Assert.Null(outcome.afterUndo.OtherAssignee);
+        Assert.Equal(0, outcome.afterUndo.ReplyCount);
+        Assert.Equal(0, outcome.afterUndo.OtherReplyCount);
+    }
+
+    [Fact]
+    public void ExecuteApproveSelectedIssueGroupForTesting_UpdatesOnlySelectedBucketAndSupportsUndo()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Status = MarkupStatus.Resolved,
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Bucket A",
+                    Author = "Paul"
+                }
+            },
+            (window, viewModel, markup) =>
+            {
+                var otherMarkup = new MarkupRecord
+                {
+                    Type = MarkupType.Rectangle,
+                    Vertices = { new Point(12, 12), new Point(20, 20) },
+                    Status = MarkupStatus.Resolved,
+                    Metadata = new MarkupMetadata
+                    {
+                        Label = "Bucket B",
+                        Author = "Casey"
+                    }
+                };
+                otherMarkup.UpdateBoundingRect();
+                viewModel.Markups.Add(otherMarkup);
+                viewModel.MarkupTool.IssueGroupMode = MarkupIssueGroupMode.Author;
+                viewModel.MarkupTool.SelectedIssueGroup = Assert.Single(viewModel.MarkupTool.IssueGroups.Where(group => group.DisplayName == "Paul"));
+
+                var changed = window.ExecuteApproveSelectedIssueGroupForTesting("Reviewer");
+                var afterChange = (
+                    BucketStatus: markup.Status,
+                    OtherStatus: otherMarkup.Status,
+                    ReplyCount: markup.Replies.Count,
+                    OtherReplyCount: otherMarkup.Replies.Count);
+
+                viewModel.Undo();
+                var afterUndo = (
+                    BucketStatus: markup.Status,
+                    OtherStatus: otherMarkup.Status,
+                    ReplyCount: markup.Replies.Count,
+                    OtherReplyCount: otherMarkup.Replies.Count);
+                return (changed, afterChange, afterUndo);
+            });
+
+        Assert.True(outcome.changed);
+        Assert.Equal(MarkupStatus.Approved, outcome.afterChange.BucketStatus);
+        Assert.Equal(MarkupStatus.Resolved, outcome.afterChange.OtherStatus);
+        Assert.Equal(1, outcome.afterChange.ReplyCount);
+        Assert.Equal(0, outcome.afterChange.OtherReplyCount);
+        Assert.Equal(MarkupStatus.Resolved, outcome.afterUndo.BucketStatus);
+        Assert.Equal(MarkupStatus.Resolved, outcome.afterUndo.OtherStatus);
+        Assert.Equal(0, outcome.afterUndo.ReplyCount);
+        Assert.Equal(0, outcome.afterUndo.OtherReplyCount);
+    }
+
+    [Fact]
+    public void ExecuteRejectSelectedIssueGroupForTesting_UpdatesOnlySelectedBucketAndSupportsUndo()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Status = MarkupStatus.Resolved,
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Bucket A",
+                    Author = "Paul"
+                }
+            },
+            (window, viewModel, markup) =>
+            {
+                var otherMarkup = new MarkupRecord
+                {
+                    Type = MarkupType.Rectangle,
+                    Vertices = { new Point(12, 12), new Point(20, 20) },
+                    Status = MarkupStatus.Resolved,
+                    Metadata = new MarkupMetadata
+                    {
+                        Label = "Bucket B",
+                        Author = "Casey"
+                    }
+                };
+                otherMarkup.UpdateBoundingRect();
+                viewModel.Markups.Add(otherMarkup);
+                viewModel.MarkupTool.IssueGroupMode = MarkupIssueGroupMode.Author;
+                viewModel.MarkupTool.SelectedIssueGroup = Assert.Single(viewModel.MarkupTool.IssueGroups.Where(group => group.DisplayName == "Paul"));
+
+                var changed = window.ExecuteRejectSelectedIssueGroupForTesting("Reviewer");
+                var afterChange = (
+                    BucketStatus: markup.Status,
+                    OtherStatus: otherMarkup.Status,
+                    ReplyCount: markup.Replies.Count,
+                    OtherReplyCount: otherMarkup.Replies.Count);
+
+                viewModel.Undo();
+                var afterUndo = (
+                    BucketStatus: markup.Status,
+                    OtherStatus: otherMarkup.Status,
+                    ReplyCount: markup.Replies.Count,
+                    OtherReplyCount: otherMarkup.Replies.Count);
+                return (changed, afterChange, afterUndo);
+            });
+
+        Assert.True(outcome.changed);
+        Assert.Equal(MarkupStatus.Rejected, outcome.afterChange.BucketStatus);
+        Assert.Equal(MarkupStatus.Resolved, outcome.afterChange.OtherStatus);
+        Assert.Equal(1, outcome.afterChange.ReplyCount);
+        Assert.Equal(0, outcome.afterChange.OtherReplyCount);
+        Assert.Equal(MarkupStatus.Resolved, outcome.afterUndo.BucketStatus);
+        Assert.Equal(MarkupStatus.Resolved, outcome.afterUndo.OtherStatus);
+        Assert.Equal(0, outcome.afterUndo.ReplyCount);
+        Assert.Equal(0, outcome.afterUndo.OtherReplyCount);
     }
 }

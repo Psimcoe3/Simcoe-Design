@@ -168,6 +168,7 @@ public class XfdfExportService
                 w.WriteStartElement("reply");
                 w.WriteAttributeString("id", reply.Id);
                 w.WriteAttributeString("author", reply.Author);
+                w.WriteAttributeString("kind", reply.EntryKindKey);
                 w.WriteAttributeString("created", reply.CreatedUtc.ToString("O"));
                 w.WriteAttributeString("modified", reply.ModifiedUtc.ToString("O"));
                 w.WriteCData(reply.Text);
@@ -333,6 +334,7 @@ public class XfdfExportService
                 {
                     Id = replyElement.GetAttribute("id"),
                     Author = replyElement.GetAttribute("author") ?? string.Empty,
+                    Kind = MarkupReply.ParseKind(replyElement.GetAttribute("kind")),
                     Text = replyElement.InnerText ?? string.Empty
                 };
 

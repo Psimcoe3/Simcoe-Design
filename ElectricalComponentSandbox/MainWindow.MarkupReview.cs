@@ -42,6 +42,18 @@ public partial class MainWindow
     internal bool ExecuteAssignSelectedMarkupForTesting(string? assignee, string? actor = null)
         => TryAssignSelectedMarkup(assignee, actor ?? "Test Reviewer", showFeedbackIfUnavailable: false);
 
+    internal bool ExecuteSetSelectedIssueGroupStatusForTesting(MarkupStatus newStatus, string? author = null)
+        => TrySetSelectedIssueGroupStatus(newStatus, $"{MarkupRecord.GetStatusDisplayText(newStatus)} Bucket", author ?? "Test Reviewer", showFeedbackIfUnavailable: false);
+
+    internal bool ExecuteAssignSelectedIssueGroupForTesting(string? assignee, string? actor = null)
+        => TryAssignSelectedIssueGroup(assignee, actor ?? "Test Reviewer", showFeedbackIfUnavailable: false);
+
+    internal bool ExecuteApproveSelectedIssueGroupForTesting(string? author = null)
+        => TrySetSelectedIssueGroupStatus(MarkupStatus.Approved, "Approve Bucket", author ?? "Test Reviewer", showFeedbackIfUnavailable: false);
+
+    internal bool ExecuteRejectSelectedIssueGroupForTesting(string? author = null)
+        => TrySetSelectedIssueGroupStatus(MarkupStatus.Rejected, "Reject Bucket", author ?? "Test Reviewer", showFeedbackIfUnavailable: false);
+
     private void EditSelectedMarkupGeometry_Click(object sender, RoutedEventArgs e)
     {
         TryEditSelectedMarkupGeometry(showFeedbackIfUnsupported: true);
@@ -114,6 +126,35 @@ public partial class MainWindow
     private void VoidVisibleMarkups_Click(object sender, RoutedEventArgs e)
     {
         TrySetVisibleMarkupStatus(MarkupStatus.Void, "Void Visible", Environment.UserName);
+    }
+
+    private void AssignSelectedIssueGroup_Click(object sender, RoutedEventArgs e)
+    {
+        var input = PromptInput("Assign Selected Bucket", "Enter assignee name for the selected issue bucket. Leave blank to clear assignment:", Environment.UserName);
+        if (input == null)
+            return;
+
+        TryAssignSelectedIssueGroup(input, Environment.UserName, showFeedbackIfUnavailable: true);
+    }
+
+    private void ResolveSelectedIssueGroup_Click(object sender, RoutedEventArgs e)
+    {
+        TrySetSelectedIssueGroupStatus(MarkupStatus.Resolved, "Resolve Bucket", Environment.UserName, showFeedbackIfUnavailable: true);
+    }
+
+    private void ApproveSelectedIssueGroup_Click(object sender, RoutedEventArgs e)
+    {
+        TrySetSelectedIssueGroupStatus(MarkupStatus.Approved, "Approve Bucket", Environment.UserName, showFeedbackIfUnavailable: true);
+    }
+
+    private void RejectSelectedIssueGroup_Click(object sender, RoutedEventArgs e)
+    {
+        TrySetSelectedIssueGroupStatus(MarkupStatus.Rejected, "Reject Bucket", Environment.UserName, showFeedbackIfUnavailable: true);
+    }
+
+    private void VoidSelectedIssueGroup_Click(object sender, RoutedEventArgs e)
+    {
+        TrySetSelectedIssueGroupStatus(MarkupStatus.Void, "Void Bucket", Environment.UserName, showFeedbackIfUnavailable: true);
     }
 
     private void AddMarkupReply_Click(object sender, RoutedEventArgs e)
@@ -203,6 +244,38 @@ public partial class MainWindow
         return true;
     }
 
+    private bool TrySetSelectedIssueGroupStatus(MarkupStatus newStatus, string action, string actor, bool showFeedbackIfUnavailable)
+    {
+        if (!_viewModel.MarkupTool.HasSelectedIssueGroup)
+        {
+            if (showFeedbackIfUnavailable)
+            {
+                MessageBox.Show("Select an issue bucket first.", action,
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        var updatedCount = _viewModel.ApplySelectedIssueGroupStatus(newStatus, actor);
+        if (updatedCount == 0)
+        {
+            if (showFeedbackIfUnavailable)
+            {
+                MessageBox.Show("No markups in the selected bucket were eligible for that status change.", action,
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        ActionLogService.Instance.Log(LogCategory.Component,
+            $"Markup {action.ToLowerInvariant()}", $"Count: {updatedCount}");
+
+        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+        return true;
+    }
+
     private bool TryAssignSelectedMarkup(string? assignee, string actor, bool showFeedbackIfUnavailable)
     {
         var markup = _viewModel.MarkupTool.SelectedMarkup;
@@ -240,6 +313,39 @@ public partial class MainWindow
         var assigneeDisplay = string.IsNullOrWhiteSpace(assignee) ? "(unassigned)" : assignee.Trim();
         ActionLogService.Instance.Log(LogCategory.Component,
             "Visible markups assigned", $"Count: {updatedCount}, Assignee: {assigneeDisplay}");
+
+        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+        return true;
+    }
+
+    private bool TryAssignSelectedIssueGroup(string? assignee, string actor, bool showFeedbackIfUnavailable)
+    {
+        if (!_viewModel.MarkupTool.HasSelectedIssueGroup)
+        {
+            if (showFeedbackIfUnavailable)
+            {
+                MessageBox.Show("Select an issue bucket first.", "Assign Selected Bucket",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        var updatedCount = _viewModel.ApplySelectedIssueGroupAssignment(assignee, actor);
+        if (updatedCount == 0)
+        {
+            if (showFeedbackIfUnavailable)
+            {
+                MessageBox.Show("No markups in the selected bucket were eligible for that assignment change.", "Assign Selected Bucket",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        var assigneeDisplay = string.IsNullOrWhiteSpace(assignee) ? "(unassigned)" : assignee.Trim();
+        ActionLogService.Instance.Log(LogCategory.Component,
+            "Selected bucket assigned", $"Count: {updatedCount}, Assignee: {assigneeDisplay}");
 
         QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
         return true;

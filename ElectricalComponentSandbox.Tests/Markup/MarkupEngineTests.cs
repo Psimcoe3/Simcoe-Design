@@ -737,6 +737,7 @@ public class MarkupPersistenceServiceTests
                     new MarkupReply
                     {
                         Author = "Reviewer",
+                        Kind = MarkupReplyKind.AssignmentAudit,
                         Text = "Confirm field clearance before install."
                     }
                 }
@@ -756,6 +757,8 @@ public class MarkupPersistenceServiceTests
         Assert.Equal("QA", loaded[1].AssignedTo);
         Assert.Single(loaded[1].Replies);
         Assert.Equal("Reviewer", loaded[1].Replies[0].Author);
+        Assert.True(loaded[1].Replies[0].IsAuditEntry);
+        Assert.Equal(MarkupReplyKind.AssignmentAudit, loaded[1].Replies[0].Kind);
         Assert.Equal("Confirm field clearance before install.", loaded[1].Replies[0].Text);
     }
 
@@ -777,6 +780,7 @@ public class MarkupPersistenceServiceTests
                     new MarkupReply
                     {
                         Author = "QA",
+                        Kind = MarkupReplyKind.StatusAudit,
                         Text = "Waiting on revised dimension callout."
                     }
                 }
@@ -796,6 +800,23 @@ public class MarkupPersistenceServiceTests
         Assert.Equal("Coordinator", loaded[0].AssignedTo);
         Assert.Single(loaded[0].Replies);
         Assert.Equal("QA", loaded[0].Replies[0].Author);
+        Assert.True(loaded[0].Replies[0].IsAuditEntry);
+        Assert.Equal(MarkupReplyKind.StatusAudit, loaded[0].Replies[0].Kind);
+
+    }
+
+    [Fact]
+    public void Xml_LegacyAuditKind_DeserializesAsGenericAudit()
+    {
+        var svc = new MarkupPersistenceService();
+        const string xml = "<markups><markup id=\"legacy-1\" type=\"Rectangle\" layer=\"markup-default\"><vertices><point x=\"0\" y=\"0\"/><point x=\"10\" y=\"10\"/></vertices><appearance stroke=\"#FF0000\" strokeWidth=\"2\" fill=\"#40FF0000\" opacity=\"1\" /><metadata label=\"Legacy\" depth=\"0\" subject=\"\" author=\"\" /><replies><reply id=\"reply-1\" author=\"Reviewer\" kind=\"audit\" createdUtc=\"2026-03-30T12:00:00.0000000Z\" modifiedUtc=\"2026-03-30T12:00:00.0000000Z\">Legacy audit entry</reply></replies></markup></markups>";
+
+        var loaded = svc.DeserializeFromXml(xml);
+
+        var markup = Assert.Single(loaded);
+        var reply = Assert.Single(markup.Replies);
+        Assert.True(reply.IsAuditEntry);
+        Assert.Equal(MarkupReplyKind.Audit, reply.Kind);
     }
 
     [Fact]
