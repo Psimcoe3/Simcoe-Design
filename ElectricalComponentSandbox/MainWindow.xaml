@@ -447,6 +447,24 @@
             <!-- Library Browser + Layers -->
             <Border x:Name="LibraryPanelContainer" Grid.Column="0" BorderBrush="Gray" BorderThickness="0,0,1,0">
                 <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="Sheets" 
+                             FontWeight="Bold" FontSize="14" 
+                             Padding="10" Background="LightGray"/>
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="5">
+                        <Button x:Name="AddSheetButton" Content="Add Sheet" Click="AddSheet_Click" Padding="5,2" Margin="2"/>
+                        <Button x:Name="RenameSheetButton" Content="Rename" Click="RenameSheet_Click" Padding="5,2" Margin="2"/>
+                        <Button x:Name="DeleteSheetButton" Content="Delete" Click="DeleteSheet_Click" Padding="5,2" Margin="2"/>
+                    </StackPanel>
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="5,0,5,5">
+                        <Button x:Name="MoveSheetUpButton" Content="Up" Click="MoveSheetUp_Click" Padding="5,2" Margin="2"/>
+                        <Button x:Name="MoveSheetDownButton" Content="Down" Click="MoveSheetDown_Click" Padding="5,2" Margin="2"/>
+                        <TextBlock x:Name="ActiveSheetSummaryTextBlock" VerticalAlignment="Center" Margin="8,0,0,0" Text="1 sheet"/>
+                    </StackPanel>
+                    <ListBox x:Name="SheetListBox" DockPanel.Dock="Top" Height="110"
+                           ItemsSource="{Binding Sheets}"
+                           DisplayMemberPath="DisplayName"
+                           SelectionChanged="SheetListBox_SelectionChanged"/>
+
                     <TextBlock DockPanel.Dock="Top" Text="Component Library" 
                              FontWeight="Bold" FontSize="14" 
                              Padding="10" Background="LightGray"/>
@@ -795,6 +813,7 @@
                                 <TextBlock Text="Reference URL:"/>
                                 <TextBox x:Name="ReferenceUrlTextBox"/>
                                 <Button x:Name="OpenReferenceButton" Content="Open Reference" Click="OpenReference_Click" Margin="0,4,0,0"/>
+                                <TextBlock x:Name="ReferenceRootStatusTextBlock" Foreground="Gray" FontStyle="Italic" Text="Reference root: (auto)"/>
                                 <TextBlock Text="Curated References:"/>
                                 <ComboBox x:Name="ReferenceCatalogComboBox" DisplayMemberPath="DisplayName" SelectedValuePath="RelativePath"/>
                                 <WrapPanel Margin="0,4,0,0">
@@ -826,6 +845,11 @@
                         <DockPanel>
                             <!-- Filter bar -->
                             <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4,4,4,0" VerticalAlignment="Center">
+                                <TextBlock Text="Scope:" VerticalAlignment="Center" FontSize="11"/>
+                                <ComboBox x:Name="MarkupReviewScopeCombo" Width="110" FontSize="11" Margin="3,0,8,0"
+                                          ItemsSource="{Binding MarkupTool.ReviewScopeOptions}"
+                                          SelectedItem="{Binding MarkupTool.ReviewScope, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          SelectionChanged="MarkupReviewScope_Changed"/>
                                 <TextBlock Text="Status:" VerticalAlignment="Center" FontSize="11"/>
                                 <ComboBox x:Name="MarkupStatusFilterCombo" Width="92" FontSize="11" Margin="3,0,8,0"
                                           ItemsSource="{Binding MarkupTool.StatusFilterOptions}"
@@ -1122,10 +1146,12 @@
                             <ListView x:Name="MarkupListView"
                                       ItemsSource="{Binding MarkupTool.FilteredMarkups}"
                                       SelectedItem="{Binding MarkupTool.SelectedMarkup}"
+                                                                            SelectionChanged="MarkupListView_SelectionChanged"
                                       MouseDoubleClick="MarkupListView_MouseDoubleClick"
                                       FontSize="11">
                                 <ListView.View>
                                     <GridView>
+                                                                                <GridViewColumn Header="Sheet" DisplayMemberBinding="{Binding ReviewSheetDisplayText}" Width="132"/>
                                         <GridViewColumn Header="Status" DisplayMemberBinding="{Binding StatusDisplayText}" Width="84"/>
                                         <GridViewColumn Header="Type" DisplayMemberBinding="{Binding TypeDisplayText}" Width="96"/>
                                         <GridViewColumn Header="Label" DisplayMemberBinding="{Binding Metadata.Label}" Width="130"/>

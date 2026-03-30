@@ -11,11 +11,16 @@ namespace ElectricalComponentSandbox;
 public partial class MainWindow
 {
     private readonly List<Models.PlotStyleTable> _plotStyleTables = new() { Models.PlotStyleTable.CreateMonochrome() };
-    private Models.PlotLayout? _activePlotLayout;
     private bool _sectionCutActive;
     private double _sectionCutY;
     private VisualStyle3D _activeVisualStyle3D = VisualStyle3D.Realistic;
     private bool _showComponentLabels = false;
+
+    private Models.PlotLayout GetOrCreateActivePlotLayout()
+    {
+        _viewModel.ActivePlotLayout ??= new Models.PlotLayout();
+        return _viewModel.ActivePlotLayout;
+    }
 
     private void VisualStyleRealistic_Click(object sender, RoutedEventArgs e)
     {
@@ -252,13 +257,13 @@ public partial class MainWindow
 
     private void PageSetup_Click(object sender, RoutedEventArgs e)
     {
-        _activePlotLayout ??= new Models.PlotLayout();
+        var activePlotLayout = GetOrCreateActivePlotLayout();
 
         var paperNames = Enum.GetNames(typeof(Models.PaperSize));
-        var currentPaper = _activePlotLayout.PaperSize.ToString();
+        var currentPaper = activePlotLayout.PaperSize.ToString();
         var input = PromptInput(
             "Page Setup",
-            $"Current paper: {currentPaper}, Scale: {_activePlotLayout.PlotScale}\n" +
+            $"Current paper: {currentPaper}, Scale: {activePlotLayout.PlotScale}\n" +
             $"Available: {string.Join(", ", paperNames)}\n\nEnter paper name (or Cancel):",
             currentPaper);
         if (input is null)
@@ -266,14 +271,14 @@ public partial class MainWindow
 
         if (Enum.TryParse<Models.PaperSize>(input, true, out var paperSize))
         {
-            _activePlotLayout.PaperSize = paperSize;
+            activePlotLayout.PaperSize = paperSize;
             ActionLogService.Instance.Log(LogCategory.View, "Page setup changed", $"Paper: {paperSize}");
         }
     }
 
     private void PrintPreview_Click(object sender, RoutedEventArgs e)
     {
-        _activePlotLayout ??= new Models.PlotLayout();
+        var activePlotLayout = GetOrCreateActivePlotLayout();
 
         if (!_viewModel.Components.Any())
         {
@@ -285,14 +290,14 @@ public partial class MainWindow
         try
         {
             var ctb = _plotStyleTables.FirstOrDefault(t =>
-                string.Equals(t.Name, _activePlotLayout.PlotStyleTableName, StringComparison.OrdinalIgnoreCase));
+                string.Equals(t.Name, activePlotLayout.PlotStyleTableName, StringComparison.OrdinalIgnoreCase));
             var extents = _viewModel.PlotService.ComputeModelExtents(
                 _viewModel.Components.ToList(), _viewModel.Layers.ToList());
             var bitmap = _viewModel.PlotService.RenderToBitmap(
-                _activePlotLayout, ctb, _viewModel.Components.ToList(),
+                activePlotLayout, ctb, _viewModel.Components.ToList(),
                 _viewModel.Layers.ToList(), extents);
 
-            var (paperW, paperH) = _activePlotLayout.GetPaperInches();
+            var (paperW, paperH) = activePlotLayout.GetPaperInches();
 
             // Show preview in a resizable window
             var previewImage = new System.Windows.Controls.Image
@@ -303,8 +308,8 @@ public partial class MainWindow
 
             var infoText = new TextBlock
             {
-                Text = $"Paper: {_activePlotLayout.PaperSize} ({paperW:F1}\" × {paperH:F1}\")  |  " +
-                       $"Scale: {_activePlotLayout.PlotScale}  |  CTB: {_activePlotLayout.PlotStyleTableName}  |  " +
+                  Text = $"Paper: {activePlotLayout.PaperSize} ({paperW:F1}\" × {paperH:F1}\")  |  " +
+                      $"Scale: {activePlotLayout.PlotScale}  |  CTB: {activePlotLayout.PlotStyleTableName}  |  " +
                        $"Components: {_viewModel.Components.Count}  |  DPI: {_viewModel.PlotService.OutputDpi}",
                 Margin = new Thickness(8, 4, 8, 4),
                 FontSize = 11,

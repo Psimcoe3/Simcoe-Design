@@ -578,4 +578,73 @@ public partial class MainViewModelTests
         Assert.False(vm.MarkupTool.HasPathVertexDeleteCandidate);
         Assert.Equal("Vertex deletion is unavailable when the selected path is already at its minimum vertex count", vm.MarkupTool.SelectedMarkupPathDeleteSummary);
     }
+
+    [Fact]
+    public void MarkupTool_AllSheetsScope_AggregatesMarkupsAcrossSheets()
+    {
+        var vm = new MainViewModel();
+        var firstSheet = vm.SelectedSheet;
+        var firstMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Status = MarkupStatus.Open,
+            Vertices = { new Point(0, 0), new Point(5, 5) }
+        };
+        firstMarkup.UpdateBoundingRect();
+        vm.AddMarkup(firstMarkup);
+
+        var secondSheet = vm.AddSheet("Review");
+        var secondMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            Status = MarkupStatus.Resolved,
+            TextContent = "Reviewed",
+            Vertices = { new Point(10, 10) }
+        };
+        secondMarkup.UpdateBoundingRect();
+        vm.AddMarkup(secondMarkup);
+
+        vm.MarkupTool.ReviewScope = MarkupReviewScope.AllSheets;
+
+        Assert.NotNull(firstSheet);
+        Assert.NotNull(secondSheet);
+        Assert.Equal(2, vm.MarkupTool.TotalCount);
+        Assert.Equal(1, vm.MarkupTool.OpenCount);
+        Assert.Equal(1, vm.MarkupTool.ResolvedCount);
+        Assert.Equal(2, vm.MarkupTool.FilteredMarkups.Count);
+        Assert.Contains(vm.MarkupTool.FilteredMarkups, markup => markup.ReviewSheetDisplayText == firstSheet.DisplayName);
+        Assert.Contains(vm.MarkupTool.FilteredMarkups, markup => markup.ReviewSheetDisplayText == secondSheet.DisplayName);
+    }
+
+    [Fact]
+    public void RevealMarkup_SelectsOwningSheetAndMarkup()
+    {
+        var vm = new MainViewModel();
+        var firstMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Vertices = { new Point(0, 0), new Point(4, 4) }
+        };
+        firstMarkup.UpdateBoundingRect();
+        vm.AddMarkup(firstMarkup);
+        var firstSheet = vm.SelectedSheet;
+
+        vm.AddSheet("Review");
+        var secondMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Radius = 4,
+            Vertices = { new Point(20, 20) }
+        };
+        secondMarkup.UpdateBoundingRect();
+        vm.AddMarkup(secondMarkup);
+
+        vm.MarkupTool.ReviewScope = MarkupReviewScope.AllSheets;
+
+        var revealed = vm.RevealMarkup(firstMarkup);
+
+        Assert.True(revealed);
+        Assert.Equal(firstSheet?.Id, vm.SelectedSheet?.Id);
+        Assert.Same(firstMarkup, vm.MarkupTool.SelectedMarkup);
+    }
 }

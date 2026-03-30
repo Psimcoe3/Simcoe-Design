@@ -20,13 +20,58 @@ public sealed record ReferenceLaunchResolution(
 
 public static class ReferenceCatalogService
 {
+    public const string ReferenceRootEnvVar = "ECS_REFERENCE_ROOT";
     private const string SolutionFileName = "ElectricalComponentSandbox.slnx";
+    private const string ReferencesDocsPrefix = "References\\docs\\";
+    private static string? _referenceDocsRootOverride;
+
+    public static string? GetReferenceDocsRoot(string? rootHint = null)
+    {
+        if (TryNormalizeReferenceDocsRoot(_referenceDocsRootOverride, out var overrideRoot))
+            return overrideRoot;
+
+        var configuredFromEnvironment = Environment.GetEnvironmentVariable(ReferenceRootEnvVar);
+        if (TryNormalizeReferenceDocsRoot(configuredFromEnvironment, out var environmentRoot))
+            return environmentRoot;
+
+        if (TryNormalizeReferenceDocsRoot(rootHint, out var hintedRoot))
+            return hintedRoot;
+
+        var workspaceRoot = string.IsNullOrWhiteSpace(rootHint)
+            ? TryFindWorkspaceRoot()
+            : TryFindWorkspaceRoot(rootHint);
+        return workspaceRoot == null
+            ? null
+            : Path.Combine(workspaceRoot, "References", "docs");
+    }
+
+    public static string? GetReferenceDocsRootOverride()
+        => _referenceDocsRootOverride;
+
+    public static bool TrySetReferenceDocsRootOverride(string path, out string normalizedPath, out string errorMessage)
+    {
+        if (TryNormalizeReferenceDocsRoot(path, out normalizedPath))
+        {
+            _referenceDocsRootOverride = normalizedPath;
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        errorMessage = $"Reference root does not contain the expected docs library: {path}";
+        normalizedPath = string.Empty;
+        return false;
+    }
+
+    public static void ClearReferenceDocsRootOverride()
+    {
+        _referenceDocsRootOverride = null;
+    }
 
     public static IReadOnlyList<ReferenceCatalogEntry> GetCuratedEntries(string? workspaceRoot = null)
     {
-        var resolvedWorkspaceRoot = workspaceRoot ?? TryFindWorkspaceRoot();
-        const string estimatorRelativePath = "References\\docs\\2026_national_electrical_estimator_ebook.pdf";
-        const string electricalMaterialRelativePath = "References\\docs\\Electrical Material";
+        var docsRoot = GetReferenceDocsRoot(workspaceRoot);
+        const string estimatorRelativePath = ReferencesDocsPrefix + "2026_national_electrical_estimator_ebook.pdf";
+        const string electricalMaterialRelativePath = ReferencesDocsPrefix + "Electrical Material";
 
         return new[]
         {
@@ -34,7 +79,7 @@ public static class ReferenceCatalogService
                 "2026 National Electrical Estimator Ebook",
                 estimatorRelativePath,
                 IsDirectory: false),
-            BuildElectricalMaterialEntry(electricalMaterialRelativePath, resolvedWorkspaceRoot)
+            BuildElectricalMaterialEntry(electricalMaterialRelativePath, docsRoot)
         };
     }
 
@@ -89,7 +134,7 @@ public static class ReferenceCatalogService
 
         var candidatePath = Path.IsPathRooted(trimmedReference)
             ? trimmedReference
-            : Path.Combine(workspaceRoot ?? TryFindWorkspaceRoot() ?? Directory.GetCurrentDirectory(), NormalizeRelativePath(trimmedReference));
+            : BuildRelativeReferencePath(trimmedReference, workspaceRoot);
 
         return ResolveFileSystemTarget(candidatePath);
     }
@@ -126,12 +171,12 @@ public static class ReferenceCatalogService
         return null;
     }
 
-    private static ReferenceCatalogEntry BuildElectricalMaterialEntry(string relativePath, string? workspaceRoot)
+    private static ReferenceCatalogEntry BuildElectricalMaterialEntry(string relativePath, string? docsRoot)
     {
         var children = Array.Empty<ReferenceCatalogEntry>();
-        if (!string.IsNullOrWhiteSpace(workspaceRoot))
+        if (!string.IsNullOrWhiteSpace(docsRoot))
         {
-            var absolutePath = Path.Combine(workspaceRoot, NormalizeRelativePath(relativePath));
+            var absolutePath = BuildRelativeReferencePath(relativePath, docsRoot);
             if (Directory.Exists(absolutePath))
             {
                 children = Directory.GetDirectories(absolutePath)
@@ -191,4 +236,48 @@ public static class ReferenceCatalogService
 
     private static string NormalizeRelativePath(string relativePath)
         => relativePath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+
+    private static string BuildRelativeReferencePath(string reference, string? rootHint)
+    {
+        var docsRoot = GetReferenceDocsRoot(rootHint) ?? Directory.GetCurrentDirectory();
+        var normalizedReference = NormalizeRelativePath(reference);
+        var relativeWithinDocs = normalizedReference.StartsWith(ReferencesDocsPrefix, StringComparison.OrdinalIgnoreCase)
+            ? normalizedReference[ReferencesDocsPrefix.Length..]
+            : normalizedReference;
+
+        return Path.Combine(docsRoot, relativeWithinDocs);
+    }
+
+    private static bool TryNormalizeReferenceDocsRoot(string? path, out string normalizedPath)
+    {
+        normalizedPath = string.Empty;
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
+        var fullPath = Path.GetFullPath(path);
+        if (!Directory.Exists(fullPath))
+            return false;
+
+        var docsChildPath = Path.Combine(fullPath, "References", "docs");
+        if (Directory.Exists(docsChildPath))
+        {
+            normalizedPath = docsChildPath;
+            return true;
+        }
+
+        if (LooksLikeDocsRoot(fullPath))
+        {
+            normalizedPath = fullPath;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool LooksLikeDocsRoot(string path)
+    {
+        return string.Equals(Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)), "docs", StringComparison.OrdinalIgnoreCase) ||
+               File.Exists(Path.Combine(path, "2026_national_electrical_estimator_ebook.pdf")) ||
+               Directory.Exists(Path.Combine(path, "Electrical Material"));
+    }
 }

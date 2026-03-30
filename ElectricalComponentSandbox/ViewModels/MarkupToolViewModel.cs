@@ -44,6 +44,12 @@ public enum DimensionSubType
     ArcLength
 }
 
+public enum MarkupReviewScope
+{
+    CurrentSheet,
+    AllSheets
+}
+
 /// <summary>
 /// ViewModel driving the markup / annotation toolbar and the active markups list panel.
 ///
@@ -57,9 +63,11 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 {
     // ── Backing state ─────────────────────────────────────────────────────────
 
-    private readonly ObservableCollection<MarkupRecord> _allMarkups;
+    private readonly ObservableCollection<MarkupRecord> _activeSheetMarkups;
+    private readonly Func<IReadOnlyList<MarkupRecord>> _projectMarkupsProvider;
     private MarkupToolMode  _activeMode = MarkupToolMode.None;
     private DimensionSubType _dimSubType = DimensionSubType.Linear;
+    private MarkupReviewScope _reviewScope = MarkupReviewScope.CurrentSheet;
     private string          _statusFilter = "All";
     private string          _typeFilter   = "All";
     private string          _layerFilter  = "All";
@@ -70,6 +78,30 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
     /// <summary>Markups currently visible in the list panel (after status + type + text filters)</summary>
     public ObservableCollection<MarkupRecord> FilteredMarkups { get; } = new();
+
+    public IReadOnlyList<MarkupReviewScope> ReviewScopeOptions { get; } =
+    [
+        MarkupReviewScope.CurrentSheet,
+        MarkupReviewScope.AllSheets
+    ];
+
+    public MarkupReviewScope ReviewScope
+    {
+        get => _reviewScope;
+        set
+        {
+            if (_reviewScope == value)
+                return;
+
+            _reviewScope = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsProjectReviewScope));
+            ApplyFilter();
+            OnCountsChanged();
+        }
+    }
+
+    public bool IsProjectReviewScope => _reviewScope == MarkupReviewScope.AllSheets;
 
     /// <summary>Valid status filter values for the Markups panel</summary>
     public IReadOnlyList<string> StatusFilterOptions { get; } = new[]
@@ -542,13 +574,13 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
     // ── Statistics (for status bar) ───────────────────────────────────────────
 
-    public int TotalCount      => _allMarkups.Count;
-    public int OpenCount       => _allMarkups.Count(m => m.Status == MarkupStatus.Open);
-    public int InProgressCount => _allMarkups.Count(m => m.Status == MarkupStatus.InProgress);
-    public int ResolvedCount   => _allMarkups.Count(m => m.Status == MarkupStatus.Resolved);
-    public int ApprovedCount   => _allMarkups.Count(m => m.Status == MarkupStatus.Approved);
-    public int RejectedCount   => _allMarkups.Count(m => m.Status == MarkupStatus.Rejected);
-    public int VoidCount       => _allMarkups.Count(m => m.Status == MarkupStatus.Void);
+    public int TotalCount      => GetReviewSourceMarkups().Count;
+    public int OpenCount       => GetReviewSourceMarkups().Count(m => m.Status == MarkupStatus.Open);
+    public int InProgressCount => GetReviewSourceMarkups().Count(m => m.Status == MarkupStatus.InProgress);
+    public int ResolvedCount   => GetReviewSourceMarkups().Count(m => m.Status == MarkupStatus.Resolved);
+    public int ApprovedCount   => GetReviewSourceMarkups().Count(m => m.Status == MarkupStatus.Approved);
+    public int RejectedCount   => GetReviewSourceMarkups().Count(m => m.Status == MarkupStatus.Rejected);
+    public int VoidCount       => GetReviewSourceMarkups().Count(m => m.Status == MarkupStatus.Void);
     public int FilteredCount   => FilteredMarkups.Count;
 
     // ── Commands ──────────────────────────────────────────────────────────────
@@ -575,10 +607,13 @@ public class MarkupToolViewModel : INotifyPropertyChanged
     public ICommand SetAllStatusCommand    { get; }
     public ICommand ClearFiltersCommand    { get; }
 
-    public MarkupToolViewModel(ObservableCollection<MarkupRecord> allMarkups)
+    public MarkupToolViewModel(
+        ObservableCollection<MarkupRecord> activeSheetMarkups,
+        Func<IReadOnlyList<MarkupRecord>> projectMarkupsProvider)
     {
-        _allMarkups = allMarkups;
-        _allMarkups.CollectionChanged += (_, _) =>
+        _activeSheetMarkups = activeSheetMarkups;
+        _projectMarkupsProvider = projectMarkupsProvider;
+        _activeSheetMarkups.CollectionChanged += (_, _) =>
         {
             RefreshLayerFilterOptions();
             ApplyFilter();
@@ -631,6 +666,14 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         ApplyFilter();
     }
 
+    public void RefreshReviewContext()
+    {
+        RefreshLayerFilterOptions();
+        ApplyFilter();
+        RefreshSelectedMarkupPresentation();
+        OnCountsChanged();
+    }
+
     public void RefreshSelectedMarkupPresentation()
     {
         OnPropertyChanged(nameof(HasSelectedMarkup));
@@ -673,7 +716,12 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
     private void ApplyFilter()
     {
-        var filtered = (IEnumerable<MarkupRecord>)_allMarkups;
+        var reviewSource = GetReviewSourceMarkups();
+
+        if (_selectedMarkup != null && !reviewSource.Any(markup => string.Equals(markup.Id, _selectedMarkup.Id, StringComparison.Ordinal)))
+            SelectedMarkup = null;
+
+        var filtered = reviewSource.AsEnumerable();
 
         if (_statusFilter != "All" && TryParseStatusFilter(_statusFilter, out var status))
             filtered = filtered.Where(m => m.Status == status);
@@ -714,7 +762,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
     private void DeleteSelected()
     {
         if (SelectedMarkup == null) return;
-        _allMarkups.Remove(SelectedMarkup);
+        _activeSheetMarkups.Remove(SelectedMarkup);
         SelectedMarkup = null;
         CommandManager.InvalidateRequerySuggested();
     }
@@ -779,10 +827,17 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         if (string.IsNullOrWhiteSpace(groupId))
             return new[] { selectedMarkup };
 
-        return _allMarkups
+        return GetReviewSourceMarkups()
             .Where(markup => markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.AnnotationGroupIdField, out var markupGroupId) &&
                              string.Equals(markupGroupId, groupId, StringComparison.Ordinal))
             .ToList();
+    }
+
+    private IReadOnlyList<MarkupRecord> GetReviewSourceMarkups()
+    {
+        return _reviewScope == MarkupReviewScope.AllSheets
+            ? _projectMarkupsProvider()
+            : _activeSheetMarkups;
     }
 
     private static double NormalizeMarkupAngle(double angleDegrees)
@@ -975,7 +1030,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
     private void RefreshLayerFilterOptions()
     {
-        var layers = _allMarkups
+        var layers = GetReviewSourceMarkups()
             .Select(markup => markup.LayerId)
             .Where(layerId => !string.IsNullOrWhiteSpace(layerId))
             .Distinct(StringComparer.OrdinalIgnoreCase)

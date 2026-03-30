@@ -132,6 +132,8 @@ public partial class MainWindow
         _customDimensionSnapMode = GetSelectedCustomDimensionSnapMode();
         InitializeStratusImperialDefaults();
         InitializeReferenceMenu();
+        InitializeSheetBrowser();
+        RebuildNamedViewMenuItems();
         ApplyDesktopPaneLayout();
         UpdateCustomDimensionUiState();
         InitializeCanvasInteractionController();

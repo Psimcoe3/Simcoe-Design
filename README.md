@@ -99,7 +99,17 @@ Alternatively, open `ElectricalComponentSandbox.slnx` in Visual Studio and build
 - The first pass surfaces the `2026_national_electrical_estimator_ebook.pdf` file directly and exposes the `Electrical Material` folder plus its current top-level files/folders
 - The existing component-side **Reference URL** field still works and now also supports local repo-relative file or folder paths such as `References/docs/2026_national_electrical_estimator_ebook.pdf`
 - The properties panel now also includes a curated reference picker plus a suggested-reference button so you can populate the Reference URL field from the local catalog before applying changes to the current selection
+- The **References** menu now also lets you set or reset a custom reference root for the current session, and the app also honors the `ECS_REFERENCE_ROOT` environment variable for portable setups outside this repo
 - Reference assets are workspace-local and are not copied into the app build or publish output in this pass
+
+#### Sheets
+
+- The left panel now includes a minimal **Sheets** browser so the project can hold multiple persisted sheets instead of a single implicit canvas
+- Markups, PDF underlays, named views, and page setup are now sheet-scoped and switch with the active sheet, while electrical components remain project-global in this first document-model pass
+- The sheet browser now supports add, rename, delete, and up/down reorder actions, and deleting a non-active sheet preserves the current active sheet
+- The last active sheet is now persisted in `.ecproj` saves and restored on reopen
+- The **Markups** tab can now review either the current sheet or all sheets across the project, includes a sheet column in the markup list, and automatically reveals cross-sheet markup selections in their owning sheet
+- Older `.ecproj` files still load: legacy single-sheet markup, underlay, and named-view state is migrated into the first sheet automatically
 
 #### Grid and Snap
 
@@ -172,7 +182,7 @@ dotnet test ElectricalComponentSandbox.Tests/ElectricalComponentSandbox.Tests.cs
 
 *Note: Tests require Windows OS to run due to WPF framework dependencies.*
 
-Current validated baseline: **745/745 tests passing**.
+Current validated baseline: **759/759 tests passing**.
 
 ### Future Enhancements
 

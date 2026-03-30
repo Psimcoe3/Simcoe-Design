@@ -2,12 +2,19 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using ElectricalComponentSandbox.Models;
+using ElectricalComponentSandbox.Services;
 using ElectricalComponentSandbox.ViewModels;
 
 namespace ElectricalComponentSandbox.Tests;
 
 public class MainWindowReferenceTests
 {
+    public MainWindowReferenceTests()
+    {
+        ReferenceCatalogService.ClearReferenceDocsRootOverride();
+        Environment.SetEnvironmentVariable(ReferenceCatalogService.ReferenceRootEnvVar, null);
+    }
+
     [Fact]
     public void ReferencesMenu_InitializesCuratedEntries()
     {
@@ -17,12 +24,18 @@ public class MainWindowReferenceTests
             try
             {
                 var referencesMenu = FindRequired<MenuItem>(window, "ReferencesMenuItem");
-                Assert.Equal(2, referencesMenu.Items.Count);
+                Assert.True(referencesMenu.Items.Count >= 7);
 
-                var estimator = Assert.IsType<MenuItem>(referencesMenu.Items[0]);
+                var rootStatus = Assert.IsType<MenuItem>(referencesMenu.Items[0]);
+                Assert.Contains("Reference Root:", rootStatus.Header?.ToString(), StringComparison.Ordinal);
+
+                var setRootItem = Assert.IsType<MenuItem>(referencesMenu.Items[2]);
+                Assert.Equal("Set Reference Root...", setRootItem.Header?.ToString());
+
+                var estimator = Assert.IsType<MenuItem>(referencesMenu.Items[5]);
                 Assert.Equal("2026 National Electrical Estimator Ebook", estimator.Header?.ToString());
 
-                var electricalMaterial = Assert.IsType<MenuItem>(referencesMenu.Items[1]);
+                var electricalMaterial = Assert.IsType<MenuItem>(referencesMenu.Items[6]);
                 Assert.Equal("Electrical Material", electricalMaterial.Header?.ToString());
                 Assert.True(electricalMaterial.Items.Count >= 1);
 
@@ -33,6 +46,7 @@ public class MainWindowReferenceTests
             finally
             {
                 window.Close();
+                ReferenceCatalogService.ClearReferenceDocsRootOverride();
             }
         });
     }
@@ -44,6 +58,32 @@ public class MainWindowReferenceTests
 
         Assert.True(resolution.Success);
         Assert.EndsWith(@"References\docs\2026_national_electrical_estimator_ebook.pdf", resolution.LaunchTarget);
+    }
+
+    [Fact]
+    public void ReferencesUi_ShowsConfiguredReferenceRootStatus()
+    {
+        RunOnSta(() =>
+        {
+            ReferenceCatalogService.TrySetReferenceDocsRootOverride(@"C:\Users\Paul\source\repos\Psimcoe3\Simcoe-Design", out _, out _);
+
+            var window = new MainWindow(new MainViewModel());
+            try
+            {
+                var statusText = FindRequired<TextBlock>(window, "ReferenceRootStatusTextBlock");
+                Assert.Contains("docs", statusText.Text, StringComparison.OrdinalIgnoreCase);
+
+                var referencesMenu = FindRequired<MenuItem>(window, "ReferencesMenuItem");
+                var statusMenuItem = Assert.IsType<MenuItem>(referencesMenu.Items[0]);
+                Assert.Contains("docs", statusMenuItem.Header?.ToString(), StringComparison.OrdinalIgnoreCase);
+                return 0;
+            }
+            finally
+            {
+                window.Close();
+                ReferenceCatalogService.ClearReferenceDocsRootOverride();
+            }
+        });
     }
 
     [Fact]

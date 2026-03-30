@@ -26,9 +26,24 @@ public partial class MainWindow
         _viewModel.MarkupTool.LayerFilter = MarkupLayerFilterCombo.SelectedItem?.ToString() ?? "All";
     }
 
+    private void MarkupReviewScope_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (MarkupReviewScopeCombo.SelectedItem is MarkupReviewScope scope)
+            _viewModel.MarkupTool.ReviewScope = scope;
+    }
+
     private void MarkupSearch_Changed(object sender, TextChangedEventArgs e)
     {
         _viewModel.MarkupTool.LabelSearch = MarkupSearchBox.Text;
+    }
+
+    private void MarkupListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_viewModel.MarkupTool.SelectedMarkup == null)
+            return;
+
+        if (_viewModel.RevealMarkup(_viewModel.MarkupTool.SelectedMarkup))
+            QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
     }
 
     private void LayerDataGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)

@@ -1,8 +1,10 @@
+using System;
 using System.Linq;
 using System.Text;
 using System.Windows;
 using ElectricalComponentSandbox.Markup.Models;
 using ElectricalComponentSandbox.Services;
+using ElectricalComponentSandbox.ViewModels;
 
 namespace ElectricalComponentSandbox;
 
@@ -97,7 +99,8 @@ public partial class MainWindow
 
     private void MarkupSummary_Click(object sender, RoutedEventArgs e)
     {
-        if (!_viewModel.Markups.Any())
+        var reviewMarkups = _viewModel.GetReviewMarkups();
+        if (reviewMarkups.Count == 0)
         {
             MessageBox.Show("No markups in the project.", "Markup Summary",
                 MessageBoxButton.OK, MessageBoxImage.Information);
@@ -109,7 +112,14 @@ public partial class MainWindow
         sb.AppendLine(new string('═', 50));
         sb.AppendLine();
 
-        var byStatus = _viewModel.Markups
+        if (_viewModel.MarkupTool.ReviewScope == MarkupReviewScope.AllSheets)
+            sb.AppendLine($"Scope: All Sheets ({_viewModel.Sheets.Count})");
+        else
+            sb.AppendLine($"Scope: Current Sheet ({_viewModel.SelectedSheet?.DisplayName ?? "(none)"})");
+
+        sb.AppendLine();
+
+        var byStatus = reviewMarkups
             .GroupBy(m => m.Status)
             .OrderBy(g => g.Key);
 
@@ -118,11 +128,11 @@ public partial class MainWindow
             sb.AppendLine($"  {group.Key,-12}  {group.Count(),4} markup(s)");
         }
 
-        sb.AppendLine($"\n  {"TOTAL",-12}  {_viewModel.Markups.Count,4} markup(s)");
+        sb.AppendLine($"\n  {"TOTAL",-12}  {reviewMarkups.Count,4} markup(s)");
         sb.AppendLine();
         sb.AppendLine(new string('─', 50));
 
-        var byType = _viewModel.Markups
+        var byType = reviewMarkups
             .GroupBy(m => m.Type)
             .OrderByDescending(g => g.Count());
 
@@ -132,7 +142,7 @@ public partial class MainWindow
             sb.AppendLine($"  {group.Key,-20}  {group.Count(),4}");
         }
 
-        var authors = _viewModel.Markups
+        var authors = reviewMarkups
             .Where(m => !string.IsNullOrEmpty(m.Metadata.Author))
             .GroupBy(m => m.Metadata.Author)
             .OrderByDescending(g => g.Count());
@@ -146,8 +156,21 @@ public partial class MainWindow
             }
         }
 
+        if (_viewModel.MarkupTool.ReviewScope == MarkupReviewScope.AllSheets)
+        {
+            var bySheet = reviewMarkups
+                .GroupBy(_viewModel.GetMarkupSheetDisplayName)
+                .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase);
+
+            sb.AppendLine("\nBy Sheet:");
+            foreach (var group in bySheet)
+            {
+                sb.AppendLine($"  {group.Key,-20}  {group.Count(),4}");
+            }
+        }
+
         // Highlight open issues
-        var openCount = _viewModel.Markups.Count(m =>
+        var openCount = reviewMarkups.Count(m =>
             m.Status == MarkupStatus.Open || m.Status == MarkupStatus.InProgress);
         if (openCount > 0)
         {

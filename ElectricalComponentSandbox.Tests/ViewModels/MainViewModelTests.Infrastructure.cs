@@ -1,5 +1,7 @@
 using ElectricalComponentSandbox.Models;
+using ElectricalComponentSandbox.Markup.Models;
 using ElectricalComponentSandbox.ViewModels;
+using System.Windows;
 
 namespace ElectricalComponentSandbox.Tests.ViewModels;
 
@@ -208,5 +210,125 @@ public partial class MainViewModelTests
         vm2.LoadFromProject(project);
 
         Assert.Equal(2, vm2.Components.Count);
+    }
+
+    [Fact]
+    public void AddSheet_AndSelectSheet_PreservesSheetScopedState()
+    {
+        var vm = new MainViewModel();
+        vm.PdfUnderlay = new PdfUnderlay { FilePath = "sheet1.pdf", PageNumber = 1 };
+        vm.NamedViews.Add(new NamedView { Name = "Sheet 1 View", Zoom = 1.1 });
+        vm.AddMarkup(new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Vertices = [new Point(0, 0), new Point(10, 5)]
+        });
+
+        var firstSheet = vm.SelectedSheet;
+        var secondSheet = vm.AddSheet("Review Sheet");
+        vm.PdfUnderlay = new PdfUnderlay { FilePath = "sheet2.pdf", PageNumber = 2 };
+        vm.NamedViews.Add(new NamedView { Name = "Sheet 2 View", Zoom = 2.0 });
+        vm.AddMarkup(new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            Vertices = [new Point(20, 20)],
+            TextContent = "Review"
+        });
+
+        Assert.NotNull(firstSheet);
+        Assert.NotNull(secondSheet);
+        Assert.Equal("sheet2.pdf", vm.PdfUnderlay?.FilePath);
+        Assert.Single(vm.Markups);
+
+        var changed = vm.SelectSheet(firstSheet);
+
+        Assert.True(changed);
+        Assert.Equal("sheet1.pdf", vm.PdfUnderlay?.FilePath);
+        Assert.Single(vm.Markups);
+        Assert.Equal("Sheet 1 View", vm.NamedViews[0].Name);
+    }
+
+    [Fact]
+    public void LoadFromLegacyProject_CreatesSingleDefaultSheet()
+    {
+        var project = new ProjectModel
+        {
+            Name = "Legacy Project",
+            PdfUnderlay = new PdfUnderlay { FilePath = "legacy.pdf", PageNumber = 4 },
+            Markups =
+            [
+                new MarkupRecord
+                {
+                    Type = MarkupType.Rectangle,
+                    Vertices = [new Point(0, 0), new Point(5, 5)]
+                }
+            ],
+            NamedViews =
+            [
+                new NamedView { Name = "Legacy View", Zoom = 1.5 }
+            ]
+        };
+
+        var vm = new MainViewModel();
+        vm.LoadFromProject(project);
+
+        Assert.Single(vm.Sheets);
+        Assert.Equal("S001 - Legacy Project", vm.SelectedSheet?.DisplayName);
+        Assert.Equal("legacy.pdf", vm.PdfUnderlay?.FilePath);
+        Assert.Single(vm.Markups);
+        Assert.Single(vm.NamedViews);
+    }
+
+    [Fact]
+    public void ToProjectModel_PersistsActiveSheetId()
+    {
+        var vm = new MainViewModel();
+        var secondSheet = vm.AddSheet("Second");
+
+        var project = vm.ToProjectModel();
+
+        Assert.Equal(secondSheet.Id, project.ActiveSheetId);
+    }
+
+    [Fact]
+    public void LoadFromProject_RestoresConfiguredActiveSheet()
+    {
+        var firstSheet = DrawingSheet.CreateDefault(1);
+        firstSheet.PdfUnderlay = new PdfUnderlay { FilePath = "first.pdf", PageNumber = 1 };
+        var secondSheet = DrawingSheet.CreateDefault(2);
+        secondSheet.PdfUnderlay = new PdfUnderlay { FilePath = "second.pdf", PageNumber = 2 };
+        var project = new ProjectModel
+        {
+            Sheets = [firstSheet, secondSheet],
+            ActiveSheetId = secondSheet.Id
+        };
+
+        var vm = new MainViewModel();
+        vm.LoadFromProject(project);
+
+        Assert.Equal(secondSheet.Id, vm.SelectedSheet?.Id);
+        Assert.Equal("second.pdf", vm.PdfUnderlay?.FilePath);
+    }
+
+    [Fact]
+    public void RenameDeleteAndMoveSheet_UpdateSelectionAndOrdering()
+    {
+        var vm = new MainViewModel();
+        var firstSheet = vm.SelectedSheet;
+        var secondSheet = vm.AddSheet("Second");
+        var thirdSheet = vm.AddSheet("Third");
+
+        var renamed = vm.RenameSheet(secondSheet, "A201", "Lighting Plan");
+        var moved = vm.MoveSheet(thirdSheet, -1);
+        var deleted = vm.DeleteSheet(firstSheet);
+
+        Assert.True(renamed);
+        Assert.True(moved);
+        Assert.True(deleted);
+        Assert.Equal("A201 - Lighting Plan", secondSheet.DisplayName);
+        Assert.Equal(thirdSheet.Id, vm.Sheets[0].Id);
+        Assert.Equal(secondSheet.Id, vm.Sheets[1].Id);
+        Assert.Equal(thirdSheet.Id, vm.SelectedSheet?.Id);
+        Assert.Equal(2, vm.Sheets.Count);
     }
 }

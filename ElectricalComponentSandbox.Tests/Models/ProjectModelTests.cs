@@ -13,6 +13,7 @@ public class ProjectModelTests
         Assert.Equal("1.0", project.Version);
         Assert.Empty(project.Components);
         Assert.Empty(project.Layers);
+        Assert.Empty(project.Sheets);
         Assert.Null(project.PdfUnderlay);
         Assert.Equal("Imperial", project.UnitSystem);
         Assert.Equal(1.0, project.GridSize);
@@ -106,5 +107,17 @@ public class ProjectModelTests
         Assert.Equal(PaperSize.ANSI_D, project.PlotLayout.PaperSize);
         Assert.Equal(24.0, project.PlotLayout.PlotScale);
         Assert.Equal("custom.ctb", project.PlotLayout.PlotStyleTableName);
+    }
+
+    [Fact]
+    public void Sheets_CanBeAdded()
+    {
+        var project = new ProjectModel();
+        project.Sheets.Add(DrawingSheet.CreateDefault(1));
+        project.Sheets.Add(new DrawingSheet { Number = "A201", Name = "Lighting Plan" });
+
+        Assert.Equal(2, project.Sheets.Count);
+        Assert.Equal("S001 - Sheet 1", project.Sheets[0].DisplayName);
+        Assert.Equal("A201 - Lighting Plan", project.Sheets[1].DisplayName);
     }
 }

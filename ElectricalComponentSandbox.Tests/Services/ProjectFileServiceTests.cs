@@ -1,4 +1,6 @@
 using System.IO;
+using System.Windows;
+using ElectricalComponentSandbox.Markup.Models;
 using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.Services;
 
@@ -185,5 +187,61 @@ public class ProjectFileServiceTests : IDisposable
         Assert.NotNull(loaded?.PlotLayout);
         Assert.Equal(PaperSize.ANSI_D, loaded.PlotLayout.PaperSize);
         Assert.Equal(24.0, loaded.PlotLayout.PlotScale);
+    }
+
+    [Fact]
+    public async Task SaveAndLoad_Sheets_RoundTrips()
+    {
+        var project = new ProjectModel();
+        project.Sheets.Add(new DrawingSheet
+        {
+            Number = "A101",
+            Name = "Plan",
+            PdfUnderlay = new PdfUnderlay { FilePath = "plan.pdf", PageNumber = 3 },
+            PlotLayout = new PlotLayout { PaperSize = PaperSize.ANSI_C, PlotScale = 12.0 },
+            NamedViews =
+            [
+                new NamedView { Name = "Area A", PanX = 25, PanY = 50, Zoom = 1.25 }
+            ],
+            Markups =
+            [
+                new MarkupRecord
+                {
+                    Type = MarkupType.Rectangle,
+                    Vertices = [new Point(0, 0), new Point(20, 10)]
+                }
+            ]
+        });
+        var filePath = Path.Combine(_tempDir, "sheets.ecproj");
+
+        await _service.SaveProjectAsync(project, filePath);
+        var loaded = await _service.LoadProjectAsync(filePath);
+
+        Assert.NotNull(loaded);
+        Assert.Single(loaded.Sheets);
+        Assert.Equal("A101", loaded.Sheets[0].Number);
+        Assert.Equal("plan.pdf", loaded.Sheets[0].PdfUnderlay?.FilePath);
+        Assert.Single(loaded.Sheets[0].NamedViews);
+        Assert.Single(loaded.Sheets[0].Markups);
+        Assert.Equal(PaperSize.ANSI_C, loaded.Sheets[0].PlotLayout?.PaperSize);
+    }
+
+    [Fact]
+    public async Task SaveAndLoad_ActiveSheetId_RoundTrips()
+    {
+        var firstSheet = DrawingSheet.CreateDefault(1);
+        var secondSheet = DrawingSheet.CreateDefault(2);
+        var project = new ProjectModel
+        {
+            Sheets = [firstSheet, secondSheet],
+            ActiveSheetId = secondSheet.Id
+        };
+        var filePath = Path.Combine(_tempDir, "active-sheet.ecproj");
+
+        await _service.SaveProjectAsync(project, filePath);
+        var loaded = await _service.LoadProjectAsync(filePath);
+
+        Assert.NotNull(loaded);
+        Assert.Equal(secondSheet.Id, loaded.ActiveSheetId);
     }
 }

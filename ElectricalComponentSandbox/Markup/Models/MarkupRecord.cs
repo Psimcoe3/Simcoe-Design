@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json.Serialization;
 using System.Windows;
 
 namespace ElectricalComponentSandbox.Markup.Models;
@@ -166,6 +167,8 @@ public class MarkupRecord
     public string LayerDisplayText => LayerId;
     public string CreatedDisplayText => FormatUtcForDisplay(Metadata.CreatedUtc);
     public string ModifiedDisplayText => FormatUtcForDisplay(Metadata.ModifiedUtc);
+    [JsonIgnore]
+    public string ReviewSheetDisplayText { get; set; } = string.Empty;
 
     /// <summary>For cutout calculations: IDs of inner polygon markups subtracted from this polygon</summary>
     public List<string> CutoutIds { get; set; } = new();

@@ -14,11 +14,13 @@ namespace ElectricalComponentSandbox.ViewModels;
 public class MainViewModel : INotifyPropertyChanged
 {
     private ElectricalComponent? _selectedComponent;
+    private DrawingSheet? _selectedSheet;
     private bool _showGrid = true;
     private bool _snapToGrid = true;
     private double _gridSize = 1.0;
     private Layer? _activeLayer;
     private string _unitSystem = "Imperial";
+    private PlotLayout? _activePlotLayout;
     private PdfUnderlay? _pdfUnderlay;
     private bool _isOrthoActive = false;
     private bool _isPolarActive = false;
@@ -28,6 +30,7 @@ public class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<ElectricalComponent> Components { get; } = new();
     public ObservableCollection<ElectricalComponent> LibraryComponents { get; } = new();
     public ObservableCollection<Layer> Layers { get; } = new();
+    public ObservableCollection<DrawingSheet> Sheets { get; } = new();
 
     // ── Markup / 2D annotation ────────────────────────────────────────────────
 
@@ -210,6 +213,16 @@ public class MainViewModel : INotifyPropertyChanged
             OnPropertyChanged();
         }
     }
+
+    public DrawingSheet? SelectedSheet
+    {
+        get => _selectedSheet;
+        private set
+        {
+            _selectedSheet = value;
+            OnPropertyChanged();
+        }
+    }
     
     public string UnitSystemName
     {
@@ -228,6 +241,16 @@ public class MainViewModel : INotifyPropertyChanged
         set
         {
             _pdfUnderlay = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public PlotLayout? ActivePlotLayout
+    {
+        get => _activePlotLayout;
+        set
+        {
+            _activePlotLayout = value;
             OnPropertyChanged();
         }
     }
@@ -282,6 +305,7 @@ public class MainViewModel : INotifyPropertyChanged
         markup.UpdateBoundingRect();
         Markups.Add(markup);
         ShadowTree.AddOrUpdate(markup);
+        PersistActiveSheetState();
     }
 
     /// <summary>Removes a markup by id and syncs the shadow tree</summary>
@@ -291,6 +315,7 @@ public class MainViewModel : INotifyPropertyChanged
         if (rec is null) return false;
         Markups.Remove(rec);
         ShadowTree.Remove(markupId);
+        PersistActiveSheetState();
         return true;
     }
 
@@ -304,6 +329,7 @@ public class MainViewModel : INotifyPropertyChanged
             Markups[idx] = markup;
         }
         ShadowTree.AddOrUpdate(markup);
+        PersistActiveSheetState();
     }
 
     public MainViewModel()
@@ -359,7 +385,8 @@ public class MainViewModel : INotifyPropertyChanged
         InitializeLibrary();
         InitializeLayers();
         InitializeStyles();
-        MarkupTool = new MarkupToolViewModel(Markups);
+        InitializeSheets();
+        MarkupTool = new MarkupToolViewModel(Markups, GetProjectReviewMarkups);
         LayerManager = new LayerManagerViewModel(Layers);
     }
     
@@ -395,6 +422,232 @@ public class MainViewModel : INotifyPropertyChanged
 
         // Apply the first dimension style as active
         ActiveDimensionStyle = DimensionStyles.FirstOrDefault();
+    }
+
+    private void InitializeSheets()
+    {
+        Sheets.Clear();
+        var defaultSheet = DrawingSheet.CreateDefault(1);
+        Sheets.Add(defaultSheet);
+        LoadSheetState(defaultSheet);
+        SelectedSheet = defaultSheet;
+        RefreshMarkupReviewContext();
+    }
+
+    private void PersistActiveSheetState()
+    {
+        if (SelectedSheet == null)
+            return;
+
+        SelectedSheet.Markups = Markups.ToList();
+        SelectedSheet.NamedViews = NamedViews.ToList();
+        SelectedSheet.PdfUnderlay = PdfUnderlay;
+        SelectedSheet.PlotLayout = ActivePlotLayout;
+        UpdateSheetMarkupReviewContext(SelectedSheet);
+    }
+
+    private void LoadSheetState(DrawingSheet sheet)
+    {
+        UpdateSheetMarkupReviewContext(sheet);
+
+        Markups.Clear();
+        ShadowTree.Clear();
+        foreach (var markup in sheet.Markups)
+        {
+            Markups.Add(markup);
+            ShadowTree.AddOrUpdate(markup);
+        }
+
+        NamedViews.Clear();
+        foreach (var namedView in sheet.NamedViews)
+            NamedViews.Add(namedView);
+
+        PdfUnderlay = sheet.PdfUnderlay;
+        ActivePlotLayout = sheet.PlotLayout;
+        if (MarkupTool != null)
+            MarkupTool.SelectedMarkup = null;
+    }
+
+    private static DrawingSheet CreateSheetFromLegacyProject(ProjectModel project)
+    {
+        var sheet = DrawingSheet.CreateDefault(1);
+        sheet.Name = string.IsNullOrWhiteSpace(project.Name) ? sheet.Name : project.Name;
+        sheet.Markups = project.Markups.ToList();
+        sheet.NamedViews = project.NamedViews.ToList();
+        sheet.PdfUnderlay = project.PdfUnderlay;
+        sheet.PlotLayout = project.PlotLayout;
+        foreach (var markup in sheet.Markups)
+            markup.ReviewSheetDisplayText = sheet.DisplayName;
+        return sheet;
+    }
+
+    public DrawingSheet AddSheet(string? name = null)
+    {
+        PersistActiveSheetState();
+
+        var sheet = DrawingSheet.CreateDefault(Sheets.Count + 1);
+        if (!string.IsNullOrWhiteSpace(name))
+            sheet.Name = name.Trim();
+
+        Sheets.Add(sheet);
+        SelectSheet(sheet);
+        RefreshMarkupReviewContext();
+
+        ActionLogService.Instance.Log(LogCategory.View, "Sheet added",
+            $"Sheet: {sheet.DisplayName}, Total: {Sheets.Count}");
+        return sheet;
+    }
+
+    public bool RenameSheet(DrawingSheet? sheet, string? number, string? name)
+    {
+        if (sheet == null)
+            return false;
+
+        var normalizedNumber = string.IsNullOrWhiteSpace(number) ? sheet.Number : number.Trim();
+        var normalizedName = string.IsNullOrWhiteSpace(name) ? sheet.Name : name.Trim();
+        if (string.Equals(sheet.Number, normalizedNumber, StringComparison.Ordinal) &&
+            string.Equals(sheet.Name, normalizedName, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        sheet.Number = normalizedNumber;
+        sheet.Name = normalizedName;
+        UpdateSheetMarkupReviewContext(sheet);
+        MarkupTool?.RefreshReviewContext();
+        OnPropertyChanged(nameof(Sheets));
+        if (ReferenceEquals(SelectedSheet, sheet))
+            OnPropertyChanged(nameof(SelectedSheet));
+
+        ActionLogService.Instance.Log(LogCategory.View, "Sheet renamed",
+            $"Sheet: {sheet.DisplayName}");
+        return true;
+    }
+
+    public bool DeleteSheet(DrawingSheet? sheet)
+    {
+        if (sheet == null || Sheets.Count <= 1)
+            return false;
+
+        PersistActiveSheetState();
+        var index = Sheets.IndexOf(sheet);
+        if (index < 0)
+            return false;
+
+        var deletedWasActive = ReferenceEquals(SelectedSheet, sheet);
+        var currentActiveSheet = SelectedSheet;
+        Sheets.RemoveAt(index);
+
+        var replacement = deletedWasActive
+            ? Sheets[Math.Max(0, Math.Min(index, Sheets.Count - 1))]
+            : currentActiveSheet ?? Sheets.First();
+
+        if (deletedWasActive)
+        {
+            LoadSheetState(replacement);
+            SelectedSheet = replacement;
+            ClearComponentSelection();
+        }
+        else
+        {
+            SelectedSheet = replacement;
+        }
+
+        RefreshMarkupReviewContext();
+        OnPropertyChanged(nameof(Sheets));
+
+        ActionLogService.Instance.Log(LogCategory.View, "Sheet deleted",
+            $"Deleted: {sheet.DisplayName}, Active: {replacement.DisplayName}, Total: {Sheets.Count}");
+        return true;
+    }
+
+    public bool MoveSheet(DrawingSheet? sheet, int direction)
+    {
+        if (sheet == null || direction == 0)
+            return false;
+
+        var index = Sheets.IndexOf(sheet);
+        if (index < 0)
+            return false;
+
+        var targetIndex = index + direction;
+        if (targetIndex < 0 || targetIndex >= Sheets.Count)
+            return false;
+
+        Sheets.Move(index, targetIndex);
+        RefreshMarkupReviewContext();
+        OnPropertyChanged(nameof(Sheets));
+
+        ActionLogService.Instance.Log(LogCategory.View, "Sheet reordered",
+            $"Sheet: {sheet.DisplayName}, NewIndex: {targetIndex + 1}");
+        return true;
+    }
+
+    public bool SelectSheet(DrawingSheet? sheet)
+    {
+        if (sheet == null || ReferenceEquals(SelectedSheet, sheet))
+            return false;
+
+        PersistActiveSheetState();
+        LoadSheetState(sheet);
+        SelectedSheet = sheet;
+        ClearComponentSelection();
+        RefreshMarkupReviewContext();
+
+        ActionLogService.Instance.Log(LogCategory.View, "Sheet selected",
+            $"Sheet: {sheet.DisplayName}, Markups: {Markups.Count}, Views: {NamedViews.Count}");
+        return true;
+    }
+
+    public void ResetDrawingSheets()
+    {
+        InitializeSheets();
+        OnPropertyChanged(nameof(Sheets));
+    }
+
+    public IReadOnlyList<MarkupRecord> GetReviewMarkups()
+    {
+        return MarkupTool.ReviewScope == MarkupReviewScope.AllSheets
+            ? GetProjectReviewMarkups()
+            : Markups.ToList();
+    }
+
+    public string GetMarkupSheetDisplayName(MarkupRecord markup)
+    {
+        if (!string.IsNullOrWhiteSpace(markup.ReviewSheetDisplayText))
+            return markup.ReviewSheetDisplayText;
+
+        foreach (var sheet in Sheets)
+        {
+            if (sheet.Markups.Any(candidate => string.Equals(candidate.Id, markup.Id, StringComparison.Ordinal)))
+                return sheet.DisplayName;
+        }
+
+        return SelectedSheet?.DisplayName ?? string.Empty;
+    }
+
+    public bool RevealMarkup(MarkupRecord? markup)
+    {
+        if (markup == null)
+            return false;
+
+        PersistActiveSheetState();
+
+        var ownerSheet = Sheets.FirstOrDefault(sheet =>
+            sheet.Markups.Any(candidate => string.Equals(candidate.Id, markup.Id, StringComparison.Ordinal)));
+
+        if (ownerSheet == null)
+            return false;
+
+        if (!ReferenceEquals(SelectedSheet, ownerSheet))
+            SelectSheet(ownerSheet);
+
+        var activeMarkup = Markups.FirstOrDefault(candidate => string.Equals(candidate.Id, markup.Id, StringComparison.Ordinal));
+        if (activeMarkup == null)
+            return false;
+
+        MarkupTool.SelectedMarkup = activeMarkup;
+        return true;
     }
 
     /// <summary>
@@ -580,15 +833,21 @@ public class MainViewModel : INotifyPropertyChanged
     /// </summary>
     public ProjectModel ToProjectModel()
     {
+        PersistActiveSheetState();
+
+        var activeSheet = SelectedSheet ?? Sheets.FirstOrDefault();
         ActionLogService.Instance.Log(LogCategory.FileOperation, "Creating project model",
-            $"Components: {Components.Count}, Layers: {Layers.Count}, Markups: {Markups.Count}");
+            $"Components: {Components.Count}, Layers: {Layers.Count}, Sheets: {Sheets.Count}, ActiveSheet: {activeSheet?.DisplayName ?? "(none)"}");
         return new ProjectModel
         {
             Components = Components.ToList(),
             Layers = Layers.ToList(),
-            Markups = Markups.ToList(),
-            NamedViews = NamedViews.ToList(),
-            PdfUnderlay = PdfUnderlay,
+            Sheets = Sheets.ToList(),
+            ActiveSheetId = activeSheet?.Id,
+            Markups = activeSheet?.Markups.ToList() ?? Markups.ToList(),
+            NamedViews = activeSheet?.NamedViews.ToList() ?? NamedViews.ToList(),
+            PdfUnderlay = activeSheet?.PdfUnderlay ?? PdfUnderlay,
+            PlotLayout = activeSheet?.PlotLayout ?? ActivePlotLayout,
             UnitSystem = UnitSystemName,
             GridSize = GridSize,
             ShowGrid = ShowGrid,
@@ -602,7 +861,7 @@ public class MainViewModel : INotifyPropertyChanged
     public void LoadFromProject(ProjectModel project)
     {
         ActionLogService.Instance.Log(LogCategory.FileOperation, "Loading project",
-            $"Name: {project.Name}, Components: {project.Components.Count}, Layers: {project.Layers.Count}, Units: {project.UnitSystem}");
+            $"Name: {project.Name}, Components: {project.Components.Count}, Layers: {project.Layers.Count}, Sheets: {project.Sheets.Count}, Units: {project.UnitSystem}");
         Components.Clear();
         foreach (var comp in project.Components)
             Components.Add(comp);
@@ -614,20 +873,32 @@ public class MainViewModel : INotifyPropertyChanged
         if (Layers.Count == 0)
             InitializeLayers();
 
-        Markups.Clear();
-        ShadowTree.Clear();
-        foreach (var markup in project.Markups)
+        ActiveLayer = Layers.FirstOrDefault(l => l.Id == "default") ?? Layers.FirstOrDefault();
+
+        Sheets.Clear();
+        var sheets = project.Sheets.Count > 0
+            ? project.Sheets
+            : new List<DrawingSheet> { CreateSheetFromLegacyProject(project) };
+
+        foreach (var sheet in sheets)
         {
-            Markups.Add(markup);
-            ShadowTree.AddOrUpdate(markup);
+            UpdateSheetMarkupReviewContext(sheet);
+            Sheets.Add(sheet);
         }
 
-        ActiveLayer = Layers.FirstOrDefault(l => l.Id == "default") ?? Layers.FirstOrDefault();
-        PdfUnderlay = project.PdfUnderlay;
+        var firstSheet = !string.IsNullOrWhiteSpace(project.ActiveSheetId)
+            ? Sheets.FirstOrDefault(sheet => string.Equals(sheet.Id, project.ActiveSheetId, StringComparison.Ordinal))
+            : null;
+        firstSheet ??= Sheets.FirstOrDefault();
+        if (firstSheet == null)
+        {
+            firstSheet = DrawingSheet.CreateDefault(1);
+            Sheets.Add(firstSheet);
+        }
 
-        NamedViews.Clear();
-        foreach (var nv in project.NamedViews)
-            NamedViews.Add(nv);
+        LoadSheetState(firstSheet);
+        SelectedSheet = firstSheet;
+        RefreshMarkupReviewContext();
 
         UnitSystemName = project.UnitSystem;
         GridSize = project.GridSize;
@@ -643,5 +914,28 @@ public class MainViewModel : INotifyPropertyChanged
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    private IReadOnlyList<MarkupRecord> GetProjectReviewMarkups()
+    {
+        return Sheets
+            .SelectMany(sheet => ReferenceEquals(sheet, SelectedSheet)
+                ? (IEnumerable<MarkupRecord>)Markups
+                : sheet.Markups)
+            .ToList();
+    }
+
+    private void RefreshMarkupReviewContext()
+    {
+        foreach (var sheet in Sheets)
+            UpdateSheetMarkupReviewContext(sheet);
+
+        MarkupTool?.RefreshReviewContext();
+    }
+
+    private static void UpdateSheetMarkupReviewContext(DrawingSheet sheet)
+    {
+        foreach (var markup in sheet.Markups)
+            markup.ReviewSheetDisplayText = sheet.DisplayName;
     }
 }

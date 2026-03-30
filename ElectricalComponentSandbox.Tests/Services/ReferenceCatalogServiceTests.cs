@@ -13,6 +13,8 @@ public class ReferenceCatalogServiceTests : IDisposable
     {
         _tempDir = Path.Combine(Path.GetTempPath(), $"ecs-reference-tests-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDir);
+        ReferenceCatalogService.ClearReferenceDocsRootOverride();
+        Environment.SetEnvironmentVariable(ReferenceCatalogService.ReferenceRootEnvVar, null);
     }
 
     [Fact]
@@ -37,6 +39,24 @@ public class ReferenceCatalogServiceTests : IDisposable
 
         Assert.True(resolution.Success);
         Assert.Equal(Path.GetFullPath(absolutePath), resolution.LaunchTarget);
+    }
+
+    [Fact]
+    public void ResolveLaunchTarget_UsesConfiguredReferenceDocsRootOverride()
+    {
+        var workspaceRoot = CreateWorkspace();
+        var docsRoot = Path.Combine(workspaceRoot, "References", "docs");
+        File.WriteAllText(Path.Combine(docsRoot, "2026_national_electrical_estimator_ebook.pdf"), "estimator");
+
+        var set = ReferenceCatalogService.TrySetReferenceDocsRootOverride(docsRoot, out var normalizedRoot, out var errorMessage);
+
+        Assert.True(set, errorMessage);
+        Assert.Equal(docsRoot, normalizedRoot);
+
+        var resolution = ReferenceCatalogService.ResolveLaunchTarget(@"References\docs\2026_national_electrical_estimator_ebook.pdf");
+
+        Assert.True(resolution.Success);
+        Assert.Equal(Path.Combine(docsRoot, "2026_national_electrical_estimator_ebook.pdf"), resolution.LaunchTarget);
     }
 
     [Fact]
@@ -115,6 +135,30 @@ public class ReferenceCatalogServiceTests : IDisposable
         Assert.Equal(workspaceRoot, resolved);
     }
 
+    [Fact]
+    public void TrySetReferenceDocsRootOverride_AcceptsWorkspaceRootAndNormalizesToDocsFolder()
+    {
+        var workspaceRoot = CreateWorkspace();
+
+        var set = ReferenceCatalogService.TrySetReferenceDocsRootOverride(workspaceRoot, out var normalizedRoot, out var errorMessage);
+
+        Assert.True(set, errorMessage);
+        Assert.Equal(Path.Combine(workspaceRoot, "References", "docs"), normalizedRoot);
+        Assert.Equal(normalizedRoot, ReferenceCatalogService.GetReferenceDocsRoot());
+    }
+
+    [Fact]
+    public void GetReferenceDocsRoot_UsesEnvironmentVariableWhenOverrideIsUnset()
+    {
+        var workspaceRoot = CreateWorkspace();
+        var docsRoot = Path.Combine(workspaceRoot, "References", "docs");
+        Environment.SetEnvironmentVariable(ReferenceCatalogService.ReferenceRootEnvVar, docsRoot);
+
+        var resolvedRoot = ReferenceCatalogService.GetReferenceDocsRoot();
+
+        Assert.Equal(docsRoot, resolvedRoot);
+    }
+
     private string CreateWorkspace()
     {
         var workspaceRoot = Path.Combine(_tempDir, "workspace");
@@ -126,6 +170,8 @@ public class ReferenceCatalogServiceTests : IDisposable
 
     public void Dispose()
     {
+        ReferenceCatalogService.ClearReferenceDocsRootOverride();
+        Environment.SetEnvironmentVariable(ReferenceCatalogService.ReferenceRootEnvVar, null);
         if (Directory.Exists(_tempDir))
             Directory.Delete(_tempDir, recursive: true);
     }

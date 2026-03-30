@@ -14,18 +14,25 @@ public class ProjectModel
     public List<ElectricalComponent> Components { get; set; } = new();
     public List<Layer> Layers { get; set; } = new();
 
-    /// <summary>All markup / annotation records for this project</summary>
+    /// <summary>All persisted sheets for this project.</summary>
+    public List<DrawingSheet> Sheets { get; set; } = new();
+
+    /// <summary>Selected sheet when the project was last saved.</summary>
+    public string? ActiveSheetId { get; set; }
+
+    /// <summary>Legacy single-sheet markup records retained for backward compatibility.</summary>
     public List<MarkupRecord> Markups { get; set; } = new();
 
+    /// <summary>Legacy single-sheet PDF underlay retained for backward compatibility.</summary>
     public PdfUnderlay? PdfUnderlay { get; set; }
 
-    /// <summary>Saved named views (camera bookmarks)</summary>
+    /// <summary>Legacy single-sheet saved views retained for backward compatibility.</summary>
     public List<NamedView> NamedViews { get; set; } = new();
 
     /// <summary>Plot style tables (CTB) associated with this project</summary>
     public List<PlotStyleTable> PlotStyleTables { get; set; } = new();
 
-    /// <summary>Paper-space layout settings for printing</summary>
+    /// <summary>Legacy single-sheet layout retained for backward compatibility.</summary>
     public PlotLayout? PlotLayout { get; set; }
 
     /// <summary>Unit system setting: "Imperial" (ft/in) or "Metric" (m/mm)</summary>

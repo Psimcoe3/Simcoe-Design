@@ -18,9 +18,10 @@ public partial class MainWindow
             CancelPendingPlacement(logCancellation: false);
             CancelCustomDimensionMode();
             _customDimensionAnnotations.Clear();
+            ClearMarkupSelection();
             _viewModel.Components.Clear();
             _viewModel.Layers.Clear();
-            _viewModel.PdfUnderlay = null;
+            _viewModel.ResetDrawingSheets();
             _viewModel.UndoRedo.Clear();
             _currentFilePath = null;
             Title = "Electrical Component Sandbox";
@@ -29,6 +30,8 @@ public partial class MainWindow
             var defaultLayer = Layer.CreateDefault();
             _viewModel.Layers.Add(defaultLayer);
             _viewModel.ActiveLayer = defaultLayer;
+            SyncSheetBrowserSelection();
+            RebuildNamedViewMenuItems();
             ActionLogService.Instance.Log(LogCategory.FileOperation, "New project created");
             
             UpdateViewport();
@@ -55,9 +58,12 @@ public partial class MainWindow
                     CancelPendingPlacement(logCancellation: false);
                     CancelCustomDimensionMode();
                     _customDimensionAnnotations.Clear();
+                    ClearMarkupSelection();
                     _viewModel.LoadFromProject(project);
                     _currentFilePath = dialog.FileName;
                     Title = $"Electrical Component Sandbox - {System.IO.Path.GetFileName(dialog.FileName)}";
+                    SyncSheetBrowserSelection();
+                    RebuildNamedViewMenuItems();
                     ActionLogService.Instance.Log(LogCategory.FileOperation, "Project opened", $"File: {dialog.FileName}");
                     UpdateViewport();
                     Update2DCanvas();
