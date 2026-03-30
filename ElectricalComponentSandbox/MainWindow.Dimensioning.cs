@@ -1056,6 +1056,7 @@ public partial class MainWindow
         ReferenceUrlTextBox.Text = component.Parameters.ReferenceUrl;
         UpdateReferenceAssignmentUi(new[] { component });
         UpdateSelectedDimensionsDisplay(component);
+        RefreshProjectParameterBindingsUi(new[] { component }, isMultiSelection: false);
 
         var layer = _viewModel.Layers.FirstOrDefault(current => current.Id == component.LayerId);
         if (layer != null)
@@ -1099,6 +1100,7 @@ public partial class MainWindow
         ReferenceUrlTextBox.Text = TryGetSharedValue(components, component => component.Parameters.ReferenceUrl, value => value) ?? string.Empty;
         UpdateReferenceAssignmentUi(components);
         UpdateSelectedDimensionsDisplay(components);
+        RefreshProjectParameterBindingsUi(components, isMultiSelection: true);
 
         var sharedLayerId = TryGetSharedValue(components, component => component.LayerId, value => value);
         LayerComboBox.SelectedItem = sharedLayerId == null
@@ -1169,6 +1171,7 @@ public partial class MainWindow
         ManufacturerTextBox.Text = string.Empty;
         PartNumberTextBox.Text = string.Empty;
         ReferenceUrlTextBox.Text = string.Empty;
+        RefreshProjectParameterBindingsUi(Array.Empty<ElectricalComponent>(), isMultiSelection: false);
         UpdateReferenceAssignmentUi(Array.Empty<ElectricalComponent>());
         LayerComboBox.SelectedItem = null;
         ConduitProperties.Visibility = Visibility.Collapsed;

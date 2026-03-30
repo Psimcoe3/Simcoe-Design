@@ -12,6 +12,7 @@ public class ProjectModelTests
         Assert.Equal("Untitled Project", project.Name);
         Assert.Equal("1.0", project.Version);
         Assert.Empty(project.Components);
+        Assert.Empty(project.ProjectParameters);
         Assert.Empty(project.Layers);
         Assert.Empty(project.Sheets);
         Assert.Null(project.PdfUnderlay);
@@ -29,6 +30,17 @@ public class ProjectModelTests
         project.Components.Add(new BoxComponent());
 
         Assert.Equal(2, project.Components.Count);
+    }
+
+    [Fact]
+    public void ProjectParameters_CanBeAdded()
+    {
+        var project = new ProjectModel();
+        project.ProjectParameters.Add(new ProjectParameterDefinition { Name = "Shared Width", Value = 4.25 });
+
+        Assert.Single(project.ProjectParameters);
+        Assert.Equal("Shared Width", project.ProjectParameters[0].Name);
+        Assert.Equal(4.25, project.ProjectParameters[0].Value, 6);
     }
 
     [Fact]

@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Media3D;
 using ElectricalComponentSandbox.Models;
@@ -84,20 +87,41 @@ public partial class MainWindow
             double.Parse(RotationYTextBox.Text),
             double.Parse(RotationZTextBox.Text));
 
-        component.Parameters.Width = ParseLengthInput(WidthTextBox.Text, "Width");
-        component.Parameters.Height = ParseLengthInput(HeightTextBox.Text, "Height");
-        component.Parameters.Depth = ParseLengthInput(DepthTextBox.Text, "Depth");
+        var stagedProjectParameterValues = new Dictionary<string, (double Value, string FieldName)>(StringComparer.Ordinal);
+        var impactedCatalogParameterIds = new HashSet<string>(StringComparer.Ordinal);
+        var projectParametersTouched = false;
+
+        ApplySingleLengthField(component, WidthTextBox, WidthParameterBindingComboBox, ProjectParameterBindingTarget.Width, "Width",
+            stagedProjectParameterValues, impactedCatalogParameterIds, ref projectParametersTouched);
+        ApplySingleLengthField(component, HeightTextBox, HeightParameterBindingComboBox, ProjectParameterBindingTarget.Height, "Height",
+            stagedProjectParameterValues, impactedCatalogParameterIds, ref projectParametersTouched);
+        ApplySingleLengthField(component, DepthTextBox, DepthParameterBindingComboBox, ProjectParameterBindingTarget.Depth, "Depth",
+            stagedProjectParameterValues, impactedCatalogParameterIds, ref projectParametersTouched);
+        ApplySingleLengthField(component, ElevationTextBox, ElevationParameterBindingComboBox, ProjectParameterBindingTarget.Elevation, "Elevation",
+            stagedProjectParameterValues, impactedDimensionalParameterIds: null, ref projectParametersTouched);
+
         component.Parameters.Material = MaterialTextBox.Text;
-        component.Parameters.Elevation = ParseLengthInput(ElevationTextBox.Text, "Elevation");
         component.Parameters.Color = ColorTextBox.Text;
         component.Parameters.Manufacturer = ManufacturerTextBox.Text;
         component.Parameters.PartNumber = PartNumberTextBox.Text;
         component.Parameters.ReferenceUrl = ReferenceUrlTextBox.Text;
 
+        var changedParameterIds = CommitProjectParameterValueChanges(stagedProjectParameterValues);
+        if (projectParametersTouched || changedParameterIds.Count > 0)
+            _viewModel.ApplyProjectParameterBindings();
+
         if (component is ConduitComponent conduitComponent)
             ApplyImperialDefaultsToConduit(conduitComponent);
 
         var catalogDataCleared = ClearCatalogMetadataIfDimensionsChanged(component);
+        foreach (var impactedComponent in GetComponentsImpactedByProjectParameters(impactedCatalogParameterIds))
+        {
+            if (ReferenceEquals(impactedComponent, component))
+                continue;
+
+            catalogDataCleared |= ClearCatalogMetadataIfDimensionsChanged(impactedComponent);
+        }
+
         if (LayerComboBox.SelectedItem is Layer layer)
             component.LayerId = layer.Id;
 
@@ -106,11 +130,19 @@ public partial class MainWindow
 
     private bool ApplySharedPropertiesToSelection(IReadOnlyList<ElectricalComponent> components)
     {
-        var applyWidth = !string.IsNullOrWhiteSpace(WidthTextBox.Text);
-        var applyHeight = !string.IsNullOrWhiteSpace(HeightTextBox.Text);
-        var applyDepth = !string.IsNullOrWhiteSpace(DepthTextBox.Text);
+        var stagedProjectParameterValues = new Dictionary<string, (double Value, string FieldName)>(StringComparer.Ordinal);
+        var impactedCatalogParameterIds = new HashSet<string>(StringComparer.Ordinal);
+        var projectParametersTouched = false;
+
+        var applyWidth = TryApplySharedLengthField(components, WidthTextBox, WidthParameterBindingComboBox, ProjectParameterBindingTarget.Width, "Width",
+            stagedProjectParameterValues, impactedCatalogParameterIds, ref projectParametersTouched);
+        var applyHeight = TryApplySharedLengthField(components, HeightTextBox, HeightParameterBindingComboBox, ProjectParameterBindingTarget.Height, "Height",
+            stagedProjectParameterValues, impactedCatalogParameterIds, ref projectParametersTouched);
+        var applyDepth = TryApplySharedLengthField(components, DepthTextBox, DepthParameterBindingComboBox, ProjectParameterBindingTarget.Depth, "Depth",
+            stagedProjectParameterValues, impactedCatalogParameterIds, ref projectParametersTouched);
+        var applyElevation = TryApplySharedLengthField(components, ElevationTextBox, ElevationParameterBindingComboBox, ProjectParameterBindingTarget.Elevation, "Elevation",
+            stagedProjectParameterValues, impactedDimensionalParameterIds: null, ref projectParametersTouched);
         var applyMaterial = !string.IsNullOrWhiteSpace(MaterialTextBox.Text);
-        var applyElevation = !string.IsNullOrWhiteSpace(ElevationTextBox.Text);
         var applyColor = !string.IsNullOrWhiteSpace(ColorTextBox.Text);
         var applyManufacturer = !string.IsNullOrWhiteSpace(ManufacturerTextBox.Text);
         var applyPartNumber = !string.IsNullOrWhiteSpace(PartNumberTextBox.Text);
@@ -120,30 +152,22 @@ public partial class MainWindow
         if (!applyWidth && !applyHeight && !applyDepth && !applyMaterial && !applyElevation && !applyColor &&
             !applyManufacturer && !applyPartNumber && !applyReferenceUrl && !applyLayer)
         {
-            MessageBox.Show("Enter one or more shared property values to apply to the current selection.",
+            MessageBox.Show("Enter one or more shared property values or choose a project-parameter binding to apply to the current selection.",
                 "Apply Shared Changes", MessageBoxButton.OK, MessageBoxImage.Information);
             return false;
         }
 
-        var width = applyWidth ? ParseLengthInput(WidthTextBox.Text, "Width") : 0.0;
-        var height = applyHeight ? ParseLengthInput(HeightTextBox.Text, "Height") : 0.0;
-        var depth = applyDepth ? ParseLengthInput(DepthTextBox.Text, "Depth") : 0.0;
-        var elevation = applyElevation ? ParseLengthInput(ElevationTextBox.Text, "Elevation") : 0.0;
+        var changedParameterIds = CommitProjectParameterValueChanges(stagedProjectParameterValues);
+        if (projectParametersTouched || changedParameterIds.Count > 0)
+            _viewModel.ApplyProjectParameterBindings();
+
         var layer = LayerComboBox.SelectedItem as Layer;
         var catalogDataCleared = false;
 
         foreach (var component in components)
         {
-            if (applyWidth)
-                component.Parameters.Width = width;
-            if (applyHeight)
-                component.Parameters.Height = height;
-            if (applyDepth)
-                component.Parameters.Depth = depth;
             if (applyMaterial)
                 component.Parameters.Material = MaterialTextBox.Text;
-            if (applyElevation)
-                component.Parameters.Elevation = elevation;
             if (applyColor)
                 component.Parameters.Color = ColorTextBox.Text;
             if (applyManufacturer)
@@ -161,7 +185,88 @@ public partial class MainWindow
             catalogDataCleared |= ClearCatalogMetadataIfDimensionsChanged(component);
         }
 
+        if (projectParametersTouched || changedParameterIds.Count > 0)
+        {
+            foreach (var impactedComponent in GetComponentsImpactedByProjectParameters(impactedCatalogParameterIds))
+            {
+                if (components.Contains(impactedComponent))
+                    continue;
+
+                catalogDataCleared |= ClearCatalogMetadataIfDimensionsChanged(impactedComponent);
+            }
+        }
+
         return catalogDataCleared;
+    }
+
+    private void ApplySingleLengthField(
+        ElectricalComponent component,
+        TextBox textBox,
+        ComboBox bindingComboBox,
+        ProjectParameterBindingTarget target,
+        string fieldName,
+        Dictionary<string, (double Value, string FieldName)> stagedProjectParameterValues,
+        ISet<string>? impactedDimensionalParameterIds,
+        ref bool projectParametersTouched)
+    {
+        var value = ParseLengthInput(textBox.Text, fieldName);
+        var selectedParameterId = TryGetExplicitProjectParameterBindingSelection(bindingComboBox, out var bindingId)
+            ? bindingId
+            : null;
+
+        component.Parameters.SetBinding(target, selectedParameterId);
+        if (!string.IsNullOrWhiteSpace(selectedParameterId))
+        {
+            StageProjectParameterValueChange(selectedParameterId, value, fieldName, stagedProjectParameterValues, impactedDimensionalParameterIds);
+            projectParametersTouched = true;
+            return;
+        }
+
+        SetLengthValue(component, target, value);
+    }
+
+    private bool TryApplySharedLengthField(
+        IReadOnlyList<ElectricalComponent> components,
+        TextBox textBox,
+        ComboBox bindingComboBox,
+        ProjectParameterBindingTarget target,
+        string fieldName,
+        Dictionary<string, (double Value, string FieldName)> stagedProjectParameterValues,
+        ISet<string>? impactedDimensionalParameterIds,
+        ref bool projectParametersTouched)
+    {
+        var hasValueInput = !string.IsNullOrWhiteSpace(textBox.Text);
+        var hasExplicitBindingSelection = TryGetExplicitProjectParameterBindingSelection(bindingComboBox, out var selectedParameterId);
+        var bindingSelectionChangesAny = hasExplicitBindingSelection && components.Any(component =>
+            !string.Equals(component.Parameters.GetBinding(target), selectedParameterId, StringComparison.Ordinal));
+
+        if (!hasValueInput && !bindingSelectionChangesAny)
+            return false;
+
+        double? parsedValue = hasValueInput ? ParseLengthInput(textBox.Text, fieldName) : null;
+        foreach (var component in components)
+        {
+            var bindingIdToApply = component.Parameters.GetBinding(target);
+            if (bindingSelectionChangesAny)
+            {
+                bindingIdToApply = selectedParameterId;
+                component.Parameters.SetBinding(target, selectedParameterId);
+            }
+
+            if (!string.IsNullOrWhiteSpace(bindingIdToApply))
+            {
+                if (parsedValue.HasValue)
+                    StageProjectParameterValueChange(bindingIdToApply, parsedValue.Value, fieldName, stagedProjectParameterValues, impactedDimensionalParameterIds);
+
+                projectParametersTouched = true;
+            }
+            else if (parsedValue.HasValue)
+            {
+                SetLengthValue(component, target, parsedValue.Value);
+            }
+        }
+
+        return hasValueInput || bindingSelectionChangesAny;
     }
 
     private static bool ClearCatalogMetadataIfDimensionsChanged(ElectricalComponent component)

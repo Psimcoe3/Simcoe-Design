@@ -290,6 +290,7 @@ public partial class MainWindowMarkupInteractionTests
                 var state = window.GetMobileTopBarStateForTesting();
                 var navigation = window.GetMobileNavigationStateForTesting();
                 var primaryMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: true);
+                var overflowMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: false);
 
                 Assert.Equal("Review", state.SectionTitle);
                 Assert.Equal("Review", state.AddLabel);
@@ -298,6 +299,12 @@ public partial class MainWindowMarkupInteractionTests
                 Assert.Contains("Add Reply", primaryMenuHeaders);
                 Assert.Contains("Resolve", primaryMenuHeaders);
                 Assert.Contains("Assign", primaryMenuHeaders);
+                Assert.Contains("Edit Geometry...", overflowMenuHeaders);
+                Assert.Contains("Edit Appearance...", overflowMenuHeaders);
+                Assert.Contains("Insert Vertex", overflowMenuHeaders);
+                Assert.DoesNotContain("Open Project...", overflowMenuHeaders);
+                Assert.DoesNotContain("Save Project", overflowMenuHeaders);
+                Assert.DoesNotContain("Import PDF Underlay...", overflowMenuHeaders);
 
                 Assert.True(window.ExecuteMobileMenuItemForTesting(primaryMenu: true, header: "Resolve"));
                 Assert.Equal(MarkupStatus.Resolved, markup.Status);

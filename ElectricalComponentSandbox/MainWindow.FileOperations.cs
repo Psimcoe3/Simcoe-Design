@@ -20,6 +20,7 @@ public partial class MainWindow
             _customDimensionAnnotations.Clear();
             ClearMarkupSelection();
             _viewModel.Components.Clear();
+            _viewModel.ClearProjectParameters();
             _viewModel.Layers.Clear();
             _viewModel.ResetDrawingSheets();
             _viewModel.UndoRedo.Clear();

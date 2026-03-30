@@ -12,6 +12,40 @@ public partial class MainWindow
     private const string WorkspaceOnboardingActionDrawRoute = "draw-route";
     private const string WorkspaceOnboardingActionShowPlan = "show-plan";
     private const string WorkspaceOnboardingActionShowModel = "show-model";
+    private const string WorkspaceOnboardingActionShowInspector = "show-inspector";
+
+    private readonly struct WorkspaceOnboardingState(
+        bool isVisible,
+        string progressText,
+        string titleText,
+        string summaryText,
+        string checklistText,
+        string primaryActionLabel,
+        string primaryActionKey,
+        string secondaryActionLabel,
+        string secondaryActionKey)
+    {
+        public static WorkspaceOnboardingState Hidden { get; } = new(
+            false,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty);
+
+        public bool IsVisible { get; } = isVisible;
+        public string ProgressText { get; } = progressText;
+        public string TitleText { get; } = titleText;
+        public string SummaryText { get; } = summaryText;
+        public string ChecklistText { get; } = checklistText;
+        public string PrimaryActionLabel { get; } = primaryActionLabel;
+        public string PrimaryActionKey { get; } = primaryActionKey;
+        public string SecondaryActionLabel { get; } = secondaryActionLabel;
+        public string SecondaryActionKey { get; } = secondaryActionKey;
+    }
 
     internal void UpdateWorkspaceOverviewForTesting() => UpdateWorkspaceOverview();
 
@@ -35,6 +69,7 @@ public partial class MainWindow
         WorkspaceGuidanceTextBlock.Text = BuildWorkspaceGuidanceSummary(selectedComponents.Count, markupTool.SelectedMarkup != null);
         WorkspaceHintTextBlock.Text = BuildWorkspaceHintSummary(selectedComponents.Count, markupTool.TotalCount);
         UpdateWorkspaceOnboarding(selectedComponents.Count, markupTool.SelectedMarkup != null);
+        UpdateMobileTopBarExperience();
     }
 
     private void WorkspaceOnboardingAction_Click(object sender, RoutedEventArgs e)
@@ -42,6 +77,11 @@ public partial class MainWindow
         if (sender is not Button { Tag: string actionKey })
             return;
 
+        ExecuteWorkspaceOnboardingAction(actionKey, sender, e);
+    }
+
+    private void ExecuteWorkspaceOnboardingAction(string actionKey, object sender, RoutedEventArgs e)
+    {
         switch (actionKey)
         {
             case WorkspaceOnboardingActionImportReference:
@@ -61,6 +101,11 @@ public partial class MainWindow
                 break;
             case WorkspaceOnboardingActionShowModel:
                 Show3DView_Click(sender, e);
+                break;
+            case WorkspaceOnboardingActionShowInspector:
+                if (_isMobileView)
+                    SetMobilePane(MobilePane.Properties);
+                SelectInspectorTab(PropertiesInspectorTab);
                 break;
         }
 
@@ -90,53 +135,76 @@ public partial class MainWindow
             return;
         }
 
-        if (_isWorkspaceOnboardingDismissed)
-        {
-            onboardingCard.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        var hasReferenceContext = _viewModel.PdfUnderlay != null || !string.IsNullOrWhiteSpace(_currentFilePath);
-        var hasPlacedLayout = _viewModel.Components.Count > 0;
-        var hasInspectedSelection = selectedComponentCount > 0 || hasSelectedMarkup;
-
-        if (hasReferenceContext && hasPlacedLayout && hasInspectedSelection)
+        var onboardingState = BuildWorkspaceOnboardingState(selectedComponentCount, hasSelectedMarkup);
+        if (!onboardingState.IsVisible)
         {
             onboardingCard.Visibility = Visibility.Collapsed;
             return;
         }
 
         onboardingCard.Visibility = Visibility.Visible;
-        checklistTextBlock.Text = BuildWorkspaceOnboardingChecklist(
+        progressTextBlock.Text = onboardingState.ProgressText;
+        titleTextBlock.Text = onboardingState.TitleText;
+        summaryTextBlock.Text = onboardingState.SummaryText;
+        checklistTextBlock.Text = onboardingState.ChecklistText;
+        SetWorkspaceOnboardingButton(primaryActionButton, onboardingState.PrimaryActionLabel, onboardingState.PrimaryActionKey);
+        SetWorkspaceOnboardingButton(secondaryActionButton, onboardingState.SecondaryActionLabel, onboardingState.SecondaryActionKey);
+    }
+
+    private WorkspaceOnboardingState BuildWorkspaceOnboardingState(int selectedComponentCount, bool hasSelectedMarkup)
+    {
+        if (_isWorkspaceOnboardingDismissed)
+            return WorkspaceOnboardingState.Hidden;
+
+        var hasReferenceContext = _viewModel.PdfUnderlay != null || !string.IsNullOrWhiteSpace(_currentFilePath);
+        var hasPlacedLayout = _viewModel.Components.Count > 0;
+        var hasInspectedSelection = selectedComponentCount > 0 || hasSelectedMarkup;
+        if (hasReferenceContext && hasPlacedLayout && hasInspectedSelection)
+            return WorkspaceOnboardingState.Hidden;
+
+        var checklistText = BuildWorkspaceOnboardingChecklist(
             hasReferenceContext,
             hasPlacedLayout,
             hasInspectedSelection);
 
         if (!hasReferenceContext)
         {
-            progressTextBlock.Text = "Step 1 of 3";
-            titleTextBlock.Text = "Bring in project context";
-            summaryTextBlock.Text = "Import a reference drawing or open an existing project so the plan starts from real geometry instead of a blank canvas.";
-            SetWorkspaceOnboardingButton(primaryActionButton, "Import Reference", WorkspaceOnboardingActionImportReference);
-            SetWorkspaceOnboardingButton(secondaryActionButton, "Open Project", WorkspaceOnboardingActionOpenProject);
-            return;
+            return new WorkspaceOnboardingState(
+                true,
+                "Step 1 of 3",
+                "Bring in project context",
+                "Import a reference drawing or open an existing project so the plan starts from real geometry instead of a blank canvas.",
+                checklistText,
+                "Import Reference",
+                WorkspaceOnboardingActionImportReference,
+                "Open Project",
+                WorkspaceOnboardingActionOpenProject);
         }
 
         if (!hasPlacedLayout)
         {
-            progressTextBlock.Text = "Step 2 of 3";
-            titleTextBlock.Text = "Create the first layout element";
-            summaryTextBlock.Text = "Place a conduit or start a routed run so the workspace has something tangible to edit and review.";
-            SetWorkspaceOnboardingButton(primaryActionButton, "Add Conduit", WorkspaceOnboardingActionAddConduit);
-            SetWorkspaceOnboardingButton(secondaryActionButton, "Draw Route", WorkspaceOnboardingActionDrawRoute);
-            return;
+            return new WorkspaceOnboardingState(
+                true,
+                "Step 2 of 3",
+                "Create the first layout element",
+                "Place a conduit or start a routed run so the workspace has something tangible to edit and review.",
+                checklistText,
+                "Add Conduit",
+                WorkspaceOnboardingActionAddConduit,
+                "Draw Route",
+                WorkspaceOnboardingActionDrawRoute);
         }
 
-        progressTextBlock.Text = "Step 3 of 3";
-        titleTextBlock.Text = "Inspect what you placed";
-        summaryTextBlock.Text = "Click a placed part or review note so the inspector can guide the next round of edits, dimensions, or markup work.";
-        SetWorkspaceOnboardingButton(primaryActionButton, "Show 2D Plan", WorkspaceOnboardingActionShowPlan);
-        SetWorkspaceOnboardingButton(secondaryActionButton, "Show 3D View", WorkspaceOnboardingActionShowModel);
+        return new WorkspaceOnboardingState(
+            true,
+            "Step 3 of 3",
+            "Inspect what you placed",
+            "Click a placed part or review note so the inspector can guide the next round of edits, dimensions, or markup work.",
+            checklistText,
+            "Show 2D Plan",
+            WorkspaceOnboardingActionShowPlan,
+            "Show 3D View",
+            WorkspaceOnboardingActionShowModel);
     }
 
     private static string BuildWorkspaceOnboardingChecklist(bool hasReferenceContext, bool hasPlacedLayout, bool hasInspectedSelection)

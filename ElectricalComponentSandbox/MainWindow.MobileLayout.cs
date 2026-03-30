@@ -143,6 +143,37 @@ public partial class MainWindow
             MobileAddTopButton.Content?.ToString() ?? string.Empty,
             MobileMoreButton.Content?.ToString() ?? string.Empty);
 
+    internal (bool IsVisible, string Progress, string Title, string PrimaryAction, string SecondaryAction) GetMobileOnboardingInlineStateForTesting()
+        => (
+            MobileOnboardingActionBar?.Visibility == Visibility.Visible,
+            MobileOnboardingProgressText?.Text ?? string.Empty,
+            MobileOnboardingActionTitleText?.Text ?? string.Empty,
+            MobileOnboardingPrimaryActionButton?.Content?.ToString() ?? string.Empty,
+            MobileOnboardingSecondaryActionButton?.Content?.ToString() ?? string.Empty);
+
+    internal (bool IsCompact, Visibility ProgressVisibility, Visibility TitleVisibility) GetMobileOnboardingPresentationStateForTesting()
+        => (
+            IsCompactMobileOnboarding(BuildMobileOnboardingState(GetSelectedComponents().Count, _viewModel.MarkupTool.SelectedMarkup != null)),
+            MobileOnboardingProgressText?.Visibility ?? Visibility.Collapsed,
+            MobileOnboardingActionTitleText?.Visibility ?? Visibility.Collapsed);
+
+    internal bool ExecuteMobileOnboardingInlineActionForTesting(string actionName)
+    {
+        var button = actionName switch
+        {
+            "primary" => MobileOnboardingPrimaryActionButton,
+            "secondary" => MobileOnboardingSecondaryActionButton,
+            "dismiss" => MobileOnboardingDismissButton,
+            _ => null
+        };
+
+        if (button == null || button.Visibility != Visibility.Visible || !button.IsEnabled)
+            return false;
+
+        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, button));
+        return true;
+    }
+
     internal (string CanvasLabel, string LibraryLabel, string PropertiesLabel) GetMobileNavigationStateForTesting()
         => (
             MobileCanvasButton.Content?.ToString() ?? string.Empty,
@@ -207,7 +238,7 @@ public partial class MainWindow
             MainContentGrid.Background = altSurface;
         }
 
-        MobileTopBarGrid.Height = isIOS ? 52 : 56;
+        MobileTopBarHeaderGrid.Height = isIOS ? 52 : 56;
         MobileSectionTitleText.FontSize = isIOS ? 17 : 18;
         MobileSectionTitleText.FontWeight = isIOS ? FontWeights.SemiBold : FontWeights.Medium;
 
@@ -301,7 +332,40 @@ public partial class MainWindow
         MobileTaskSummaryText.Text = BuildMobileTaskSummary();
         MobileAddTopButton.Content = BuildMobilePrimaryActionLabel();
         MobileMoreButton.Content = _mobileTheme == MobileTheme.IOS ? "More" : "Menu";
+        UpdateMobileOnboardingActionBar();
         RefreshMobileContextMenus();
+    }
+
+    private void UpdateMobileOnboardingActionBar()
+    {
+        if (MobileOnboardingActionBar == null || MobileOnboardingProgressText == null ||
+            MobileOnboardingActionTitleText == null || MobileOnboardingPrimaryActionButton == null ||
+            MobileOnboardingSecondaryActionButton == null || MobileOnboardingDismissButton == null ||
+            MobileOnboardingActionButtonsPanel == null)
+        {
+            return;
+        }
+
+        var selectedMarkup = _viewModel.MarkupTool.SelectedMarkup;
+        var selectedComponentCount = GetSelectedComponents().Count;
+        var onboardingState = BuildMobileOnboardingState(selectedComponentCount, selectedMarkup != null);
+        if (!onboardingState.IsVisible)
+        {
+            MobileOnboardingActionBar.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var isCompact = IsCompactMobileOnboarding(onboardingState);
+        MobileOnboardingActionBar.Visibility = Visibility.Visible;
+        MobileOnboardingActionBar.Padding = isCompact ? new Thickness(10, 6, 10, 6) : new Thickness(10, 8, 10, 8);
+        MobileOnboardingProgressText.Text = onboardingState.ProgressText;
+        MobileOnboardingProgressText.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
+        MobileOnboardingActionTitleText.Text = onboardingState.TitleText;
+        MobileOnboardingActionTitleText.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
+        MobileOnboardingActionButtonsPanel.Margin = isCompact ? new Thickness(0) : new Thickness(0, 8, 0, 0);
+        SetWorkspaceOnboardingButton(MobileOnboardingPrimaryActionButton, onboardingState.PrimaryActionLabel, onboardingState.PrimaryActionKey);
+        SetWorkspaceOnboardingButton(MobileOnboardingSecondaryActionButton, onboardingState.SecondaryActionLabel, onboardingState.SecondaryActionKey);
+        MobileOnboardingDismissButton.Content = "Later";
     }
 
     private void UpdateMobileNavigationLabels()
@@ -362,6 +426,10 @@ public partial class MainWindow
     {
         var selectedMarkup = _viewModel.MarkupTool.SelectedMarkup;
         var selectedComponentCount = GetSelectedComponents().Count;
+        var onboardingState = BuildMobileOnboardingState(selectedComponentCount, selectedMarkup != null);
+
+        if (onboardingState.IsVisible)
+            return "Getting Started";
 
         if (selectedMarkup != null)
             return "Review";
@@ -404,6 +472,15 @@ public partial class MainWindow
         if (_isFreehandDrawing)
             return "Continue tracing the freehand route, then release or cancel to stop drawing.";
 
+        var onboardingState = BuildMobileOnboardingState(selectedComponentCount, selectedMarkup != null);
+        if (onboardingState.IsVisible)
+        {
+            if (IsCompactMobileOnboarding(onboardingState))
+                return $"{onboardingState.ProgressText}: {onboardingState.TitleText}";
+
+            return $"{onboardingState.ProgressText}: {onboardingState.SummaryText}";
+        }
+
         if (selectedMarkup != null)
             return "Reply, resolve, or assign the selected issue without leaving mobile review.";
 
@@ -423,10 +500,16 @@ public partial class MainWindow
 
     private string BuildMobilePrimaryActionLabel()
     {
+        var selectedMarkup = _viewModel.MarkupTool.SelectedMarkup;
+        var selectedComponentCount = GetSelectedComponents().Count;
+        var onboardingState = BuildMobileOnboardingState(selectedComponentCount, selectedMarkup != null);
+        if (onboardingState.IsVisible)
+            return "Next";
+
         if (_activeMobilePane == MobilePane.Library)
             return _mobileTheme == MobileTheme.IOS ? "Place" : "+ Place";
 
-        if (_viewModel.MarkupTool.SelectedMarkup != null)
+        if (selectedMarkup != null)
             return "Review";
 
         if (_isDrawingConduit || _isEditingConduitPath || _isSketchLineMode || _isSketchRectangleMode || _isFreehandDrawing || _isPendingMarkupVertexInsertion)
@@ -435,7 +518,7 @@ public partial class MainWindow
         if (_selectedSketchPrimitive != null)
             return "Convert";
 
-        if (GetSelectedComponents().Count > 0)
+        if (selectedComponentCount > 0)
             return "Act";
 
         return _mobileTheme == MobileTheme.IOS ? "Start" : "+ Start";
@@ -454,6 +537,16 @@ public partial class MainWindow
     {
         MobileAddMenu.Items.Clear();
 
+        var selectedMarkup = _viewModel.MarkupTool.SelectedMarkup;
+        var selectedComponentCount = GetSelectedComponents().Count;
+        var onboardingState = BuildMobileOnboardingState(selectedComponentCount, selectedMarkup != null);
+        if (onboardingState.IsVisible)
+        {
+            AddMobileMenuItem(MobileAddMenu, onboardingState.PrimaryActionLabel, (_, e) => ExecuteWorkspaceOnboardingAction(onboardingState.PrimaryActionKey, _, e));
+            AddMobileMenuItem(MobileAddMenu, onboardingState.SecondaryActionLabel, (_, e) => ExecuteWorkspaceOnboardingAction(onboardingState.SecondaryActionKey, _, e));
+            return;
+        }
+
         if (_activeMobilePane == MobilePane.Library)
         {
             AddMobileMenuItem(MobileAddMenu, "Conduit", AddConduit_Click);
@@ -464,9 +557,6 @@ public partial class MainWindow
             AddMobileMenuItem(MobileAddMenu, "Hanger", AddHanger_Click);
             return;
         }
-
-        var selectedMarkup = _viewModel.MarkupTool.SelectedMarkup;
-        var selectedComponentCount = GetSelectedComponents().Count;
 
         if (_isDrawingConduit)
         {
@@ -542,6 +632,13 @@ public partial class MainWindow
     {
         MobileMoreMenu.Items.Clear();
 
+        var selectedMarkup = _viewModel.MarkupTool.SelectedMarkup;
+        var selectedComponentCount = GetSelectedComponents().Count;
+        var hasFocusedWorkflow = HasFocusedMobileWorkflow(selectedComponentCount, selectedMarkup != null);
+        var onboardingState = hasFocusedWorkflow
+            ? WorkspaceOnboardingState.Hidden
+            : BuildWorkspaceOnboardingState(selectedComponentCount, selectedMarkup != null);
+
         if (_activeMobilePane != MobilePane.Canvas)
             AddMobileMenuItem(MobileMoreMenu, "Show Plan", (_, _) => SetMobilePane(MobilePane.Canvas));
 
@@ -551,20 +648,95 @@ public partial class MainWindow
         if (_activeMobilePane != MobilePane.Properties)
             AddMobileMenuItem(MobileMoreMenu, "Show Inspector", (_, _) => SetMobilePane(MobilePane.Properties));
 
-        if (_viewModel.MarkupTool.TotalCount > 0)
+        if (_viewModel.MarkupTool.TotalCount > 0 && selectedMarkup == null)
             AddMobileMenuItem(MobileMoreMenu, "Review Markups", ShowMobileMarkupReview_Click);
 
         if (_isDrawingConduit || _isEditingConduitPath || _isSketchLineMode || _isSketchRectangleMode || _isPendingMarkupVertexInsertion || _isFreehandDrawing)
             AddMobileMenuItem(MobileMoreMenu, "Cancel Active Tool", CancelMobileActiveTool_Click);
 
-        AddMobileSeparator(MobileMoreMenu);
-        AddMobileMenuItem(MobileMoreMenu, "Open Project...", OpenProject_Click);
-        AddMobileMenuItem(MobileMoreMenu, "Save Project", SaveProject_Click);
-        AddMobileMenuItem(MobileMoreMenu, "Import PDF Underlay...", ImportPdf_Click);
+        if (selectedMarkup != null)
+        {
+            if (_viewModel.MarkupTool.HasGeometryEditableSelection)
+                AddMobileMenuItem(MobileMoreMenu, "Edit Geometry...", EditSelectedMarkupGeometry_Click);
+
+            if (_viewModel.MarkupTool.HasAppearanceEditableSelection)
+                AddMobileMenuItem(MobileMoreMenu, "Edit Appearance...", EditSelectedMarkupAppearance_Click);
+
+            if (_viewModel.MarkupTool.HasPathVertexInsertCandidate)
+                AddMobileMenuItem(MobileMoreMenu, "Insert Vertex", InsertSelectedMarkupVertex_Click);
+
+            if (_viewModel.MarkupTool.HasPathVertexDeleteCandidate)
+                AddMobileMenuItem(MobileMoreMenu, "Delete Active Vertex", DeleteSelectedMarkupVertex_Click);
+        }
+
+        if (selectedComponentCount > 0)
+        {
+            AddMobileMenuItem(MobileMoreMenu, "Delete Selected", DeleteComponent_Click);
+
+            if (selectedComponentCount > 1)
+                AddMobileMenuItem(MobileMoreMenu, "Measure Distance", MeasureDistance_Click);
+        }
+
+        if (onboardingState.IsVisible)
+            AddMobileMenuItem(MobileMoreMenu, "Dismiss Walkthrough", DismissWorkspaceOnboarding_Click);
+
+        if (!hasFocusedWorkflow)
+        {
+            AddMobileSeparator(MobileMoreMenu);
+            AddMobileMenuItem(MobileMoreMenu, "Open Project...", OpenProject_Click);
+            AddMobileMenuItem(MobileMoreMenu, "Save Project", SaveProject_Click);
+            AddMobileMenuItem(MobileMoreMenu, "Import PDF Underlay...", ImportPdf_Click);
+        }
+
         AddMobileSeparator(MobileMoreMenu);
         AddMobileMenuItem(MobileMoreMenu, "Theme: iOS", MobileThemeIosMenuItem_Click, isCheckable: true, isChecked: _mobileTheme == MobileTheme.IOS);
         AddMobileMenuItem(MobileMoreMenu, "Theme: Android", MobileThemeAndroidMenuItem_Click, isCheckable: true, isChecked: _mobileTheme == MobileTheme.AndroidMaterial);
         AddMobileMenuItem(MobileMoreMenu, "Desktop View", MobileViewButton_Click);
+    }
+
+    private bool HasFocusedMobileWorkflow(int selectedComponentCount, bool hasSelectedMarkup)
+    {
+        return hasSelectedMarkup ||
+               selectedComponentCount > 0 ||
+               _isDrawingConduit ||
+               _isEditingConduitPath ||
+               _isSketchLineMode ||
+               _isSketchRectangleMode ||
+               _selectedSketchPrimitive != null ||
+               _isPendingMarkupVertexInsertion ||
+               _isFreehandDrawing;
+    }
+
+    private WorkspaceOnboardingState BuildMobileOnboardingState(int selectedComponentCount, bool hasSelectedMarkup)
+    {
+        if (HasFocusedMobileWorkflow(selectedComponentCount, hasSelectedMarkup))
+            return WorkspaceOnboardingState.Hidden;
+
+        var onboardingState = BuildWorkspaceOnboardingState(selectedComponentCount, hasSelectedMarkup);
+        if (!onboardingState.IsVisible)
+            return onboardingState;
+
+        if (string.Equals(onboardingState.SecondaryActionKey, WorkspaceOnboardingActionShowModel, StringComparison.Ordinal))
+        {
+            return new WorkspaceOnboardingState(
+                true,
+                onboardingState.ProgressText,
+                onboardingState.TitleText,
+                onboardingState.SummaryText,
+                onboardingState.ChecklistText,
+                onboardingState.PrimaryActionLabel,
+                onboardingState.PrimaryActionKey,
+                "Show Inspector",
+                WorkspaceOnboardingActionShowInspector);
+        }
+
+        return onboardingState;
+    }
+
+    private static bool IsCompactMobileOnboarding(WorkspaceOnboardingState onboardingState)
+    {
+        return onboardingState.IsVisible &&
+               !string.Equals(onboardingState.ProgressText, "Step 1 of 3", StringComparison.Ordinal);
     }
 
     private void ShowMobileMarkupReview_Click(object sender, RoutedEventArgs e)

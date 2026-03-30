@@ -1,3 +1,4 @@
+using System;
 using System.Windows.Media.Media3D;
 using Newtonsoft.Json;
 
@@ -52,6 +53,53 @@ public class ComponentParameters
     public string Manufacturer { get; set; } = string.Empty;
     public string PartNumber { get; set; } = string.Empty;
     public string ReferenceUrl { get; set; } = string.Empty;
+    public ComponentParameterBindings Bindings { get; set; } = new();
+
+    public string? GetBinding(ProjectParameterBindingTarget target)
+    {
+        return target switch
+        {
+            ProjectParameterBindingTarget.Width => Bindings.WidthParameterId,
+            ProjectParameterBindingTarget.Height => Bindings.HeightParameterId,
+            ProjectParameterBindingTarget.Depth => Bindings.DepthParameterId,
+            ProjectParameterBindingTarget.Elevation => Bindings.ElevationParameterId,
+            _ => null
+        };
+    }
+
+    public void SetBinding(ProjectParameterBindingTarget target, string? parameterId)
+    {
+        switch (target)
+        {
+            case ProjectParameterBindingTarget.Width:
+                Bindings.WidthParameterId = parameterId;
+                break;
+            case ProjectParameterBindingTarget.Height:
+                Bindings.HeightParameterId = parameterId;
+                break;
+            case ProjectParameterBindingTarget.Depth:
+                Bindings.DepthParameterId = parameterId;
+                break;
+            case ProjectParameterBindingTarget.Elevation:
+                Bindings.ElevationParameterId = parameterId;
+                break;
+        }
+    }
+
+    public void ClearBindingReference(string parameterId)
+    {
+        if (string.IsNullOrWhiteSpace(parameterId))
+            return;
+
+        if (string.Equals(Bindings.WidthParameterId, parameterId, StringComparison.Ordinal))
+            Bindings.WidthParameterId = null;
+        if (string.Equals(Bindings.HeightParameterId, parameterId, StringComparison.Ordinal))
+            Bindings.HeightParameterId = null;
+        if (string.Equals(Bindings.DepthParameterId, parameterId, StringComparison.Ordinal))
+            Bindings.DepthParameterId = null;
+        if (string.Equals(Bindings.ElevationParameterId, parameterId, StringComparison.Ordinal))
+            Bindings.ElevationParameterId = null;
+    }
 
     // ── Per-object CAD property overrides (null = inherit from layer) ──────────
 
@@ -63,4 +111,19 @@ public class ComponentParameters
 
     /// <summary>Override display color (hex).  Null = inherit from layer.</summary>
     public string? ColorOverride { get; set; }
+}
+
+public class ComponentParameterBindings
+{
+    public string? WidthParameterId { get; set; }
+    public string? HeightParameterId { get; set; }
+    public string? DepthParameterId { get; set; }
+    public string? ElevationParameterId { get; set; }
+
+    [JsonIgnore]
+    public bool HasAnyBinding =>
+        !string.IsNullOrWhiteSpace(WidthParameterId) ||
+        !string.IsNullOrWhiteSpace(HeightParameterId) ||
+        !string.IsNullOrWhiteSpace(DepthParameterId) ||
+        !string.IsNullOrWhiteSpace(ElevationParameterId);
 }

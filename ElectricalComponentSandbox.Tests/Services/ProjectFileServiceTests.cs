@@ -244,4 +244,28 @@ public class ProjectFileServiceTests : IDisposable
         Assert.NotNull(loaded);
         Assert.Equal(secondSheet.Id, loaded.ActiveSheetId);
     }
+
+    [Fact]
+    public async Task SaveAndLoad_ProjectParametersAndBindings_RoundTrip()
+    {
+        var parameter = new ProjectParameterDefinition { Name = "Shared Width", Value = 4.25 };
+        var box = new BoxComponent { Name = "Box 1" };
+        box.Parameters.SetBinding(ProjectParameterBindingTarget.Width, parameter.Id);
+
+        var project = new ProjectModel();
+        project.ProjectParameters.Add(parameter);
+        project.Components.Add(box);
+
+        var filePath = Path.Combine(_tempDir, "project-parameters.ecproj");
+
+        await _service.SaveProjectAsync(project, filePath);
+        var loaded = await _service.LoadProjectAsync(filePath);
+
+        Assert.NotNull(loaded);
+        Assert.Single(loaded.ProjectParameters);
+        Assert.Equal("Shared Width", loaded.ProjectParameters[0].Name);
+        Assert.Equal(4.25, loaded.ProjectParameters[0].Value, 6);
+        Assert.Single(loaded.Components);
+        Assert.Equal(parameter.Id, loaded.Components[0].Parameters.GetBinding(ProjectParameterBindingTarget.Width));
+    }
 }

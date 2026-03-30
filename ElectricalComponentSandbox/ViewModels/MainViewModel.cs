@@ -29,6 +29,7 @@ public class MainViewModel : INotifyPropertyChanged
 
     public ObservableCollection<ElectricalComponent> Components { get; } = new();
     public ObservableCollection<ElectricalComponent> LibraryComponents { get; } = new();
+    public ObservableCollection<ProjectParameterDefinition> ProjectParameters { get; } = new();
     public ObservableCollection<Layer> Layers { get; } = new();
     public ObservableCollection<DrawingSheet> Sheets { get; } = new();
     public ObservableCollection<ProjectBrowserSheetItemViewModel> ProjectBrowserItems { get; } = new();
@@ -157,6 +158,120 @@ public class MainViewModel : INotifyPropertyChanged
 
         OnPropertyChanged(nameof(SelectedComponentIds));
         SelectedComponent = nextPrimary;
+    }
+
+    public ProjectParameterDefinition? GetProjectParameter(string? parameterId)
+    {
+        if (string.IsNullOrWhiteSpace(parameterId))
+            return null;
+
+        return ProjectParameters.FirstOrDefault(parameter => string.Equals(parameter.Id, parameterId, StringComparison.Ordinal));
+    }
+
+    public ProjectParameterDefinition UpsertProjectParameter(string name, double value, string? parameterId = null)
+    {
+        var trimmedName = name?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(trimmedName))
+            throw new ArgumentException("Project parameter name cannot be empty.", nameof(name));
+
+        var duplicate = ProjectParameters.FirstOrDefault(parameter =>
+            !string.Equals(parameter.Id, parameterId, StringComparison.Ordinal) &&
+            string.Equals(parameter.Name, trimmedName, StringComparison.OrdinalIgnoreCase));
+        if (duplicate != null)
+            throw new InvalidOperationException($"A project parameter named '{trimmedName}' already exists.");
+
+        var parameter = GetProjectParameter(parameterId);
+        if (parameter == null)
+        {
+            parameter = new ProjectParameterDefinition();
+            if (!string.IsNullOrWhiteSpace(parameterId))
+                parameter.Id = parameterId;
+            ProjectParameters.Add(parameter);
+        }
+
+        parameter.Name = trimmedName;
+        parameter.Value = value;
+        ApplyProjectParameterBindings();
+        OnPropertyChanged(nameof(ProjectParameters));
+        return parameter;
+    }
+
+    public bool RemoveProjectParameter(string parameterId)
+    {
+        var parameter = GetProjectParameter(parameterId);
+        if (parameter == null)
+            return false;
+
+        ProjectParameters.Remove(parameter);
+        foreach (var component in Components)
+            component.Parameters.ClearBindingReference(parameterId);
+
+        OnPropertyChanged(nameof(ProjectParameters));
+        return true;
+    }
+
+    public void ClearProjectParameters()
+    {
+        ProjectParameters.Clear();
+        OnPropertyChanged(nameof(ProjectParameters));
+    }
+
+    public bool TryGetProjectParameterValue(string? parameterId, out double value)
+    {
+        var parameter = GetProjectParameter(parameterId);
+        if (parameter != null)
+        {
+            value = parameter.Value;
+            return true;
+        }
+
+        value = 0.0;
+        return false;
+    }
+
+    public void ApplyProjectParameterBindings()
+    {
+        var parameterLookup = ProjectParameters
+            .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Id))
+            .GroupBy(parameter => parameter.Id, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Last().Value, StringComparer.Ordinal);
+
+        foreach (var component in Components)
+            ApplyProjectParameterBindings(component, parameterLookup);
+    }
+
+    public void ApplyProjectParameterBindings(ElectricalComponent component)
+    {
+        var parameterLookup = ProjectParameters
+            .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Id))
+            .GroupBy(parameter => parameter.Id, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Last().Value, StringComparer.Ordinal);
+
+        ApplyProjectParameterBindings(component, parameterLookup);
+    }
+
+    private static void ApplyProjectParameterBindings(ElectricalComponent component, IReadOnlyDictionary<string, double> parameterLookup)
+    {
+        if (TryResolveProjectParameterValue(parameterLookup, component.Parameters.GetBinding(ProjectParameterBindingTarget.Width), out var width))
+            component.Parameters.Width = width;
+
+        if (TryResolveProjectParameterValue(parameterLookup, component.Parameters.GetBinding(ProjectParameterBindingTarget.Height), out var height))
+            component.Parameters.Height = height;
+
+        if (TryResolveProjectParameterValue(parameterLookup, component.Parameters.GetBinding(ProjectParameterBindingTarget.Depth), out var depth))
+            component.Parameters.Depth = depth;
+
+        if (TryResolveProjectParameterValue(parameterLookup, component.Parameters.GetBinding(ProjectParameterBindingTarget.Elevation), out var elevation))
+            component.Parameters.Elevation = elevation;
+    }
+
+    private static bool TryResolveProjectParameterValue(IReadOnlyDictionary<string, double> parameterLookup, string? parameterId, out double value)
+    {
+        if (!string.IsNullOrWhiteSpace(parameterId) && parameterLookup.TryGetValue(parameterId, out value))
+            return true;
+
+        value = 0.0;
+        return false;
     }
 
     public bool ToggleComponentSelection(ElectricalComponent component)
@@ -1033,6 +1148,7 @@ public class MainViewModel : INotifyPropertyChanged
     public ProjectModel ToProjectModel()
     {
         PersistActiveSheetState();
+        ApplyProjectParameterBindings();
 
         var activeSheet = SelectedSheet ?? Sheets.FirstOrDefault();
         ActionLogService.Instance.Log(LogCategory.FileOperation, "Creating project model",
@@ -1040,6 +1156,7 @@ public class MainViewModel : INotifyPropertyChanged
         return new ProjectModel
         {
             Components = Components.ToList(),
+            ProjectParameters = ProjectParameters.ToList(),
             Layers = Layers.ToList(),
             Sheets = Sheets.ToList(),
             ActiveSheetId = activeSheet?.Id,
@@ -1064,6 +1181,10 @@ public class MainViewModel : INotifyPropertyChanged
         Components.Clear();
         foreach (var comp in project.Components)
             Components.Add(comp);
+
+        ProjectParameters.Clear();
+        foreach (var parameter in project.ProjectParameters)
+            ProjectParameters.Add(parameter);
 
         Layers.Clear();
         foreach (var layer in project.Layers)
@@ -1104,6 +1225,8 @@ public class MainViewModel : INotifyPropertyChanged
         GridSize = project.GridSize;
         ShowGrid = project.ShowGrid;
         SnapToGrid = project.SnapToGrid;
+
+        ApplyProjectParameterBindings();
 
         UndoRedo.Clear();
         ClearComponentSelection();

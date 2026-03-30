@@ -481,55 +481,98 @@
                 BorderBrush="{StaticResource MobileBorderBrush}"
                 BorderThickness="0,0,0,1"
                 Visibility="Collapsed">
-            <Grid x:Name="MobileTopBarGrid" Height="52" Margin="8,4">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Grid.Column="0">
-                    <Button x:Name="MobileUndoButton" Content="Undo" Click="Undo_Click" Style="{StaticResource MobileTopActionButtonStyle}"/>
-                    <Button x:Name="MobileRedoButton" Content="Redo" Click="Redo_Click" Style="{StaticResource MobileTopActionButtonStyle}"/>
-                </StackPanel>
-                <TextBlock x:Name="MobileSectionTitleText"
-                           Grid.Column="1"
-                           Text="Canvas"
-                           FontSize="17"
-                           FontWeight="SemiBold"
-                           VerticalAlignment="Center"
-                           HorizontalAlignment="Center"
-                           Margin="0,-10,0,0"/>
-                <TextBlock x:Name="MobileTaskSummaryText"
-                           Grid.Column="1"
-                           Text="Import a reference or place the first part to start the layout."
-                           FontSize="11"
-                           Foreground="{StaticResource ShellMutedTextBrush}"
-                           VerticalAlignment="Center"
-                           HorizontalAlignment="Center"
-                           TextAlignment="Center"
-                           TextWrapping="Wrap"
-                           Margin="18,18,18,-2"/>
-                <StackPanel Orientation="Horizontal" Grid.Column="2" VerticalAlignment="Center">
-                    <Button x:Name="MobileAddTopButton"
-                            Content="Add"
-                            Click="MobileAddTopButton_Click"
-                            Style="{StaticResource MobileTopActionButtonStyle}">
-                        <Button.ContextMenu>
-                            <ContextMenu x:Name="MobileAddMenu"/>
-                        </Button.ContextMenu>
-                    </Button>
-                    <Button x:Name="MobileMoreButton"
-                            Content="More"
-                            Click="MobileMoreButton_Click"
-                            Style="{StaticResource MobileTopActionButtonStyle}">
-                        <Button.ContextMenu>
-                            <ContextMenu x:Name="MobileMoreMenu">
-                                <MenuItem x:Name="MobileThemeIosMenuItem" Header="Theme: iOS" IsCheckable="True" Click="MobileThemeIosMenuItem_Click"/>
-                                <MenuItem x:Name="MobileThemeAndroidMenuItem" Header="Theme: Android" IsCheckable="True" Click="MobileThemeAndroidMenuItem_Click"/>
-                            </ContextMenu>
-                        </Button.ContextMenu>
-                    </Button>
-                </StackPanel>
+            <Grid x:Name="MobileTopBarGrid" Margin="8,4">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid x:Name="MobileTopBarHeaderGrid" Grid.Row="0" Height="52">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Grid.Column="0">
+                        <Button x:Name="MobileUndoButton" Content="Undo" Click="Undo_Click" Style="{StaticResource MobileTopActionButtonStyle}"/>
+                        <Button x:Name="MobileRedoButton" Content="Redo" Click="Redo_Click" Style="{StaticResource MobileTopActionButtonStyle}"/>
+                    </StackPanel>
+                    <TextBlock x:Name="MobileSectionTitleText"
+                               Grid.Column="1"
+                               Text="Canvas"
+                               FontSize="17"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Center"
+                               Margin="0,-10,0,0"/>
+                    <TextBlock x:Name="MobileTaskSummaryText"
+                               Grid.Column="1"
+                               Text="Import a reference or place the first part to start the layout."
+                               FontSize="11"
+                               Foreground="{StaticResource ShellMutedTextBrush}"
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               Margin="18,18,18,-2"/>
+                    <StackPanel Orientation="Horizontal" Grid.Column="2" VerticalAlignment="Center">
+                        <Button x:Name="MobileAddTopButton"
+                                Content="Add"
+                                Click="MobileAddTopButton_Click"
+                                Style="{StaticResource MobileTopActionButtonStyle}">
+                            <Button.ContextMenu>
+                                <ContextMenu x:Name="MobileAddMenu"/>
+                            </Button.ContextMenu>
+                        </Button>
+                        <Button x:Name="MobileMoreButton"
+                                Content="More"
+                                Click="MobileMoreButton_Click"
+                                Style="{StaticResource MobileTopActionButtonStyle}">
+                            <Button.ContextMenu>
+                                <ContextMenu x:Name="MobileMoreMenu">
+                                    <MenuItem x:Name="MobileThemeIosMenuItem" Header="Theme: iOS" IsCheckable="True" Click="MobileThemeIosMenuItem_Click"/>
+                                    <MenuItem x:Name="MobileThemeAndroidMenuItem" Header="Theme: Android" IsCheckable="True" Click="MobileThemeAndroidMenuItem_Click"/>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+                <Border x:Name="MobileOnboardingActionBar"
+                        Grid.Row="1"
+                        Margin="10,2,10,6"
+                        Padding="10,8"
+                        Background="{StaticResource ShellCardBrush}"
+                        BorderBrush="{StaticResource MobileBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock x:Name="MobileOnboardingProgressText"
+                                   FontSize="10"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource ShellMutedTextBrush}"/>
+                        <TextBlock x:Name="MobileOnboardingActionTitleText"
+                                   Margin="0,2,0,0"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource ShellPrimaryTextBrush}"
+                                   TextWrapping="Wrap"/>
+                        <WrapPanel x:Name="MobileOnboardingActionButtonsPanel" Margin="0,8,0,0">
+                            <Button x:Name="MobileOnboardingPrimaryActionButton"
+                                    MinWidth="96"
+                                    Click="WorkspaceOnboardingAction_Click"
+                                    Style="{StaticResource QuickActionButtonStyle}"/>
+                            <Button x:Name="MobileOnboardingSecondaryActionButton"
+                                    MinWidth="96"
+                                    Click="WorkspaceOnboardingAction_Click"
+                                    Style="{StaticResource QuickActionButtonStyle}"/>
+                            <Button x:Name="MobileOnboardingDismissButton"
+                                    Content="Later"
+                                    Click="DismissWorkspaceOnboarding_Click"
+                                    Foreground="{StaticResource MobileMutedTextBrush}"
+                                    Style="{StaticResource MobileTopActionButtonStyle}"/>
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
             </Grid>
         </Border>
 
@@ -1213,6 +1256,38 @@
                                            Foreground="Gray"
                                            FontStyle="Italic"
                                            Margin="0,0,0,6"/>
+
+                                <TextBlock Text="Project Parameter Bindings" FontWeight="Bold" Margin="0,10,0,0"/>
+                                <TextBlock x:Name="ProjectParameterBindingSummaryTextBlock"
+                                       Text="No project parameters are defined yet."
+                                       TextWrapping="Wrap"
+                                       Foreground="Gray"
+                                       FontStyle="Italic"
+                                       Margin="0,0,0,6"/>
+                                <Button x:Name="ManageProjectParametersButton"
+                                    Content="Manage Project Parameters..."
+                                    Click="ManageProjectParameters_Click"
+                                    Margin="0,0,0,8"/>
+
+                                <TextBlock Text="Width Parameter:"/>
+                                <ComboBox x:Name="WidthParameterBindingComboBox"
+                                      DisplayMemberPath="DisplayName"
+                                      SelectedValuePath="ParameterId"/>
+
+                                <TextBlock Text="Height Parameter:" Margin="0,6,0,0"/>
+                                <ComboBox x:Name="HeightParameterBindingComboBox"
+                                      DisplayMemberPath="DisplayName"
+                                      SelectedValuePath="ParameterId"/>
+
+                                <TextBlock Text="Depth Parameter:" Margin="0,6,0,0"/>
+                                <ComboBox x:Name="DepthParameterBindingComboBox"
+                                      DisplayMemberPath="DisplayName"
+                                      SelectedValuePath="ParameterId"/>
+
+                                <TextBlock Text="Elevation Parameter:" Margin="0,6,0,0"/>
+                                <ComboBox x:Name="ElevationParameterBindingComboBox"
+                                      DisplayMemberPath="DisplayName"
+                                      SelectedValuePath="ParameterId"/>
                                 
                                 <TextBlock Text="Material:"/>
                                 <TextBox x:Name="MaterialTextBox"/>

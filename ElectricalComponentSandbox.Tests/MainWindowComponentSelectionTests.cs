@@ -83,6 +83,80 @@ public class MainWindowComponentSelectionTests
     }
 
     [Fact]
+    public void UpdatePropertiesPanelForTesting_SingleSelectionShowsProjectParameterBindingSummary()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            var parameter = viewModel.UpsertProjectParameter("Shared Width", 4.25);
+            selected[0].Parameters.SetBinding(ProjectParameterBindingTarget.Width, parameter.Id);
+            viewModel.ApplyProjectParameterBindings();
+
+            viewModel.SelectSingleComponent(selected[0]);
+            window.UpdatePropertiesPanelForTesting();
+
+            var widthTextBox = FindRequired<TextBox>(window, "WidthTextBox");
+            var widthBindingComboBox = FindRequired<ComboBox>(window, "WidthParameterBindingComboBox");
+            var bindingSummaryTextBlock = FindRequired<TextBlock>(window, "ProjectParameterBindingSummaryTextBlock");
+
+            Assert.Equal("4'-3\"", widthTextBox.Text);
+            Assert.Equal(parameter.Id, widthBindingComboBox.SelectedValue);
+            Assert.Contains("Shared Width", bindingSummaryTextBlock.Text);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void ApplyPropertiesForTesting_SingleSelectionBoundWidthUpdatesProjectParameterAndPeers()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            var peer = CreateComponent("Box 3", 10, 0, 10, Colors.Green);
+            viewModel.Components.Add(peer);
+
+            var parameter = viewModel.UpsertProjectParameter("Shared Width", 2.5);
+            selected[0].Parameters.SetBinding(ProjectParameterBindingTarget.Width, parameter.Id);
+            peer.Parameters.SetBinding(ProjectParameterBindingTarget.Width, parameter.Id);
+            viewModel.ApplyProjectParameterBindings();
+
+            viewModel.SelectSingleComponent(selected[0]);
+            window.UpdatePropertiesPanelForTesting();
+            FindRequired<TextBox>(window, "WidthTextBox").Text = "4.25";
+
+            window.ApplyPropertiesForTesting();
+
+            Assert.Equal(4.25, parameter.Value, 6);
+            Assert.Equal(4.25, selected[0].Parameters.Width, 6);
+            Assert.Equal(4.25, peer.Parameters.Width, 6);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void ApplyPropertiesForTesting_MultiSelectionCanBindWidthToProjectParameter()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            selected[0].Parameters.Width = 1.0;
+            selected[1].Parameters.Width = 2.0;
+
+            var parameter = viewModel.UpsertProjectParameter("Shared Width", 3.5);
+            viewModel.SetSelectedComponents(selected, selected[0]);
+            window.UpdatePropertiesPanelForTesting();
+
+            var widthBindingComboBox = FindRequired<ComboBox>(window, "WidthParameterBindingComboBox");
+            FindRequired<TextBox>(window, "WidthTextBox").Text = string.Empty;
+            widthBindingComboBox.SelectedValue = parameter.Id;
+
+            window.ApplyPropertiesForTesting();
+
+            Assert.Equal(parameter.Id, selected[0].Parameters.GetBinding(ProjectParameterBindingTarget.Width));
+            Assert.Equal(parameter.Id, selected[1].Parameters.GetBinding(ProjectParameterBindingTarget.Width));
+            Assert.All(selected, component => Assert.Equal(3.5, component.Parameters.Width, 6));
+            return 0;
+        });
+    }
+
+    [Fact]
     public void TryMoveSelectedComponentsForTesting_AbsoluteModeAppliesPrimaryDeltaToAllSelected()
     {
         RunWithSelectedComponentsWindow((window, viewModel, selected) =>
@@ -750,30 +824,129 @@ public class MainWindowComponentSelectionTests
     }
 
     [Fact]
-    public void UpdateMobileTopBarForTesting_InMobileCanvasStartState_ShowsStarterSummaryAndMenu()
+    public void UpdateMobileTopBarForTesting_InMobileCanvasStartState_ShowsInlineOnboardingAndDismissReturnsStarterMenu()
     {
         RunWithSelectedComponentsWindow((window, viewModel, selected) =>
         {
             viewModel.ClearComponentSelection();
             window.EnableMobileViewForTesting();
             window.SetMobilePaneForTesting("canvas");
-            window.UpdateContextualInspectorForTesting();
-            window.UpdateCanvasGuidanceForTesting();
+            window.UpdateWorkspaceOverviewForTesting();
 
             var state = window.GetMobileTopBarStateForTesting();
             var navigation = window.GetMobileNavigationStateForTesting();
+            var onboardingState = window.GetMobileOnboardingInlineStateForTesting();
+            var presentationState = window.GetMobileOnboardingPresentationStateForTesting();
             var primaryMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: true);
+            var overflowMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: false);
 
-            Assert.Equal("Plan", state.SectionTitle);
-            Assert.Equal("Start", state.AddLabel);
-            Assert.Contains("Import a reference", state.Summary, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("Getting Started", state.SectionTitle);
+            Assert.Equal("Next", state.AddLabel);
+            Assert.Contains("Step 1 of 3", state.Summary, StringComparison.Ordinal);
+            Assert.True(onboardingState.IsVisible);
+            Assert.False(presentationState.IsCompact);
+            Assert.Equal(Visibility.Visible, presentationState.ProgressVisibility);
+            Assert.Equal(Visibility.Visible, presentationState.TitleVisibility);
+            Assert.Equal("Step 1 of 3", onboardingState.Progress);
+            Assert.Equal("Bring in project context", onboardingState.Title);
+            Assert.Equal("Import Reference", onboardingState.PrimaryAction);
+            Assert.Equal("Open Project", onboardingState.SecondaryAction);
             Assert.Equal("Draw\nPlan", navigation.CanvasLabel);
             Assert.Equal("Add\nParts", navigation.LibraryLabel);
             Assert.Equal("Inspect\nNext", navigation.PropertiesLabel);
             Assert.Contains("Import Reference", primaryMenuHeaders);
+            Assert.Contains("Open Project", primaryMenuHeaders);
+            Assert.DoesNotContain("Add Conduit", primaryMenuHeaders);
+            Assert.Contains("Open Project...", overflowMenuHeaders);
+            Assert.Contains("Save Project", overflowMenuHeaders);
+            Assert.Contains("Import PDF Underlay...", overflowMenuHeaders);
+            Assert.Contains("Dismiss Walkthrough", overflowMenuHeaders);
+            Assert.DoesNotContain("Delete Selected", overflowMenuHeaders);
+
+            Assert.True(window.ExecuteMobileOnboardingInlineActionForTesting("dismiss"));
+
+            state = window.GetMobileTopBarStateForTesting();
+            onboardingState = window.GetMobileOnboardingInlineStateForTesting();
+            primaryMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: true);
+            overflowMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: false);
+
+            Assert.Equal("Plan", state.SectionTitle);
+            Assert.Equal("Start", state.AddLabel);
+            Assert.Contains("Import a reference", state.Summary, StringComparison.OrdinalIgnoreCase);
+            Assert.False(onboardingState.IsVisible);
+            Assert.Contains("Import Reference", primaryMenuHeaders);
             Assert.Contains("Add Conduit", primaryMenuHeaders);
-            Assert.Contains("Draw Conduit", primaryMenuHeaders);
-            Assert.Contains("Review Markups", primaryMenuHeaders);
+            Assert.DoesNotContain("Dismiss Walkthrough", overflowMenuHeaders);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdateMobileTopBarForTesting_WithReferenceOnly_ShowsCompactOnboardingStepTwo()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.Components.Clear();
+            viewModel.PdfUnderlay = new PdfUnderlay { FilePath = "plan.pdf", PageNumber = 1 };
+            viewModel.ClearComponentSelection();
+            window.EnableMobileViewForTesting();
+            window.SetMobilePaneForTesting("canvas");
+            window.UpdateWorkspaceOverviewForTesting();
+
+            var state = window.GetMobileTopBarStateForTesting();
+            var onboardingState = window.GetMobileOnboardingInlineStateForTesting();
+            var presentationState = window.GetMobileOnboardingPresentationStateForTesting();
+
+            Assert.Equal("Getting Started", state.SectionTitle);
+            Assert.Contains("Step 2 of 3: Create the first layout element", state.Summary, StringComparison.Ordinal);
+            Assert.True(onboardingState.IsVisible);
+            Assert.True(presentationState.IsCompact);
+            Assert.Equal(Visibility.Collapsed, presentationState.ProgressVisibility);
+            Assert.Equal(Visibility.Collapsed, presentationState.TitleVisibility);
+            Assert.Equal("Step 2 of 3", onboardingState.Progress);
+            Assert.Equal("Create the first layout element", onboardingState.Title);
+            Assert.Equal("Add Conduit", onboardingState.PrimaryAction);
+            Assert.Equal("Draw Route", onboardingState.SecondaryAction);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdateMobileTopBarForTesting_WithReferenceAndLayoutButNoSelection_ShowsOnboardingStepThreeActions()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.PdfUnderlay = new PdfUnderlay { FilePath = "plan.pdf", PageNumber = 1 };
+            viewModel.ClearComponentSelection();
+            window.EnableMobileViewForTesting();
+            window.SetMobilePaneForTesting("canvas");
+            window.UpdateWorkspaceOverviewForTesting();
+
+            var state = window.GetMobileTopBarStateForTesting();
+            var onboardingState = window.GetMobileOnboardingInlineStateForTesting();
+            var presentationState = window.GetMobileOnboardingPresentationStateForTesting();
+            var primaryMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: true);
+            var overflowMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: false);
+            var propertiesPanel = FindRequired<Border>(window, "PropertiesPanelContainer");
+
+            Assert.Equal("Getting Started", state.SectionTitle);
+            Assert.Equal("Next", state.AddLabel);
+            Assert.Contains("Step 3 of 3: Inspect what you placed", state.Summary, StringComparison.Ordinal);
+            Assert.True(onboardingState.IsVisible);
+            Assert.True(presentationState.IsCompact);
+            Assert.Equal(Visibility.Collapsed, presentationState.ProgressVisibility);
+            Assert.Equal(Visibility.Collapsed, presentationState.TitleVisibility);
+            Assert.Equal("Step 3 of 3", onboardingState.Progress);
+            Assert.Equal("Inspect what you placed", onboardingState.Title);
+            Assert.Equal("Show 2D Plan", onboardingState.PrimaryAction);
+            Assert.Equal("Show Inspector", onboardingState.SecondaryAction);
+            Assert.Contains("Show 2D Plan", primaryMenuHeaders);
+            Assert.Contains("Show Inspector", primaryMenuHeaders);
+            Assert.DoesNotContain("Draw Conduit", primaryMenuHeaders);
+            Assert.Contains("Dismiss Walkthrough", overflowMenuHeaders);
+
+            Assert.True(window.ExecuteMobileOnboardingInlineActionForTesting("secondary"));
+            Assert.Equal(Visibility.Visible, propertiesPanel.Visibility);
             return 0;
         });
     }
@@ -790,6 +963,7 @@ public class MainWindowComponentSelectionTests
             var state = window.GetMobileTopBarStateForTesting();
             var navigation = window.GetMobileNavigationStateForTesting();
             var primaryMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: true);
+            var overflowMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: false);
 
             Assert.Equal("Selection", state.SectionTitle);
             Assert.Equal("Act", state.AddLabel);
@@ -798,6 +972,11 @@ public class MainWindowComponentSelectionTests
             Assert.Contains("Apply Shared Changes", primaryMenuHeaders);
             Assert.Contains("Zoom Selection", primaryMenuHeaders);
             Assert.Contains("Duplicate", primaryMenuHeaders);
+            Assert.Contains("Delete Selected", overflowMenuHeaders);
+            Assert.Contains("Measure Distance", overflowMenuHeaders);
+            Assert.DoesNotContain("Open Project...", overflowMenuHeaders);
+            Assert.DoesNotContain("Save Project", overflowMenuHeaders);
+            Assert.DoesNotContain("Import PDF Underlay...", overflowMenuHeaders);
 
             Assert.True(window.ExecuteMobileMenuItemForTesting(primaryMenu: true, header: "Duplicate"));
             Assert.Equal(4, viewModel.Components.Count);
