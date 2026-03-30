@@ -107,6 +107,18 @@
             <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
         </Style>
+        <Style x:Key="InspectorTaskCardStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource ShellCardBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="10"/>
+        </Style>
+        <Style x:Key="InspectorTaskActionButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Margin" Value="0,8,8,0"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
         <Style x:Key="CanvasGuidanceCardStyle" TargetType="Border">
             <Setter Property="Background" Value="#F7FFFFFF"/>
             <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}"/>
@@ -143,20 +155,30 @@
                 <MenuItem Header="Save Project" Click="SaveProject_Click" InputGestureText="Ctrl+S"/>
                 <MenuItem Header="Save Project As..." Click="SaveProjectAs_Click" InputGestureText="Ctrl+Shift+S"/>
                 <Separator/>
-                <MenuItem Header="Import PDF Underlay..." Click="ImportPdf_Click"/>
+                <MenuItem Header="Import">
+                    <MenuItem Header="Import PDF Underlay..." Click="ImportPdf_Click"/>
+                    <MenuItem Header="Import XFDF Markups..." Click="ImportXfdf_Click"/>
+                </MenuItem>
+                <MenuItem Header="Export">
+                    <MenuItem Header="Export JSON..." Click="ExportJson_Click" InputGestureText="Ctrl+E"/>
+                    <MenuItem Header="Export BOM CSV..." Click="ExportBomCsv_Click"/>
+                    <MenuItem Header="Export IFC..." Click="ExportIfc_Click"/>
+                    <MenuItem Header="Export Schedule (Excel)..." Click="ExportSchedule_Click"/>
+                    <MenuItem Header="Export DXF (AutoCAD)..." Click="ExportScheduleDxf_Click"/>
+                    <MenuItem Header="Export XFDF Markups..." Click="ExportXfdf_Click"/>
+                </MenuItem>
+                <MenuItem Header="Insert">
+                    <MenuItem Header="Insert Schedule Table..." Click="InsertScheduleTable_Click"/>
+                    <MenuItem Header="Insert Symbol Legend..." Click="InsertSymbolLegend_Click"/>
+                    <MenuItem Header="Insert Title Block..." Click="InsertTitleBlock_Click"/>
+                </MenuItem>
+                <MenuItem Header="Output">
+                    <MenuItem Header="Plot to Image..." Click="PlotToImage_Click"/>
+                    <MenuItem Header="Plot Style (CTB)..." Click="PlotStyleManager_Click"/>
+                    <MenuItem Header="Page Setup..." Click="PageSetup_Click"/>
+                    <MenuItem Header="Print Preview..." Click="PrintPreview_Click"/>
+                </MenuItem>
                 <Separator/>
-                <MenuItem Header="Export JSON..." Click="ExportJson_Click" InputGestureText="Ctrl+E"/>
-                <MenuItem Header="Export BOM CSV..." Click="ExportBomCsv_Click"/>
-                <MenuItem Header="Export IFC..." Click="ExportIfc_Click"/>
-                <MenuItem Header="Export Schedule (Excel)..." Click="ExportSchedule_Click"/>
-                <MenuItem Header="Export DXF (AutoCAD)..." Click="ExportScheduleDxf_Click"/>
-                <MenuItem Header="Export XFDF Markups..." Click="ExportXfdf_Click"/>
-                <MenuItem Header="Import XFDF Markups..." Click="ImportXfdf_Click"/>
-                <Separator/>
-                <MenuItem Header="Plot to Image..." Click="PlotToImage_Click"/>
-                <MenuItem Header="Insert Schedule Table..." Click="InsertScheduleTable_Click"/>
-                <MenuItem Header="Insert Symbol Legend..." Click="InsertSymbolLegend_Click"/>
-                <MenuItem Header="Insert Title Block..." Click="InsertTitleBlock_Click"/>
                 <MenuItem Header="Run Revit Introspection..." Click="RunRevitIntrospection_Click"/>
                 <Separator/>
                 <MenuItem Header="Exit" Click="Exit_Click"/>
@@ -165,53 +187,61 @@
                 <MenuItem Header="Undo" Click="Undo_Click" InputGestureText="Ctrl+Z"/>
                 <MenuItem Header="Redo" Click="Redo_Click" InputGestureText="Ctrl+Y"/>
                 <Separator/>
-                <MenuItem Header="Cut" Click="CutComponent_Click" InputGestureText="Ctrl+X"/>
-                <MenuItem Header="Copy" Click="CopyComponent_Click" InputGestureText="Ctrl+C"/>
-                <MenuItem Header="Paste" Click="PasteComponent_Click" InputGestureText="Ctrl+V"/>
-                <MenuItem Header="Paste in Place" Click="PasteInPlace_Click"/>
-                <Separator/>
-                <MenuItem Header="Delete Selected" Click="DeleteComponent_Click" InputGestureText="Delete"/>
-                <MenuItem Header="Edit Selected Geometry..."
-                          Click="EditSelectedMarkupGeometry_Click"
-                          InputGestureText="Ctrl+Shift+G"
-                          IsEnabled="{Binding MarkupTool.HasGeometryEditableSelection}"
-                          ToolTip="{Binding MarkupTool.SelectedMarkupGeometryEditSummary}"/>
-                <MenuItem Header="Edit Selected Annotation Text..."
-                          Click="EditSelectedStructuredMarkup_Click"
-                          InputGestureText="F2"
-                          IsEnabled="{Binding MarkupTool.HasTextEditableSelection}"
-                          ToolTip="{Binding MarkupTool.SelectedMarkupTextEditSummary}"/>
-                <MenuItem Header="Edit Selected Appearance..."
-                          Click="EditSelectedMarkupAppearance_Click"
-                          InputGestureText="Ctrl+Shift+A"
-                          IsEnabled="{Binding MarkupTool.HasAppearanceEditableSelection}"
-                          ToolTip="{Binding MarkupTool.SelectedMarkupAppearanceEditSummary}"/>
-                <MenuItem Header="Insert Vertex"
-                          Click="InsertSelectedMarkupVertex_Click"
-                          IsEnabled="{Binding MarkupTool.HasPathVertexInsertCandidate}"
-                          ToolTip="{Binding MarkupTool.SelectedMarkupPathInsertSummary}"/>
-                <MenuItem Header="Delete Active Vertex"
-                          Click="DeleteSelectedMarkupVertex_Click"
-                          IsEnabled="{Binding MarkupTool.HasPathVertexDeleteCandidate}"
-                          ToolTip="{Binding MarkupTool.SelectedMarkupPathDeleteSummary}"/>
-                <MenuItem Header="Duplicate Selected" Click="DuplicateComponent_Click" InputGestureText="Ctrl+D"/>
-                <MenuItem Header="Rectangular Array..." Click="RectangularArray_Click"/>
-                <MenuItem Header="Polar Array..." Click="PolarArray_Click"/>
-                <Separator/>
-                <MenuItem Header="Move..." Click="MoveComponent_Click"/>
-                <MenuItem Header="Rotate..." Click="RotateComponent_Click"/>
-                <MenuItem Header="Mirror..." Click="MirrorComponent_Click"/>
+                <MenuItem Header="Clipboard &amp; Delete">
+                    <MenuItem Header="Cut" Click="CutComponent_Click" InputGestureText="Ctrl+X"/>
+                    <MenuItem Header="Copy" Click="CopyComponent_Click" InputGestureText="Ctrl+C"/>
+                    <MenuItem Header="Paste" Click="PasteComponent_Click" InputGestureText="Ctrl+V"/>
+                    <MenuItem Header="Paste in Place" Click="PasteInPlace_Click"/>
+                    <Separator/>
+                    <MenuItem Header="Delete Selected" Click="DeleteComponent_Click" InputGestureText="Delete"/>
+                </MenuItem>
+                <MenuItem Header="Markup Edit">
+                    <MenuItem Header="Edit Selected Geometry..."
+                              Click="EditSelectedMarkupGeometry_Click"
+                              InputGestureText="Ctrl+Shift+G"
+                              IsEnabled="{Binding MarkupTool.HasGeometryEditableSelection}"
+                              ToolTip="{Binding MarkupTool.SelectedMarkupGeometryEditSummary}"/>
+                    <MenuItem Header="Edit Selected Annotation Text..."
+                              Click="EditSelectedStructuredMarkup_Click"
+                              InputGestureText="F2"
+                              IsEnabled="{Binding MarkupTool.HasTextEditableSelection}"
+                              ToolTip="{Binding MarkupTool.SelectedMarkupTextEditSummary}"/>
+                    <MenuItem Header="Edit Selected Appearance..."
+                              Click="EditSelectedMarkupAppearance_Click"
+                              InputGestureText="Ctrl+Shift+A"
+                              IsEnabled="{Binding MarkupTool.HasAppearanceEditableSelection}"
+                              ToolTip="{Binding MarkupTool.SelectedMarkupAppearanceEditSummary}"/>
+                    <MenuItem Header="Insert Vertex"
+                              Click="InsertSelectedMarkupVertex_Click"
+                              IsEnabled="{Binding MarkupTool.HasPathVertexInsertCandidate}"
+                              ToolTip="{Binding MarkupTool.SelectedMarkupPathInsertSummary}"/>
+                    <MenuItem Header="Delete Active Vertex"
+                              Click="DeleteSelectedMarkupVertex_Click"
+                              IsEnabled="{Binding MarkupTool.HasPathVertexDeleteCandidate}"
+                              ToolTip="{Binding MarkupTool.SelectedMarkupPathDeleteSummary}"/>
+                </MenuItem>
+                <MenuItem Header="Transform">
+                    <MenuItem Header="Duplicate Selected" Click="DuplicateComponent_Click" InputGestureText="Ctrl+D"/>
+                    <MenuItem Header="Move..." Click="MoveComponent_Click"/>
+                    <MenuItem Header="Rotate..." Click="RotateComponent_Click"/>
+                    <MenuItem Header="Mirror..." Click="MirrorComponent_Click"/>
+                </MenuItem>
+                <MenuItem Header="Array">
+                    <MenuItem Header="Rectangular Array..." Click="RectangularArray_Click"/>
+                    <MenuItem Header="Polar Array..." Click="PolarArray_Click"/>
+                </MenuItem>
+                <MenuItem Header="Selection">
+                    <MenuItem Header="Select by Layer..." Click="SelectByLayer_Click"/>
+                    <MenuItem Header="Select by Type..." Click="SelectByType_Click"/>
+                    <MenuItem Header="Select Similar" Click="SelectSimilar_Click"/>
+                    <MenuItem Header="Quick Select..." Click="QuickSelect_Click"/>
+                </MenuItem>
+                <MenuItem Header="Analyze Selection">
+                    <MenuItem Header="Measure Distance" Click="MeasureDistance_Click"/>
+                    <MenuItem Header="Measure Area" Click="MeasureArea_Click"/>
+                </MenuItem>
                 <Separator/>
                 <MenuItem Header="Delete Last Bend Point" Click="DeleteLastBendPoint_Click"/>
-                <Separator/>
-                <MenuItem Header="Measure Distance" Click="MeasureDistance_Click"/>
-                <MenuItem Header="Measure Area" Click="MeasureArea_Click"/>
-                <Separator/>
-                <MenuItem Header="Select by Layer..." Click="SelectByLayer_Click"/>
-                <MenuItem Header="Select by Type..." Click="SelectByType_Click"/>
-                <MenuItem Header="Select Similar" Click="SelectSimilar_Click"/>
-                <MenuItem Header="Quick Select..." Click="QuickSelect_Click"/>
-                <Separator/>
                 <MenuItem Header="Bulk Edit Properties..." Click="BulkEditProperties_Click"/>
             </MenuItem>
             <MenuItem Header="View">
@@ -239,7 +269,6 @@
                     <MenuItem x:Name="NamedViewsListMenuItem" Header="(none saved)" IsEnabled="False"/>
                 </MenuItem>
                 <Separator/>
-                <Separator/>
                 <MenuItem Header="Zoom Extents" Click="ZoomExtents_Click" InputGestureText="Ctrl+Shift+E"/>
                 <MenuItem Header="Zoom Selection" Click="ZoomSelection_Click"/>
                 <MenuItem Header="Home View" Click="HomeView_Click" InputGestureText="Home"/>
@@ -251,28 +280,28 @@
                 </MenuItem>
             </MenuItem>
             <MenuItem Header="Tools">
-                <MenuItem Header="Conduit" Click="AddConduit_Click"/>
-                <MenuItem Header="Box" Click="AddBox_Click"/>
-                <MenuItem Header="Panel" Click="AddPanel_Click"/>
-                <MenuItem Header="Support" Click="AddSupport_Click"/>
-                <MenuItem Header="Cable Tray" Click="AddCableTray_Click"/>
-                <MenuItem Header="Hanger" Click="AddHanger_Click"/>
-                <Separator/>
-                <MenuItem Header="Draw Conduit" Click="DrawConduit_Click"/>
-                <MenuItem Header="Edit Conduit Path" Click="ToggleEditConduitPath_Click"/>
-                <MenuItem Header="Sketch Line" Click="SketchLine_Click"/>
-                <MenuItem Header="Sketch Rectangle" Click="SketchRectangle_Click"/>
-                <MenuItem Header="Convert Sketch" Click="ConvertSketch_Click"/>
-                <MenuItem Header="Freehand Conduit" Click="FreehandConduit_Click"/>
-                <MenuItem Header="Offset Conduit..." Click="OffsetConduit_Click"/>
-                <MenuItem Header="Auto-Route" Click="AutoRoute_Click"/>
-                <Separator/>
-                <MenuItem Header="Export Runs CSV" Click="ExportRunSchedule_Click"/>
-                <MenuItem Header="Export Conduit JSON" Click="ExportConduitJson_Click"/>
-                <Separator/>
-                <MenuItem Header="Plot Style (CTB)..." Click="PlotStyleManager_Click"/>
-                <MenuItem Header="Page Setup..." Click="PageSetup_Click"/>
-                <MenuItem Header="Print Preview..." Click="PrintPreview_Click"/>
+                <MenuItem Header="Add Parts">
+                    <MenuItem Header="Conduit" Click="AddConduit_Click"/>
+                    <MenuItem Header="Box" Click="AddBox_Click"/>
+                    <MenuItem Header="Panel" Click="AddPanel_Click"/>
+                    <MenuItem Header="Support" Click="AddSupport_Click"/>
+                    <MenuItem Header="Cable Tray" Click="AddCableTray_Click"/>
+                    <MenuItem Header="Hanger" Click="AddHanger_Click"/>
+                </MenuItem>
+                <MenuItem Header="Route &amp; Sketch">
+                    <MenuItem Header="Draw Conduit" Click="DrawConduit_Click"/>
+                    <MenuItem Header="Edit Conduit Path" Click="ToggleEditConduitPath_Click"/>
+                    <MenuItem Header="Sketch Line" Click="SketchLine_Click"/>
+                    <MenuItem Header="Sketch Rectangle" Click="SketchRectangle_Click"/>
+                    <MenuItem Header="Convert Sketch" Click="ConvertSketch_Click"/>
+                    <MenuItem Header="Freehand Conduit" Click="FreehandConduit_Click"/>
+                    <MenuItem Header="Offset Conduit..." Click="OffsetConduit_Click"/>
+                    <MenuItem Header="Auto-Route" Click="AutoRoute_Click"/>
+                </MenuItem>
+                <MenuItem Header="Fabrication Output">
+                    <MenuItem Header="Export Runs CSV" Click="ExportRunSchedule_Click"/>
+                    <MenuItem Header="Export Conduit JSON" Click="ExportConduitJson_Click"/>
+                </MenuItem>
             </MenuItem>
             <MenuItem Header="Electrical">
                 <MenuItem Header="Voltage Drop Calculator..." Click="VoltageDropCalc_Click"/>
@@ -292,26 +321,22 @@
             </MenuItem>
             <MenuItem x:Name="ReferencesMenuItem" Header="References"/>
             <MenuItem Header="Markup">
-                <MenuItem Header="Add Callout..." Click="AddCallout_Click"/>
-                <MenuItem Header="Add Leader Note..." Click="AddLeaderNote_Click"/>
-                <MenuItem Header="Add Revision Cloud..." Click="AddRevisionCloud_Click"/>
-                <MenuItem Header="Add Stamp..." Click="AddStamp_Click"/>
-                <Separator/>
-                <MenuItem Header="Approve Selected" Click="ApproveMarkup_Click"/>
-                <MenuItem Header="Reject Selected" Click="RejectMarkup_Click"/>
-                <MenuItem Header="Resolve Selected" Click="ResolveMarkup_Click"/>
-                <MenuItem Header="Assign Selected..." Click="AssignSelectedMarkup_Click"/>
-                <MenuItem Header="Assign Visible..." Click="AssignVisibleMarkups_Click"/>
-                <MenuItem Header="Reply To Selected..." Click="AddMarkupReply_Click"/>
-                <Separator/>
+                <MenuItem Header="Add Annotation">
+                    <MenuItem Header="Add Callout..." Click="AddCallout_Click"/>
+                    <MenuItem Header="Add Leader Note..." Click="AddLeaderNote_Click"/>
+                    <MenuItem Header="Add Revision Cloud..." Click="AddRevisionCloud_Click"/>
+                    <MenuItem Header="Add Stamp..." Click="AddStamp_Click"/>
+                </MenuItem>
+                <MenuItem Header="Review Actions">
+                    <MenuItem Header="Approve Selected" Click="ApproveMarkup_Click"/>
+                    <MenuItem Header="Reject Selected" Click="RejectMarkup_Click"/>
+                    <MenuItem Header="Resolve Selected" Click="ResolveMarkup_Click"/>
+                    <MenuItem Header="Assign Selected..." Click="AssignSelectedMarkup_Click"/>
+                    <MenuItem Header="Assign Visible..." Click="AssignVisibleMarkups_Click"/>
+                    <MenuItem Header="Reply To Selected..." Click="AddMarkupReply_Click"/>
+                </MenuItem>
                 <MenuItem Header="Markup Summary..." Click="MarkupSummary_Click"/>
             </MenuItem>
-            <MenuItem Header="Sketch Rectangle" Click="SketchRectangle_Click"/>
-            <MenuItem Header="Convert Sketch" Click="ConvertSketch_Click"/>
-            <MenuItem Header="Freehand Conduit" Click="FreehandConduit_Click"/>
-            <MenuItem Header="Auto-Route" Click="AutoRoute_Click"/>
-            <MenuItem Header="Export Runs CSV" Click="ExportRunSchedule_Click"/>
-            <MenuItem Header="Export Conduit JSON" Click="ExportConduitJson_Click"/>
         </Menu>
         
         <!-- Desktop command surface -->
@@ -472,28 +497,25 @@
                            FontSize="17"
                            FontWeight="SemiBold"
                            VerticalAlignment="Center"
-                           HorizontalAlignment="Center"/>
+                           HorizontalAlignment="Center"
+                           Margin="0,-10,0,0"/>
+                <TextBlock x:Name="MobileTaskSummaryText"
+                           Grid.Column="1"
+                           Text="Import a reference or place the first part to start the layout."
+                           FontSize="11"
+                           Foreground="{StaticResource ShellMutedTextBrush}"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           Margin="18,18,18,-2"/>
                 <StackPanel Orientation="Horizontal" Grid.Column="2" VerticalAlignment="Center">
                     <Button x:Name="MobileAddTopButton"
                             Content="Add"
                             Click="MobileAddTopButton_Click"
                             Style="{StaticResource MobileTopActionButtonStyle}">
                         <Button.ContextMenu>
-                            <ContextMenu x:Name="MobileAddMenu">
-                                <MenuItem Header="Conduit" Click="AddConduit_Click"/>
-                                <MenuItem Header="Box" Click="AddBox_Click"/>
-                                <MenuItem Header="Panel" Click="AddPanel_Click"/>
-                                <MenuItem Header="Support" Click="AddSupport_Click"/>
-                                <MenuItem Header="Cable Tray" Click="AddCableTray_Click"/>
-                                <MenuItem Header="Hanger" Click="AddHanger_Click"/>
-                                <Separator/>
-                                <MenuItem Header="Sketch Line" Click="SketchLine_Click"/>
-                                <MenuItem Header="Sketch Rectangle" Click="SketchRectangle_Click"/>
-                                <MenuItem Header="Convert Sketch" Click="ConvertSketch_Click"/>
-                                <Separator/>
-                                <MenuItem Header="Draw Conduit" Click="DrawConduit_Click"/>
-                                <MenuItem Header="Freehand Conduit" Click="FreehandConduit_Click"/>
-                            </ContextMenu>
+                            <ContextMenu x:Name="MobileAddMenu"/>
                         </Button.ContextMenu>
                     </Button>
                     <Button x:Name="MobileMoreButton"
@@ -502,40 +524,8 @@
                             Style="{StaticResource MobileTopActionButtonStyle}">
                         <Button.ContextMenu>
                             <ContextMenu x:Name="MobileMoreMenu">
-                                <MenuItem Header="Open Project..." Click="OpenProject_Click"/>
-                                <MenuItem Header="Save Project" Click="SaveProject_Click"/>
-                                <MenuItem Header="Import PDF Underlay..." Click="ImportPdf_Click"/>
-                                <Separator/>
-                                <MenuItem Header="2D Plan View" Click="Show2DView_Click"/>
-                                <MenuItem Header="3D Viewport" Click="Show3DView_Click"/>
-                                <Separator/>
-                                <MenuItem Header="Convert Sketch" Click="ConvertSketch_Click"/>
-                                <Separator/>
-                                <MenuItem Header="Delete Selected" Click="DeleteComponent_Click"/>
-                                <MenuItem Header="Edit Selected Geometry..."
-                                          Click="EditSelectedMarkupGeometry_Click"
-                                          IsEnabled="{Binding MarkupTool.HasGeometryEditableSelection}"
-                                          ToolTip="{Binding MarkupTool.SelectedMarkupGeometryEditSummary}"/>
-                                <MenuItem Header="Edit Selected Annotation Text..."
-                                          Click="EditSelectedStructuredMarkup_Click"
-                                          IsEnabled="{Binding MarkupTool.HasTextEditableSelection}"
-                                          ToolTip="{Binding MarkupTool.SelectedMarkupTextEditSummary}"/>
-                                <MenuItem Header="Edit Selected Appearance..."
-                                          Click="EditSelectedMarkupAppearance_Click"
-                                          IsEnabled="{Binding MarkupTool.HasAppearanceEditableSelection}"
-                                          ToolTip="{Binding MarkupTool.SelectedMarkupAppearanceEditSummary}"/>
-                                <MenuItem Header="Insert Vertex"
-                                          Click="InsertSelectedMarkupVertex_Click"
-                                          IsEnabled="{Binding MarkupTool.HasPathVertexInsertCandidate}"
-                                          ToolTip="{Binding MarkupTool.SelectedMarkupPathInsertSummary}"/>
-                                <MenuItem Header="Delete Active Vertex"
-                                          Click="DeleteSelectedMarkupVertex_Click"
-                                          IsEnabled="{Binding MarkupTool.HasPathVertexDeleteCandidate}"
-                                          ToolTip="{Binding MarkupTool.SelectedMarkupPathDeleteSummary}"/>
-                                <Separator/>
                                 <MenuItem x:Name="MobileThemeIosMenuItem" Header="Theme: iOS" IsCheckable="True" Click="MobileThemeIosMenuItem_Click"/>
                                 <MenuItem x:Name="MobileThemeAndroidMenuItem" Header="Theme: Android" IsCheckable="True" Click="MobileThemeAndroidMenuItem_Click"/>
-                                <MenuItem Header="Desktop View" Click="MobileViewButton_Click"/>
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>
@@ -967,12 +957,14 @@
                                                            Text="2D is the fastest place to trace, place, and review before checking the model in 3D."
                                                            Style="{StaticResource CanvasGuidanceBodyStyle}"/>
                                                 <WrapPanel Margin="0,8,0,0">
-                                                    <Button Content="Import Reference"
+                                                    <Button x:Name="PlanCanvasGuidancePrimaryActionButton"
+                                                        Content="Import Reference"
                                                             Style="{StaticResource CanvasGuidanceActionButtonStyle}"
-                                                            Click="ImportPdf_Click"/>
-                                                    <Button Content="Add Conduit"
+                                                        Click="PlanCanvasGuidanceAction_Click"/>
+                                                    <Button x:Name="PlanCanvasGuidanceSecondaryActionButton"
+                                                        Content="Add Conduit"
                                                             Style="{StaticResource CanvasGuidanceActionButtonStyle}"
-                                                            Click="AddConduit_Click"/>
+                                                        Click="PlanCanvasGuidanceAction_Click"/>
                                                 </WrapPanel>
                                             </StackPanel>
                                         </Border>
@@ -1015,6 +1007,37 @@
                                         Style="{StaticResource InspectorModeButtonStyle}"
                                         Click="ShowInspectorMarkupMode_Click"/>
                             </WrapPanel>
+                                <Border x:Name="InspectorTaskPanel"
+                                    Margin="0,10,0,0"
+                                    Style="{StaticResource InspectorTaskCardStyle}">
+                                <StackPanel>
+                                    <TextBlock x:Name="InspectorTaskTitleTextBlock"
+                                           Text="Start Here"
+                                           FontSize="12"
+                                           FontWeight="Bold"
+                                           Foreground="{StaticResource ShellMutedTextBrush}"
+                                           Margin="0"/>
+                                    <TextBlock x:Name="InspectorTaskSummaryTextBlock"
+                                           Text="Bring in a reference, place the first conduit run, or jump into markup review."
+                                           TextWrapping="Wrap"
+                                           Foreground="{StaticResource ShellPrimaryTextBrush}"
+                                           Margin="0,6,0,0"/>
+                                    <WrapPanel Margin="0,8,0,0">
+                                    <Button x:Name="InspectorPrimaryActionButton"
+                                        Content="Import Reference"
+                                        Style="{StaticResource InspectorTaskActionButtonStyle}"
+                                        Click="InspectorActionButton_Click"/>
+                                    <Button x:Name="InspectorSecondaryActionButton"
+                                        Content="Add Conduit"
+                                        Style="{StaticResource InspectorTaskActionButtonStyle}"
+                                        Click="InspectorActionButton_Click"/>
+                                    <Button x:Name="InspectorTertiaryActionButton"
+                                        Content="Review Markups"
+                                        Style="{StaticResource InspectorTaskActionButtonStyle}"
+                                        Click="InspectorActionButton_Click"/>
+                                    </WrapPanel>
+                                </StackPanel>
+                                </Border>
                         </StackPanel>
                     </Border>
 

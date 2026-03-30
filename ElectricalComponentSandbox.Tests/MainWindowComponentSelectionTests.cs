@@ -494,6 +494,33 @@ public class MainWindowComponentSelectionTests
     }
 
     [Fact]
+    public void TopMenu_UsesConsolidatedWorkflowGroups()
+    {
+        RunWithSelectedComponentsWindow((window, _, _) =>
+        {
+            var topMenu = FindRequired<Menu>(window, "TopMenu");
+            var topLevelHeaders = topMenu.Items.OfType<MenuItem>().Select(item => item.Header?.ToString()).ToArray();
+
+            Assert.Equal(new[] { "File", "Edit", "View", "Tools", "Electrical", "References", "Markup" }, topLevelHeaders);
+
+            var fileMenu = topMenu.Items.OfType<MenuItem>().First(item => string.Equals(item.Header?.ToString(), "File", StringComparison.Ordinal));
+            var editMenu = topMenu.Items.OfType<MenuItem>().First(item => string.Equals(item.Header?.ToString(), "Edit", StringComparison.Ordinal));
+            var toolsMenu = topMenu.Items.OfType<MenuItem>().First(item => string.Equals(item.Header?.ToString(), "Tools", StringComparison.Ordinal));
+            var markupMenu = topMenu.Items.OfType<MenuItem>().First(item => string.Equals(item.Header?.ToString(), "Markup", StringComparison.Ordinal));
+
+            Assert.Contains(fileMenu.Items.OfType<MenuItem>(), item => string.Equals(item.Header?.ToString(), "Import", StringComparison.Ordinal));
+            Assert.Contains(fileMenu.Items.OfType<MenuItem>(), item => string.Equals(item.Header?.ToString(), "Export", StringComparison.Ordinal));
+            Assert.Contains(editMenu.Items.OfType<MenuItem>(), item => string.Equals(item.Header?.ToString(), "Clipboard & Delete", StringComparison.Ordinal));
+            Assert.Contains(editMenu.Items.OfType<MenuItem>(), item => string.Equals(item.Header?.ToString(), "Markup Edit", StringComparison.Ordinal));
+            Assert.Contains(toolsMenu.Items.OfType<MenuItem>(), item => string.Equals(item.Header?.ToString(), "Add Parts", StringComparison.Ordinal));
+            Assert.Contains(toolsMenu.Items.OfType<MenuItem>(), item => string.Equals(item.Header?.ToString(), "Route & Sketch", StringComparison.Ordinal));
+            Assert.Contains(markupMenu.Items.OfType<MenuItem>(), item => string.Equals(item.Header?.ToString(), "Add Annotation", StringComparison.Ordinal));
+            Assert.Contains(markupMenu.Items.OfType<MenuItem>(), item => string.Equals(item.Header?.ToString(), "Review Actions", StringComparison.Ordinal));
+            return 0;
+        });
+    }
+
+    [Fact]
     public void UpdateContextualInspectorForTesting_WithComponentSelection_ShowsComponentInspectorMode()
     {
         RunWithSelectedComponentsWindow((window, viewModel, selected) =>
@@ -511,6 +538,47 @@ public class MainWindowComponentSelectionTests
             Assert.Contains("Editing 2 selected components", summaryText.Text);
             Assert.Contains("Component Details", ((TabItem)rightTabs.SelectedItem!).Header?.ToString());
             Assert.Contains("dimensions", hintText.Text, StringComparison.OrdinalIgnoreCase);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdateContextualInspectorForTesting_WithComponentSelection_ShowsTaskActions()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.SetSelectedComponents(selected, selected[0]);
+
+            window.UpdateContextualInspectorForTesting();
+
+            var taskTitle = FindRequired<TextBlock>(window, "InspectorTaskTitleTextBlock");
+            var primaryButton = FindRequired<Button>(window, "InspectorPrimaryActionButton");
+            var secondaryButton = FindRequired<Button>(window, "InspectorSecondaryActionButton");
+            var tertiaryButton = FindRequired<Button>(window, "InspectorTertiaryActionButton");
+
+            Assert.Equal("Current Selection Action", taskTitle.Text);
+            Assert.Equal("Apply Shared Changes", primaryButton.Content?.ToString());
+            Assert.Equal("Zoom Selection", secondaryButton.Content?.ToString());
+            Assert.Equal("Duplicate", tertiaryButton.Content?.ToString());
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void InspectorTaskActionButton_WithComponentSelection_DuplicateActionDuplicatesSelection()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.SetSelectedComponents(selected, selected[0]);
+            window.UpdateContextualInspectorForTesting();
+
+            var duplicateButton = FindRequired<Button>(window, "InspectorTertiaryActionButton");
+            duplicateButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, duplicateButton));
+
+            Assert.Equal(4, viewModel.Components.Count);
+            Assert.Equal(2, viewModel.SelectedComponentIds.Count);
+            Assert.Contains(viewModel.Components, component => component.Name == "Box 1 (Copy)");
+            Assert.Contains(viewModel.Components, component => component.Name == "Box 2 (Copy)");
             return 0;
         });
     }
@@ -556,6 +624,87 @@ public class MainWindowComponentSelectionTests
             Assert.Contains("Reference drawing", planTitle.Text);
             Assert.Contains("underlay", planSummary.Text, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("underlay", viewportSummary.Text, StringComparison.OrdinalIgnoreCase);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdateCanvasGuidanceForTesting_WithSketchLineMode_ShowsToolGuidanceAndPrimaryActionFinishesMode()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.Components.Clear();
+            viewModel.ClearComponentSelection();
+
+            var sketchLineButton = FindRequired<Button>(window, "SketchLineButton");
+            sketchLineButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, sketchLineButton));
+
+            var planCard = FindRequired<Border>(window, "PlanCanvasGuidanceCard");
+            var planTitle = FindRequired<TextBlock>(window, "PlanCanvasGuidanceTitleTextBlock");
+            var primaryActionButton = FindRequired<Button>(window, "PlanCanvasGuidancePrimaryActionButton");
+            var secondaryActionButton = FindRequired<Button>(window, "PlanCanvasGuidanceSecondaryActionButton");
+
+            Assert.Equal(Visibility.Visible, planCard.Visibility);
+            Assert.Equal("Sketch line mode", planTitle.Text);
+            Assert.Equal("Finish Sketch Line", primaryActionButton.Content?.ToString());
+            Assert.Equal("Cancel", secondaryActionButton.Content?.ToString());
+
+            primaryActionButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, primaryActionButton));
+
+            Assert.Equal("Sketch Line", sketchLineButton.Content?.ToString());
+            Assert.Equal("Start the 2D plan", planTitle.Text);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdateMobileTopBarForTesting_InMobileCanvasStartState_ShowsStarterSummaryAndMenu()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.ClearComponentSelection();
+            window.EnableMobileViewForTesting();
+            window.SetMobilePaneForTesting("canvas");
+            window.UpdateContextualInspectorForTesting();
+            window.UpdateCanvasGuidanceForTesting();
+
+            var state = window.GetMobileTopBarStateForTesting();
+            var primaryMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: true);
+
+            Assert.Equal("Plan", state.SectionTitle);
+            Assert.Equal("Start", state.AddLabel);
+            Assert.Contains("Import a reference", state.Summary, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Import Reference", primaryMenuHeaders);
+            Assert.Contains("Add Conduit", primaryMenuHeaders);
+            Assert.Contains("Draw Conduit", primaryMenuHeaders);
+            Assert.Contains("Review Markups", primaryMenuHeaders);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdateMobileTopBarForTesting_WithComponentSelection_ShowsActionMenuAndDuplicateWorks()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            window.EnableMobileViewForTesting();
+            viewModel.SetSelectedComponents(selected, selected[0]);
+            window.UpdateContextualInspectorForTesting();
+
+            var state = window.GetMobileTopBarStateForTesting();
+            var primaryMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: true);
+
+            Assert.Equal("Selection", state.SectionTitle);
+            Assert.Equal("Act", state.AddLabel);
+            Assert.Contains("shared edits", state.Summary, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Apply Shared Changes", primaryMenuHeaders);
+            Assert.Contains("Zoom Selection", primaryMenuHeaders);
+            Assert.Contains("Duplicate", primaryMenuHeaders);
+
+            Assert.True(window.ExecuteMobileMenuItemForTesting(primaryMenu: true, header: "Duplicate"));
+            Assert.Equal(4, viewModel.Components.Count);
+            Assert.Contains(viewModel.Components, component => component.Name == "Box 1 (Copy)");
+            Assert.Contains(viewModel.Components, component => component.Name == "Box 2 (Copy)");
             return 0;
         });
     }

@@ -198,4 +198,114 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Contains("Review & Markups", outcome.SelectedHeader);
         Assert.Contains("threaded replies", outcome.Hint, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void UpdateContextualInspectorForTesting_WithSelectedMarkup_ShowsReviewTaskActionsAndResolveButtonWorks()
+    {
+        RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Status = MarkupStatus.Open,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(20, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Routing conflict"
+                }
+            },
+            (window, _, markup) =>
+            {
+                window.UpdateContextualInspectorForTesting();
+
+                var taskTitle = FindRequired<TextBlock>(window, "InspectorTaskTitleTextBlock");
+                var primaryButton = FindRequired<Button>(window, "InspectorPrimaryActionButton");
+                var secondaryButton = FindRequired<Button>(window, "InspectorSecondaryActionButton");
+                var tertiaryButton = FindRequired<Button>(window, "InspectorTertiaryActionButton");
+
+                Assert.Equal("Current Review Action", taskTitle.Text);
+                Assert.Equal("Add Reply", primaryButton.Content?.ToString());
+                Assert.Equal("Resolve", secondaryButton.Content?.ToString());
+                Assert.Equal("Assign", tertiaryButton.Content?.ToString());
+
+                secondaryButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, secondaryButton));
+
+                Assert.Equal(MarkupStatus.Resolved, markup.Status);
+                return 0;
+            });
+    }
+
+    [Fact]
+    public void UpdateCanvasGuidanceForTesting_WithPendingMarkupVertexInsertion_ShowsCancelGuidanceAndPrimaryActionClearsMode()
+    {
+        RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Status = MarkupStatus.Open,
+                Vertices = { new Point(0, 0), new Point(12, 0), new Point(18, 8) }
+            },
+            (window, _, _) =>
+            {
+                Assert.True(window.BeginSelectedMarkupVertexInsertionForTesting());
+
+                window.UpdateCanvasGuidanceForTesting();
+
+                var planCard = FindRequired<Border>(window, "PlanCanvasGuidanceCard");
+                var planTitle = FindRequired<TextBlock>(window, "PlanCanvasGuidanceTitleTextBlock");
+                var primaryButton = FindRequired<Button>(window, "PlanCanvasGuidancePrimaryActionButton");
+                var secondaryButton = FindRequired<Button>(window, "PlanCanvasGuidanceSecondaryActionButton");
+
+                Assert.Equal(Visibility.Visible, planCard.Visibility);
+                Assert.Equal("Markup vertex insertion", planTitle.Text);
+                Assert.Equal("Cancel Insert", primaryButton.Content?.ToString());
+                Assert.Equal(Visibility.Collapsed, secondaryButton.Visibility);
+
+                primaryButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, primaryButton));
+
+                Assert.False(window.IsPendingMarkupVertexInsertionForTesting);
+                Assert.Equal(Visibility.Collapsed, planCard.Visibility);
+                return 0;
+            });
+    }
+
+    [Fact]
+    public void UpdateMobileTopBarForTesting_WithSelectedMarkup_ShowsReviewMenuAndResolveWorks()
+    {
+        RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Status = MarkupStatus.Open,
+                Vertices = { new Point(0, 0), new Point(12, 0), new Point(18, 8) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Review clash"
+                }
+            },
+            (window, _, markup) =>
+            {
+                window.EnableMobileViewForTesting();
+                window.UpdateContextualInspectorForTesting();
+
+                var state = window.GetMobileTopBarStateForTesting();
+                var primaryMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: true);
+
+                Assert.Equal("Review", state.SectionTitle);
+                Assert.Equal("Review", state.AddLabel);
+                Assert.Contains("resolve", state.Summary, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains("Add Reply", primaryMenuHeaders);
+                Assert.Contains("Resolve", primaryMenuHeaders);
+                Assert.Contains("Assign", primaryMenuHeaders);
+
+                Assert.True(window.ExecuteMobileMenuItemForTesting(primaryMenu: true, header: "Resolve"));
+                Assert.Equal(MarkupStatus.Resolved, markup.Status);
+                return 0;
+            });
+    }
+
+    private static T FindRequired<T>(FrameworkElement root, string name) where T : class
+    {
+        return root.FindName(name) as T
+            ?? throw new Xunit.Sdk.XunitException($"Expected control '{name}' of type {typeof(T).Name}.");
+    }
 }
