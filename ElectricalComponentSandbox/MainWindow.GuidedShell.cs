@@ -1,9 +1,18 @@
-using System.Linq;
+using System;
+using System.Windows;
+using System.Windows.Controls;
 
 namespace ElectricalComponentSandbox;
 
 public partial class MainWindow
 {
+    private const string WorkspaceOnboardingActionImportReference = "import-reference";
+    private const string WorkspaceOnboardingActionOpenProject = "open-project";
+    private const string WorkspaceOnboardingActionAddConduit = "add-conduit";
+    private const string WorkspaceOnboardingActionDrawRoute = "draw-route";
+    private const string WorkspaceOnboardingActionShowPlan = "show-plan";
+    private const string WorkspaceOnboardingActionShowModel = "show-model";
+
     internal void UpdateWorkspaceOverviewForTesting() => UpdateWorkspaceOverview();
 
     private void UpdateWorkspaceOverview()
@@ -25,6 +34,125 @@ public partial class MainWindow
         WorkspaceReviewTextBlock.Text = BuildWorkspaceReviewSummary(markupTool.TotalCount, markupTool.OpenCount, markupTool.FilteredCount);
         WorkspaceGuidanceTextBlock.Text = BuildWorkspaceGuidanceSummary(selectedComponents.Count, markupTool.SelectedMarkup != null);
         WorkspaceHintTextBlock.Text = BuildWorkspaceHintSummary(selectedComponents.Count, markupTool.TotalCount);
+        UpdateWorkspaceOnboarding(selectedComponents.Count, markupTool.SelectedMarkup != null);
+    }
+
+    private void WorkspaceOnboardingAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string actionKey })
+            return;
+
+        switch (actionKey)
+        {
+            case WorkspaceOnboardingActionImportReference:
+                ImportPdf_Click(sender, e);
+                break;
+            case WorkspaceOnboardingActionOpenProject:
+                OpenProject_Click(sender, e);
+                break;
+            case WorkspaceOnboardingActionAddConduit:
+                AddConduit_Click(sender, e);
+                break;
+            case WorkspaceOnboardingActionDrawRoute:
+                DrawConduit_Click(sender, e);
+                break;
+            case WorkspaceOnboardingActionShowPlan:
+                Show2DView_Click(sender, e);
+                break;
+            case WorkspaceOnboardingActionShowModel:
+                Show3DView_Click(sender, e);
+                break;
+        }
+
+        UpdateWorkspaceOverview();
+    }
+
+    private void DismissWorkspaceOnboarding_Click(object sender, RoutedEventArgs e)
+    {
+        _isWorkspaceOnboardingDismissed = true;
+        UpdateWorkspaceOverview();
+    }
+
+    private void UpdateWorkspaceOnboarding(int selectedComponentCount, bool hasSelectedMarkup)
+    {
+        var onboardingCard = FindName("WorkspaceOnboardingCard") as Border;
+        var progressTextBlock = FindName("WorkspaceOnboardingProgressTextBlock") as TextBlock;
+        var titleTextBlock = FindName("WorkspaceOnboardingTitleTextBlock") as TextBlock;
+        var summaryTextBlock = FindName("WorkspaceOnboardingSummaryTextBlock") as TextBlock;
+        var checklistTextBlock = FindName("WorkspaceOnboardingChecklistTextBlock") as TextBlock;
+        var primaryActionButton = FindName("WorkspaceOnboardingPrimaryActionButton") as Button;
+        var secondaryActionButton = FindName("WorkspaceOnboardingSecondaryActionButton") as Button;
+
+        if (onboardingCard == null || progressTextBlock == null || titleTextBlock == null ||
+            summaryTextBlock == null || checklistTextBlock == null || primaryActionButton == null ||
+            secondaryActionButton == null)
+        {
+            return;
+        }
+
+        if (_isWorkspaceOnboardingDismissed)
+        {
+            onboardingCard.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var hasReferenceContext = _viewModel.PdfUnderlay != null || !string.IsNullOrWhiteSpace(_currentFilePath);
+        var hasPlacedLayout = _viewModel.Components.Count > 0;
+        var hasInspectedSelection = selectedComponentCount > 0 || hasSelectedMarkup;
+
+        if (hasReferenceContext && hasPlacedLayout && hasInspectedSelection)
+        {
+            onboardingCard.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        onboardingCard.Visibility = Visibility.Visible;
+        checklistTextBlock.Text = BuildWorkspaceOnboardingChecklist(
+            hasReferenceContext,
+            hasPlacedLayout,
+            hasInspectedSelection);
+
+        if (!hasReferenceContext)
+        {
+            progressTextBlock.Text = "Step 1 of 3";
+            titleTextBlock.Text = "Bring in project context";
+            summaryTextBlock.Text = "Import a reference drawing or open an existing project so the plan starts from real geometry instead of a blank canvas.";
+            SetWorkspaceOnboardingButton(primaryActionButton, "Import Reference", WorkspaceOnboardingActionImportReference);
+            SetWorkspaceOnboardingButton(secondaryActionButton, "Open Project", WorkspaceOnboardingActionOpenProject);
+            return;
+        }
+
+        if (!hasPlacedLayout)
+        {
+            progressTextBlock.Text = "Step 2 of 3";
+            titleTextBlock.Text = "Create the first layout element";
+            summaryTextBlock.Text = "Place a conduit or start a routed run so the workspace has something tangible to edit and review.";
+            SetWorkspaceOnboardingButton(primaryActionButton, "Add Conduit", WorkspaceOnboardingActionAddConduit);
+            SetWorkspaceOnboardingButton(secondaryActionButton, "Draw Route", WorkspaceOnboardingActionDrawRoute);
+            return;
+        }
+
+        progressTextBlock.Text = "Step 3 of 3";
+        titleTextBlock.Text = "Inspect what you placed";
+        summaryTextBlock.Text = "Click a placed part or review note so the inspector can guide the next round of edits, dimensions, or markup work.";
+        SetWorkspaceOnboardingButton(primaryActionButton, "Show 2D Plan", WorkspaceOnboardingActionShowPlan);
+        SetWorkspaceOnboardingButton(secondaryActionButton, "Show 3D View", WorkspaceOnboardingActionShowModel);
+    }
+
+    private static string BuildWorkspaceOnboardingChecklist(bool hasReferenceContext, bool hasPlacedLayout, bool hasInspectedSelection)
+    {
+        return string.Join(Environment.NewLine, new[]
+        {
+            $"Reference: {(hasReferenceContext ? "done" : "next")}",
+            $"Layout: {(hasPlacedLayout ? "done" : hasReferenceContext ? "next" : "later")}",
+            $"Inspect: {(hasInspectedSelection ? "done" : hasPlacedLayout ? "next" : "later")}"
+        });
+    }
+
+    private static void SetWorkspaceOnboardingButton(Button button, string content, string actionKey)
+    {
+        button.Content = content;
+        button.Tag = actionKey;
     }
 
     private string BuildWorkspaceFocusSummary(int selectedComponentCount, bool hasSelectedMarkup)

@@ -494,6 +494,98 @@ public class MainWindowComponentSelectionTests
     }
 
     [Fact]
+    public void UpdateWorkspaceOverviewForTesting_WithoutReferenceOrComponents_ShowsOnboardingStepOne()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.Components.Clear();
+            viewModel.ClearComponentSelection();
+
+            window.UpdateWorkspaceOverviewForTesting();
+
+            var onboardingCard = FindRequired<Border>(window, "WorkspaceOnboardingCard");
+            var progressText = FindRequired<TextBlock>(window, "WorkspaceOnboardingProgressTextBlock");
+            var titleText = FindRequired<TextBlock>(window, "WorkspaceOnboardingTitleTextBlock");
+            var checklistText = FindRequired<TextBlock>(window, "WorkspaceOnboardingChecklistTextBlock");
+            var primaryButton = FindRequired<Button>(window, "WorkspaceOnboardingPrimaryActionButton");
+            var secondaryButton = FindRequired<Button>(window, "WorkspaceOnboardingSecondaryActionButton");
+
+            Assert.Equal(Visibility.Visible, onboardingCard.Visibility);
+            Assert.Equal("Step 1 of 3", progressText.Text);
+            Assert.Equal("Bring in project context", titleText.Text);
+            Assert.Contains("Reference: next", checklistText.Text);
+            Assert.Equal("Import Reference", primaryButton.Content?.ToString());
+            Assert.Equal("Open Project", secondaryButton.Content?.ToString());
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdateWorkspaceOverviewForTesting_WithReferenceAndLayoutButNoSelection_ShowsOnboardingStepThree()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.PdfUnderlay = new PdfUnderlay { FilePath = "plan.pdf", PageNumber = 1 };
+            viewModel.ClearComponentSelection();
+
+            window.UpdateWorkspaceOverviewForTesting();
+
+            var progressText = FindRequired<TextBlock>(window, "WorkspaceOnboardingProgressTextBlock");
+            var titleText = FindRequired<TextBlock>(window, "WorkspaceOnboardingTitleTextBlock");
+            var checklistText = FindRequired<TextBlock>(window, "WorkspaceOnboardingChecklistTextBlock");
+            var primaryButton = FindRequired<Button>(window, "WorkspaceOnboardingPrimaryActionButton");
+            var secondaryButton = FindRequired<Button>(window, "WorkspaceOnboardingSecondaryActionButton");
+
+            Assert.Equal("Step 3 of 3", progressText.Text);
+            Assert.Equal("Inspect what you placed", titleText.Text);
+            Assert.Contains("Reference: done", checklistText.Text);
+            Assert.Contains("Layout: done", checklistText.Text);
+            Assert.Contains("Inspect: next", checklistText.Text);
+            Assert.Equal("Show 2D Plan", primaryButton.Content?.ToString());
+            Assert.Equal("Show 3D View", secondaryButton.Content?.ToString());
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void WorkspaceOnboardingDismissButton_HidesWalkthroughAcrossRefreshes()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.Components.Clear();
+            viewModel.ClearComponentSelection();
+            window.UpdateWorkspaceOverviewForTesting();
+
+            var dismissButton = FindRequired<Button>(window, "WorkspaceOnboardingDismissButton");
+            var onboardingCard = FindRequired<Border>(window, "WorkspaceOnboardingCard");
+            dismissButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, dismissButton));
+
+            Assert.Equal(Visibility.Collapsed, onboardingCard.Visibility);
+
+            window.UpdateWorkspaceOverviewForTesting();
+
+            Assert.Equal(Visibility.Collapsed, onboardingCard.Visibility);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdateWorkspaceOverviewForTesting_WhenCoreStepsAreComplete_HidesOnboarding()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.PdfUnderlay = new PdfUnderlay { FilePath = "plan.pdf", PageNumber = 1 };
+            viewModel.SetSelectedComponents(selected, selected[0]);
+
+            window.UpdateWorkspaceOverviewForTesting();
+
+            var onboardingCard = FindRequired<Border>(window, "WorkspaceOnboardingCard");
+            Assert.Equal(Visibility.Collapsed, onboardingCard.Visibility);
+            return 0;
+        });
+    }
+
+    [Fact]
     public void TopMenu_UsesConsolidatedWorkflowGroups()
     {
         RunWithSelectedComponentsWindow((window, _, _) =>
@@ -669,11 +761,15 @@ public class MainWindowComponentSelectionTests
             window.UpdateCanvasGuidanceForTesting();
 
             var state = window.GetMobileTopBarStateForTesting();
+            var navigation = window.GetMobileNavigationStateForTesting();
             var primaryMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: true);
 
             Assert.Equal("Plan", state.SectionTitle);
             Assert.Equal("Start", state.AddLabel);
             Assert.Contains("Import a reference", state.Summary, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("Draw\nPlan", navigation.CanvasLabel);
+            Assert.Equal("Add\nParts", navigation.LibraryLabel);
+            Assert.Equal("Inspect\nNext", navigation.PropertiesLabel);
             Assert.Contains("Import Reference", primaryMenuHeaders);
             Assert.Contains("Add Conduit", primaryMenuHeaders);
             Assert.Contains("Draw Conduit", primaryMenuHeaders);
@@ -692,11 +788,13 @@ public class MainWindowComponentSelectionTests
             window.UpdateContextualInspectorForTesting();
 
             var state = window.GetMobileTopBarStateForTesting();
+            var navigation = window.GetMobileNavigationStateForTesting();
             var primaryMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: true);
 
             Assert.Equal("Selection", state.SectionTitle);
             Assert.Equal("Act", state.AddLabel);
             Assert.Contains("shared edits", state.Summary, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("Edit\nGroup", navigation.PropertiesLabel);
             Assert.Contains("Apply Shared Changes", primaryMenuHeaders);
             Assert.Contains("Zoom Selection", primaryMenuHeaders);
             Assert.Contains("Duplicate", primaryMenuHeaders);

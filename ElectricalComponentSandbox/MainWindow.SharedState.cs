@@ -117,6 +117,7 @@ public partial class MainWindow
     private DimensionDisplayMode _dimensionDisplayMode = DimensionDisplayMode.FeetInches;
     private int _dimensionInchFractionDenominator = DefaultDimensionInchFractionDenominator;
     private readonly Dictionary<FrameworkElement, int> _canvasToGripIndexMap = new();
+    private bool _isWorkspaceOnboardingDismissed = false;
 
     public MainWindow(MainViewModel viewModel)
     {

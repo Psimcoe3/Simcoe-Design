@@ -143,6 +143,12 @@ public partial class MainWindow
             MobileAddTopButton.Content?.ToString() ?? string.Empty,
             MobileMoreButton.Content?.ToString() ?? string.Empty);
 
+    internal (string CanvasLabel, string LibraryLabel, string PropertiesLabel) GetMobileNavigationStateForTesting()
+        => (
+            MobileCanvasButton.Content?.ToString() ?? string.Empty,
+            MobileLibraryButton.Content?.ToString() ?? string.Empty,
+            MobilePropertiesButton.Content?.ToString() ?? string.Empty);
+
     internal string[] GetMobileMenuHeadersForTesting(bool primaryMenu)
     {
         RefreshMobileContextMenus();
@@ -213,10 +219,6 @@ public partial class MainWindow
         MobileRedoButton.Content = isIOS ? "Redo" : "Redo";
         MobileMoreButton.Content = isIOS ? "More" : "Menu";
 
-        MobileCanvasButton.Content = isIOS ? "Canvas\nPlan" : "Canvas";
-        MobileLibraryButton.Content = isIOS ? "Library\nParts" : "Library";
-        MobilePropertiesButton.Content = isIOS ? "Properties\nEdit" : "Properties";
-
         UpdateMobileNavigationVisuals();
         UpdateWorkspaceOverview();
         UpdateMobileTopBarExperience();
@@ -267,7 +269,7 @@ public partial class MainWindow
         }
 
         UpdateMobileNavigationVisuals();
-            UpdateMobileTopBarExperience();
+    UpdateMobileTopBarExperience();
     }
 
     private void UpdateMobileNavigationVisuals()
@@ -294,11 +296,66 @@ public partial class MainWindow
         if (!_isMobileView || MobileSectionTitleText == null || MobileTaskSummaryText == null || MobileAddTopButton == null || MobileMoreButton == null)
             return;
 
+        UpdateMobileNavigationLabels();
         MobileSectionTitleText.Text = BuildMobileSectionTitle();
         MobileTaskSummaryText.Text = BuildMobileTaskSummary();
         MobileAddTopButton.Content = BuildMobilePrimaryActionLabel();
         MobileMoreButton.Content = _mobileTheme == MobileTheme.IOS ? "More" : "Menu";
         RefreshMobileContextMenus();
+    }
+
+    private void UpdateMobileNavigationLabels()
+    {
+        if (MobileCanvasButton == null || MobileLibraryButton == null || MobilePropertiesButton == null)
+            return;
+
+        MobileCanvasButton.Content = BuildMobileCanvasNavigationLabel();
+        MobileLibraryButton.Content = BuildMobileLibraryNavigationLabel();
+        MobilePropertiesButton.Content = BuildMobilePropertiesNavigationLabel();
+    }
+
+    private string BuildMobileCanvasNavigationLabel()
+    {
+        var isIOS = _mobileTheme == MobileTheme.IOS;
+
+        if (_isDrawingConduit || _isEditingConduitPath || _isSketchLineMode || _isSketchRectangleMode || _isFreehandDrawing)
+            return isIOS ? "Route\nTool" : "Route";
+
+        if (_selectedSketchPrimitive != null)
+            return isIOS ? "Convert\nSketch" : "Convert";
+
+        return isIOS ? "Draw\nPlan" : "Draw";
+    }
+
+    private string BuildMobileLibraryNavigationLabel()
+    {
+        var isIOS = _mobileTheme == MobileTheme.IOS;
+
+        if (_pendingPlacementComponent != null)
+            return isIOS ? "Place\nPart" : "Place";
+
+        return isIOS ? "Add\nParts" : "Parts";
+    }
+
+    private string BuildMobilePropertiesNavigationLabel()
+    {
+        var isIOS = _mobileTheme == MobileTheme.IOS;
+        var selectedMarkup = _viewModel.MarkupTool.SelectedMarkup;
+        var selectedComponentCount = GetSelectedComponents().Count;
+
+        if (_isPendingMarkupVertexInsertion)
+            return isIOS ? "Edit\nMarkup" : "Review";
+
+        if (selectedMarkup != null)
+            return isIOS ? "Review\nIssue" : "Review";
+
+        if (selectedComponentCount > 1)
+            return isIOS ? "Edit\nGroup" : "Edit";
+
+        if (selectedComponentCount == 1)
+            return isIOS ? "Edit\nPart" : "Edit";
+
+        return isIOS ? "Inspect\nNext" : "Inspect";
     }
 
     private string BuildMobileSectionTitle()

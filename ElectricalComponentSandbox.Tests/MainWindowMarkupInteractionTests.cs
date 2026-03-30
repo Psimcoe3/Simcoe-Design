@@ -288,11 +288,13 @@ public partial class MainWindowMarkupInteractionTests
                 window.UpdateContextualInspectorForTesting();
 
                 var state = window.GetMobileTopBarStateForTesting();
+                var navigation = window.GetMobileNavigationStateForTesting();
                 var primaryMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: true);
 
                 Assert.Equal("Review", state.SectionTitle);
                 Assert.Equal("Review", state.AddLabel);
                 Assert.Contains("resolve", state.Summary, StringComparison.OrdinalIgnoreCase);
+                Assert.Equal("Review\nIssue", navigation.PropertiesLabel);
                 Assert.Contains("Add Reply", primaryMenuHeaders);
                 Assert.Contains("Resolve", primaryMenuHeaders);
                 Assert.Contains("Assign", primaryMenuHeaders);

@@ -541,9 +541,9 @@
                 BorderThickness="0,1,0,0"
                 Visibility="Collapsed">
             <UniformGrid Columns="3" Rows="1">
-                <Button x:Name="MobileCanvasButton" Content="Canvas&#10;Plan" Click="MobileCanvasButton_Click" Style="{StaticResource MobileNavButtonStyle}"/>
-                <Button x:Name="MobileLibraryButton" Content="Library&#10;Parts" Click="MobileLibraryButton_Click" Style="{StaticResource MobileNavButtonStyle}"/>
-                <Button x:Name="MobilePropertiesButton" Content="Properties&#10;Edit" Click="MobilePropertiesButton_Click" Style="{StaticResource MobileNavButtonStyle}"/>
+                <Button x:Name="MobileCanvasButton" Content="Draw&#10;Plan" Click="MobileCanvasButton_Click" Style="{StaticResource MobileNavButtonStyle}"/>
+                <Button x:Name="MobileLibraryButton" Content="Add&#10;Parts" Click="MobileLibraryButton_Click" Style="{StaticResource MobileNavButtonStyle}"/>
+                <Button x:Name="MobilePropertiesButton" Content="Inspect&#10;Next" Click="MobilePropertiesButton_Click" Style="{StaticResource MobileNavButtonStyle}"/>
             </UniformGrid>
         </Border>
 
@@ -572,6 +572,54 @@
                                TextWrapping="Wrap"
                                Foreground="{StaticResource ShellMutedTextBrush}"
                                Margin="0,6,0,0"/>
+                    <Border x:Name="WorkspaceOnboardingCard"
+                            Margin="0,12,0,0"
+                            Padding="12"
+                            Background="{StaticResource ShellCardBrush}"
+                            BorderBrush="{StaticResource ShellBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock x:Name="WorkspaceOnboardingProgressTextBlock"
+                                       Text="Step 1 of 3"
+                                       FontSize="11"
+                                       FontWeight="Bold"
+                                       Foreground="{StaticResource ShellMutedTextBrush}"
+                                       Margin="0"/>
+                            <TextBlock x:Name="WorkspaceOnboardingTitleTextBlock"
+                                       Text="Bring in project context"
+                                       FontSize="15"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource ShellPrimaryTextBrush}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,6,0,0"/>
+                            <TextBlock x:Name="WorkspaceOnboardingSummaryTextBlock"
+                                       Text="Import a reference drawing or open an existing project so the plan starts from real geometry instead of a blank canvas."
+                                       TextWrapping="Wrap"
+                                       Foreground="{StaticResource ShellMutedTextBrush}"
+                                       Margin="0,6,0,0"/>
+                            <TextBlock x:Name="WorkspaceOnboardingChecklistTextBlock"
+                                       Text="Reference: next&#10;Layout: later&#10;Inspect: later"
+                                       TextWrapping="Wrap"
+                                       Foreground="{StaticResource ShellPrimaryTextBrush}"
+                                       Margin="0,8,0,0"/>
+                            <WrapPanel Margin="0,10,0,0">
+                                <Button x:Name="WorkspaceOnboardingPrimaryActionButton"
+                                        Content="Import Reference"
+                                        Style="{StaticResource InspectorTaskActionButtonStyle}"
+                                        Click="WorkspaceOnboardingAction_Click"/>
+                                <Button x:Name="WorkspaceOnboardingSecondaryActionButton"
+                                        Content="Open Project"
+                                        Style="{StaticResource InspectorTaskActionButtonStyle}"
+                                        Click="WorkspaceOnboardingAction_Click"/>
+                                <Button x:Name="WorkspaceOnboardingDismissButton"
+                                        Content="Hide Walkthrough"
+                                        Style="{StaticResource InspectorTaskActionButtonStyle}"
+                                        Click="DismissWorkspaceOnboarding_Click"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
                 <Border Grid.Column="1"
                         Margin="0,0,10,0"
