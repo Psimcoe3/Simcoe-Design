@@ -55,6 +55,73 @@ public class ComponentParameters
     public string ReferenceUrl { get; set; } = string.Empty;
     public ComponentParameterBindings Bindings { get; set; } = new();
 
+    public double GetLengthValue(ProjectParameterBindingTarget target)
+    {
+        return target switch
+        {
+            ProjectParameterBindingTarget.Width => Width,
+            ProjectParameterBindingTarget.Height => Height,
+            ProjectParameterBindingTarget.Depth => Depth,
+            ProjectParameterBindingTarget.Elevation => Elevation,
+            _ => throw new InvalidOperationException($"Binding target '{target}' does not store a length value.")
+        };
+    }
+
+    public void SetLengthValue(ProjectParameterBindingTarget target, double value)
+    {
+        switch (target)
+        {
+            case ProjectParameterBindingTarget.Width:
+                Width = value;
+                break;
+            case ProjectParameterBindingTarget.Height:
+                Height = value;
+                break;
+            case ProjectParameterBindingTarget.Depth:
+                Depth = value;
+                break;
+            case ProjectParameterBindingTarget.Elevation:
+                Elevation = value;
+                break;
+            default:
+                throw new InvalidOperationException($"Binding target '{target}' does not store a length value.");
+        }
+    }
+
+    public string GetTextValue(ProjectParameterBindingTarget target)
+    {
+        return target switch
+        {
+            ProjectParameterBindingTarget.Material => Material,
+            ProjectParameterBindingTarget.Manufacturer => Manufacturer,
+            ProjectParameterBindingTarget.PartNumber => PartNumber,
+            ProjectParameterBindingTarget.ReferenceUrl => ReferenceUrl,
+            _ => throw new InvalidOperationException($"Binding target '{target}' does not store text.")
+        };
+    }
+
+    public void SetTextValue(ProjectParameterBindingTarget target, string? value)
+    {
+        var nextValue = value ?? string.Empty;
+        switch (target)
+        {
+            case ProjectParameterBindingTarget.Material:
+                Material = nextValue;
+                break;
+            case ProjectParameterBindingTarget.Manufacturer:
+                Manufacturer = nextValue;
+                break;
+            case ProjectParameterBindingTarget.PartNumber:
+                PartNumber = nextValue;
+                break;
+            case ProjectParameterBindingTarget.ReferenceUrl:
+                ReferenceUrl = nextValue;
+                break;
+            default:
+                throw new InvalidOperationException($"Binding target '{target}' does not store text.");
+        }
+    }
+
     public string? GetBinding(ProjectParameterBindingTarget target)
     {
         return target switch
@@ -63,6 +130,10 @@ public class ComponentParameters
             ProjectParameterBindingTarget.Height => Bindings.HeightParameterId,
             ProjectParameterBindingTarget.Depth => Bindings.DepthParameterId,
             ProjectParameterBindingTarget.Elevation => Bindings.ElevationParameterId,
+            ProjectParameterBindingTarget.Material => Bindings.MaterialParameterId,
+            ProjectParameterBindingTarget.Manufacturer => Bindings.ManufacturerParameterId,
+            ProjectParameterBindingTarget.PartNumber => Bindings.PartNumberParameterId,
+            ProjectParameterBindingTarget.ReferenceUrl => Bindings.ReferenceUrlParameterId,
             _ => null
         };
     }
@@ -83,6 +154,18 @@ public class ComponentParameters
             case ProjectParameterBindingTarget.Elevation:
                 Bindings.ElevationParameterId = parameterId;
                 break;
+            case ProjectParameterBindingTarget.Material:
+                Bindings.MaterialParameterId = parameterId;
+                break;
+            case ProjectParameterBindingTarget.Manufacturer:
+                Bindings.ManufacturerParameterId = parameterId;
+                break;
+            case ProjectParameterBindingTarget.PartNumber:
+                Bindings.PartNumberParameterId = parameterId;
+                break;
+            case ProjectParameterBindingTarget.ReferenceUrl:
+                Bindings.ReferenceUrlParameterId = parameterId;
+                break;
         }
     }
 
@@ -99,6 +182,14 @@ public class ComponentParameters
             Bindings.DepthParameterId = null;
         if (string.Equals(Bindings.ElevationParameterId, parameterId, StringComparison.Ordinal))
             Bindings.ElevationParameterId = null;
+        if (string.Equals(Bindings.MaterialParameterId, parameterId, StringComparison.Ordinal))
+            Bindings.MaterialParameterId = null;
+        if (string.Equals(Bindings.ManufacturerParameterId, parameterId, StringComparison.Ordinal))
+            Bindings.ManufacturerParameterId = null;
+        if (string.Equals(Bindings.PartNumberParameterId, parameterId, StringComparison.Ordinal))
+            Bindings.PartNumberParameterId = null;
+        if (string.Equals(Bindings.ReferenceUrlParameterId, parameterId, StringComparison.Ordinal))
+            Bindings.ReferenceUrlParameterId = null;
     }
 
     // ── Per-object CAD property overrides (null = inherit from layer) ──────────
@@ -119,11 +210,19 @@ public class ComponentParameterBindings
     public string? HeightParameterId { get; set; }
     public string? DepthParameterId { get; set; }
     public string? ElevationParameterId { get; set; }
+    public string? MaterialParameterId { get; set; }
+    public string? ManufacturerParameterId { get; set; }
+    public string? PartNumberParameterId { get; set; }
+    public string? ReferenceUrlParameterId { get; set; }
 
     [JsonIgnore]
     public bool HasAnyBinding =>
         !string.IsNullOrWhiteSpace(WidthParameterId) ||
         !string.IsNullOrWhiteSpace(HeightParameterId) ||
         !string.IsNullOrWhiteSpace(DepthParameterId) ||
-        !string.IsNullOrWhiteSpace(ElevationParameterId);
+        !string.IsNullOrWhiteSpace(ElevationParameterId) ||
+        !string.IsNullOrWhiteSpace(MaterialParameterId) ||
+        !string.IsNullOrWhiteSpace(ManufacturerParameterId) ||
+        !string.IsNullOrWhiteSpace(PartNumberParameterId) ||
+        !string.IsNullOrWhiteSpace(ReferenceUrlParameterId);
 }

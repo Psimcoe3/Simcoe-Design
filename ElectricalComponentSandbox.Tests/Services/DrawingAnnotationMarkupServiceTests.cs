@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Windows;
 using ElectricalComponentSandbox.Markup.Models;
+using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.Services;
 using Xunit;
 
@@ -83,5 +84,26 @@ public class DrawingAnnotationMarkupServiceTests
             Assert.Equal(DrawingAnnotationMarkupService.TitleBlockAnnotationKind, valueMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationKindField]);
             Assert.Equal(DrawingAnnotationMarkupService.TextRoleFieldValue, valueMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationTextRoleField]);
         });
+    }
+
+    [Fact]
+    public void CreateComponentParameterTagMarkup_PopulatesBindingMetadata()
+    {
+        var markup = _sut.CreateComponentParameterTagMarkup(
+            "component-1",
+            ProjectParameterBindingTarget.Material,
+            "Material",
+            "PVC",
+            new Point(40, 55),
+            "parameter-1");
+
+        Assert.Equal(MarkupType.Text, markup.Type);
+        Assert.Equal("Material: PVC", markup.TextContent);
+        Assert.Equal(DrawingAnnotationMarkupService.ComponentParameterTagAnnotationKind, markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationKindField]);
+        Assert.Equal(DrawingAnnotationMarkupService.TextRoleFieldValue, markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationTextRoleField]);
+        Assert.Equal("Material", markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationTextKeyField]);
+        Assert.Equal("component-1", markup.Metadata.CustomFields[DrawingAnnotationMarkupService.ComponentParameterTagComponentIdField]);
+        Assert.Equal(ProjectParameterBindingTarget.Material.ToString(), markup.Metadata.CustomFields[DrawingAnnotationMarkupService.ComponentParameterTagTargetField]);
+        Assert.Equal("parameter-1", markup.Metadata.CustomFields[DrawingAnnotationMarkupService.ComponentParameterTagParameterIdField]);
     }
 }

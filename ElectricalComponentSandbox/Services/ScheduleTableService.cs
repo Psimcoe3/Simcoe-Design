@@ -182,7 +182,8 @@ public class ScheduleTableService
             Columns =
             {
                 new ScheduleColumn { Header = "NAME", Width = 120 },
-                new ScheduleColumn { Header = "VALUE", Width = 70, Alignment = HorizontalAlignment.Right },
+                new ScheduleColumn { Header = "TYPE", Width = 75, Alignment = HorizontalAlignment.Center },
+                new ScheduleColumn { Header = "VALUE", Width = 110, Alignment = HorizontalAlignment.Left },
                 new ScheduleColumn { Header = "FORMULA", Width = 180 },
                 new ScheduleColumn { Header = "BOUND FIELDS", Width = 85, Alignment = HorizontalAlignment.Center },
                 new ScheduleColumn { Header = "USED BY", Width = 110 },
@@ -198,8 +199,11 @@ public class ScheduleTableService
             table.Rows.Add(new[]
             {
                 parameter.Name,
-                parameter.Value.ToString("0.###"),
-                string.IsNullOrWhiteSpace(parameter.Formula) ? "(fixed)" : parameter.Formula,
+                parameter.ValueKind.ToString(),
+                ProjectParameterScheduleSupport.FormatParameterValue(parameter),
+                parameter.SupportsFormula
+                    ? (string.IsNullOrWhiteSpace(parameter.Formula) ? "(fixed)" : parameter.Formula)
+                    : "(n/a)",
                 usage.TargetSummary,
                 ProjectParameterScheduleSupport.FormatUsageSummary(usage),
                 string.IsNullOrWhiteSpace(parameter.FormulaError) ? "OK" : parameter.FormulaError

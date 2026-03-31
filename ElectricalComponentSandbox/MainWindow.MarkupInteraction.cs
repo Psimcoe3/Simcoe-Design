@@ -2045,6 +2045,9 @@ public partial class MainWindow
         annotationKind = annotationKindValue ?? string.Empty;
         textRole = textRoleValue ?? string.Empty;
 
+        if (string.Equals(annotationKind, DrawingAnnotationMarkupService.ComponentParameterTagAnnotationKind, StringComparison.Ordinal))
+            return false;
+
         return textRole is DrawingAnnotationMarkupService.TextRoleTitle or
             DrawingAnnotationMarkupService.TextRoleCell or
             DrawingAnnotationMarkupService.TextRoleFieldValue;

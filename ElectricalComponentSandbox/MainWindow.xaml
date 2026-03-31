@@ -324,6 +324,7 @@
                 <MenuItem Header="Add Annotation">
                     <MenuItem Header="Add Callout..." Click="AddCallout_Click"/>
                     <MenuItem Header="Add Leader Note..." Click="AddLeaderNote_Click"/>
+                    <MenuItem Header="Add Parameter Tag..." Click="AddComponentParameterTag_Click"/>
                     <MenuItem Header="Add Revision Cloud..." Click="AddRevisionCloud_Click"/>
                     <MenuItem Header="Add Stamp..." Click="AddStamp_Click"/>
                 </MenuItem>
@@ -1298,6 +1299,13 @@
                                     <TextBox x:Name="ProjectParameterNameEditorTextBox"
                                          TextChanged="ProjectParameterNameEditorTextBox_TextChanged"
                                          Margin="0,0,0,6"/>
+                                     <TextBlock Text="Type:" Margin="0,0,0,0"/>
+                                     <ComboBox x:Name="ProjectParameterValueKindComboBox"
+                                             Margin="0,0,0,6"
+                                             SelectionChanged="ProjectParameterValueKindComboBox_SelectionChanged">
+                                        <ComboBoxItem Tag="Length" Content="Length"/>
+                                        <ComboBoxItem Tag="Text" Content="Text"/>
+                                     </ComboBox>
                                     <TextBlock Text="Value:" Margin="0,0,0,0"/>
                                     <TextBox x:Name="ProjectParameterValueEditorTextBox"
                                          TextChanged="ProjectParameterValueEditorTextBox_TextChanged"
@@ -1306,7 +1314,7 @@
                                         <TextBox x:Name="ProjectParameterFormulaEditorTextBox"
                                                  Margin="0,0,0,4"
                                                  TextChanged="ProjectParameterFormulaEditorTextBox_TextChanged"/>
-                                        <TextBlock Text="Use [Parameter Name] references with decimal arithmetic, for example [Base Width] * 2 + 0.5."
+                                        <TextBlock Text="Length parameters support [Parameter Name] references with decimal arithmetic, for example [Base Width] * 2 + 0.5. Text parameters store direct values only."
                                                    TextWrapping="Wrap"
                                                    Foreground="Gray"
                                                    FontStyle="Italic"
@@ -1365,6 +1373,10 @@
                                 
                                 <TextBlock Text="Material:"/>
                                 <TextBox x:Name="MaterialTextBox"/>
+                                  <TextBlock Text="Material Parameter:" Margin="0,4,0,0"/>
+                                  <ComboBox x:Name="MaterialParameterBindingComboBox"
+                                      DisplayMemberPath="DisplayName"
+                                      SelectedValuePath="ParameterId"/>
                                 
                                 <TextBlock Text="Elevation:"/>
                                 <TextBox x:Name="ElevationTextBox"/>
@@ -1374,12 +1386,24 @@
 
                                 <TextBlock Text="Manufacturer:"/>
                                 <TextBox x:Name="ManufacturerTextBox"/>
+                                  <TextBlock Text="Manufacturer Parameter:" Margin="0,4,0,0"/>
+                                  <ComboBox x:Name="ManufacturerParameterBindingComboBox"
+                                      DisplayMemberPath="DisplayName"
+                                      SelectedValuePath="ParameterId"/>
 
                                 <TextBlock Text="Part Number:"/>
                                 <TextBox x:Name="PartNumberTextBox"/>
+                                  <TextBlock Text="Part Number Parameter:" Margin="0,4,0,0"/>
+                                  <ComboBox x:Name="PartNumberParameterBindingComboBox"
+                                      DisplayMemberPath="DisplayName"
+                                      SelectedValuePath="ParameterId"/>
 
                                 <TextBlock Text="Reference URL:"/>
                                 <TextBox x:Name="ReferenceUrlTextBox"/>
+                                  <TextBlock Text="Reference URL Parameter:" Margin="0,4,0,0"/>
+                                  <ComboBox x:Name="ReferenceUrlParameterBindingComboBox"
+                                      DisplayMemberPath="DisplayName"
+                                      SelectedValuePath="ParameterId"/>
                                 <Button x:Name="OpenReferenceButton" Content="Open Reference" Click="OpenReference_Click" Margin="0,4,0,0"/>
                                 <TextBlock x:Name="ReferenceRootStatusTextBlock" Foreground="Gray" FontStyle="Italic" Text="Reference root: (auto)"/>
                                 <TextBlock Text="Curated References:"/>

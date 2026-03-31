@@ -37,6 +37,9 @@ public partial class MainWindow
             ProjectParameterSearchTextBox.Text = searchText;
     }
 
+    internal void SetProjectParameterValueKindForTesting(ProjectParameterValueKind valueKind)
+        => SetProjectParameterEditorValueKind(valueKind);
+
     internal IReadOnlyList<string> GetVisibleProjectParameterNamesForTesting()
     {
         if (ProjectParameterListBox == null)
@@ -63,8 +66,15 @@ public partial class MainWindow
         return true;
     }
 
-    internal void SetProjectParameterEditorDraftForTesting(string name, string valueText, string formulaText = "")
+    internal void SetProjectParameterEditorDraftForTesting(
+        string name,
+        string valueText,
+        string formulaText = "",
+        ProjectParameterValueKind? valueKind = null)
     {
+        if (valueKind.HasValue)
+            SetProjectParameterEditorValueKind(valueKind.Value);
+
         if (ProjectParameterNameEditorTextBox != null)
             ProjectParameterNameEditorTextBox.Text = name;
 
@@ -87,7 +97,7 @@ public partial class MainWindow
     internal bool DeleteSelectedProjectParameterForTesting()
         => DeleteSelectedProjectParameter(confirmDelete: false, showFeedbackIfNone: false);
 
-    internal (bool IsVisible, string SaveCaption, bool SaveEnabled, bool DeleteEnabled, string UsageText, string SelectedName, string FormulaText, bool ValueReadOnly, string PreviewText, string ValidationText) GetProjectParameterEditorStateForTesting()
+    internal (bool IsVisible, string SaveCaption, bool SaveEnabled, bool DeleteEnabled, string UsageText, string SelectedName, string FormulaText, bool ValueReadOnly, string PreviewText, string ValidationText, string SelectedValueKind) GetProjectParameterEditorStateForTesting()
     {
         return (
             ProjectParameterEditorPanel?.Visibility == Visibility.Visible,
@@ -99,7 +109,8 @@ public partial class MainWindow
             ProjectParameterFormulaEditorTextBox?.Text ?? string.Empty,
             ProjectParameterValueEditorTextBox?.IsReadOnly == true,
             ProjectParameterPreviewTextBlock?.Text ?? string.Empty,
-            ProjectParameterValidationTextBlock?.Text ?? string.Empty);
+                ProjectParameterValidationTextBlock?.Text ?? string.Empty,
+                GetProjectParameterEditorValueKind().ToString());
     }
 
     private void ManageProjectParameters_Click(object sender, RoutedEventArgs e)
@@ -147,6 +158,29 @@ public partial class MainWindow
     {
         if (_isUpdatingProjectParameterEditor)
             return;
+
+        RefreshProjectParameterEditorDraftFeedback();
+    }
+
+    private void ProjectParameterValueKindComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isUpdatingProjectParameterEditor)
+            return;
+
+        var valueKind = GetProjectParameterEditorValueKind();
+        if (valueKind != ProjectParameterValueKind.Length && ProjectParameterFormulaEditorTextBox != null)
+        {
+            _isUpdatingProjectParameterEditor = true;
+            ProjectParameterFormulaEditorTextBox.Text = string.Empty;
+            _isUpdatingProjectParameterEditor = false;
+        }
+
+        if (string.IsNullOrWhiteSpace(_selectedProjectParameterEditorId) && ProjectParameterValueEditorTextBox != null)
+        {
+            _isUpdatingProjectParameterEditor = true;
+            ProjectParameterValueEditorTextBox.Text = GetSuggestedProjectParameterValueText(valueKind);
+            _isUpdatingProjectParameterEditor = false;
+        }
 
         RefreshProjectParameterEditorDraftFeedback();
     }
@@ -267,38 +301,27 @@ public partial class MainWindow
                 {
                     ParameterId = parameter.Id,
                     Name = parameter.Name,
-                    DisplayName = $"{(parameter.HasFormula ? "fx " : string.Empty)}{parameter.Name}{(string.IsNullOrWhiteSpace(parameter.FormulaError) ? string.Empty : " [invalid]")} = {FormatLengthForInput(parameter.Value)} | {componentSummary} | {bindingSummary}"
+                    DisplayName = $"[{parameter.ValueKind}] {(parameter.HasFormula ? "fx " : string.Empty)}{parameter.Name}{(string.IsNullOrWhiteSpace(parameter.FormulaError) ? string.Empty : " [invalid]")} = {parameter.GetValueText(FormatLengthForInput)} | {componentSummary} | {bindingSummary}"
                 };
             });
     }
 
     private (int BindingCount, int ComponentCount) GetProjectParameterUsage(string parameterId)
     {
-        var bindingCount = 0;
-        var componentCount = 0;
-
-        foreach (var component in _viewModel.Components)
-        {
-            var componentBindingCount = 0;
-            componentBindingCount += string.Equals(component.Parameters.GetBinding(ProjectParameterBindingTarget.Width), parameterId, StringComparison.Ordinal) ? 1 : 0;
-            componentBindingCount += string.Equals(component.Parameters.GetBinding(ProjectParameterBindingTarget.Height), parameterId, StringComparison.Ordinal) ? 1 : 0;
-            componentBindingCount += string.Equals(component.Parameters.GetBinding(ProjectParameterBindingTarget.Depth), parameterId, StringComparison.Ordinal) ? 1 : 0;
-            componentBindingCount += string.Equals(component.Parameters.GetBinding(ProjectParameterBindingTarget.Elevation), parameterId, StringComparison.Ordinal) ? 1 : 0;
-
-            if (componentBindingCount > 0)
-            {
-                bindingCount += componentBindingCount;
-                componentCount++;
-            }
-        }
-
-        return (bindingCount, componentCount);
+        var usageLookup = ProjectParameterScheduleSupport.BuildUsageMap(_viewModel.Components);
+        return usageLookup.TryGetValue(parameterId, out var usage)
+            ? (usage.BindingCount, usage.ComponentCount)
+            : (0, 0);
     }
 
-    private double GetSuggestedProjectParameterValue()
+    private string GetSuggestedProjectParameterValueText(ProjectParameterValueKind valueKind)
     {
         var selectedComponent = _viewModel.SelectedComponent;
-        return selectedComponent?.Parameters.Width ?? 1.0;
+        return valueKind switch
+        {
+            ProjectParameterValueKind.Text => selectedComponent?.Parameters.Material ?? string.Empty,
+            _ => FormatLengthForInput(selectedComponent?.Parameters.Width ?? 1.0)
+        };
     }
 
     private bool HasProjectParameterEditorDraft()
@@ -318,7 +341,8 @@ public partial class MainWindow
         if (ProjectParameterNameEditorTextBox != null)
             ProjectParameterNameEditorTextBox.Text = parameter.Name;
         if (ProjectParameterValueEditorTextBox != null)
-            ProjectParameterValueEditorTextBox.Text = FormatLengthForInput(parameter.Value);
+            ProjectParameterValueEditorTextBox.Text = parameter.GetValueText(FormatLengthForInput);
+        SetProjectParameterEditorValueKind(parameter.ValueKind);
         if (ProjectParameterFormulaEditorTextBox != null)
             ProjectParameterFormulaEditorTextBox.Text = parameter.Formula;
         _isUpdatingProjectParameterEditor = false;
@@ -327,15 +351,17 @@ public partial class MainWindow
         {
             var (bindingCount, componentCount) = GetProjectParameterUsage(parameter.Id);
             var usageSummary = bindingCount == 0
-                ? "Not bound yet. Use the binding pickers above to assign this parameter to component dimensions."
+                ? $"Not bound yet. {BuildCompatibleTargetSummary(parameter.ValueKind)}"
                 : $"Used by {bindingCount} field binding(s) across {componentCount} component(s).";
             var formulaSummary = parameter.HasFormula
                 ? $" Formula: {parameter.Formula}"
-                : " Fixed value parameter.";
+                : parameter.ValueKind == ProjectParameterValueKind.Text
+                    ? " Direct text parameter."
+                    : " Fixed value parameter.";
 
             ProjectParameterUsageTextBlock.Text = string.IsNullOrWhiteSpace(parameter.FormulaError)
                 ? usageSummary + formulaSummary
-                : $"Formula error: {parameter.FormulaError} Current stored value remains {FormatLengthForInput(parameter.Value)}.";
+                : $"Formula error: {parameter.FormulaError} Current stored value remains {parameter.GetValueText(FormatLengthForInput)}.";
         }
 
             RefreshProjectParameterEditorDraftFeedback();
@@ -344,11 +370,13 @@ public partial class MainWindow
     private void LoadNewProjectParameterDraft()
     {
         _selectedProjectParameterEditorId = null;
+        var valueKind = GetProjectParameterEditorValueKind();
         _isUpdatingProjectParameterEditor = true;
+        SetProjectParameterEditorValueKind(valueKind);
         if (ProjectParameterNameEditorTextBox != null)
             ProjectParameterNameEditorTextBox.Text = string.Empty;
         if (ProjectParameterValueEditorTextBox != null)
-            ProjectParameterValueEditorTextBox.Text = FormatLengthForInput(GetSuggestedProjectParameterValue());
+            ProjectParameterValueEditorTextBox.Text = GetSuggestedProjectParameterValueText(valueKind);
         if (ProjectParameterFormulaEditorTextBox != null)
             ProjectParameterFormulaEditorTextBox.Text = string.Empty;
         _isUpdatingProjectParameterEditor = false;
@@ -356,8 +384,8 @@ public partial class MainWindow
         if (ProjectParameterUsageTextBlock != null)
         {
             ProjectParameterUsageTextBlock.Text = _viewModel.ProjectParameters.Count == 0
-                ? "No project parameters exist yet. Create one to reuse the same dimensional value across multiple components."
-                : "Enter a name and value, then add the parameter. Optional formulas use [Parameter Name] references with decimal arithmetic, for example [Base Width] * 2 + 0.5.";
+                ? $"No project parameters exist yet. Create one to reuse the same dimensional or text value across multiple components. {BuildCompatibleTargetSummary(valueKind)}"
+                : $"Enter a name and value, then add the parameter. {BuildCompatibleTargetSummary(valueKind)}";
         }
 
         RefreshProjectParameterEditorDraftFeedback();
@@ -368,7 +396,13 @@ public partial class MainWindow
         if (ProjectParameterValueEditorTextBox == null || ProjectParameterFormulaEditorTextBox == null)
             return;
 
-        var hasFormula = !string.IsNullOrWhiteSpace(ProjectParameterFormulaEditorTextBox.Text);
+        var valueKind = GetProjectParameterEditorValueKind();
+        var supportsFormula = valueKind == ProjectParameterValueKind.Length;
+        var hasFormula = supportsFormula && !string.IsNullOrWhiteSpace(ProjectParameterFormulaEditorTextBox.Text);
+        ProjectParameterFormulaEditorTextBox.IsEnabled = supportsFormula;
+        ProjectParameterFormulaEditorTextBox.ToolTip = supportsFormula
+            ? null
+            : "Text parameters store direct values and do not support formulas.";
         ProjectParameterValueEditorTextBox.IsReadOnly = hasFormula;
         ProjectParameterValueEditorTextBox.ToolTip = hasFormula
             ? "Formula-driven parameters recalculate the value on save. The value box is a computed preview."
@@ -402,26 +436,36 @@ public partial class MainWindow
         var nameText = ProjectParameterNameEditorTextBox.Text;
         var formulaText = ProjectParameterFormulaEditorTextBox.Text;
         var valueText = ProjectParameterValueEditorTextBox.Text;
+        var valueKind = GetProjectParameterEditorValueKind();
 
         string? validationMessage = null;
         var previewText = string.Empty;
 
         if (!string.IsNullOrWhiteSpace(nameText) || !string.IsNullOrWhiteSpace(formulaText) || !string.IsNullOrWhiteSpace(_selectedProjectParameterEditorId))
         {
-            double draftValue;
-            try
+            double draftValue = 0.0;
+            var draftTextValue = valueKind == ProjectParameterValueKind.Text ? valueText : string.Empty;
+            if (valueKind == ProjectParameterValueKind.Length)
             {
-                draftValue = ParseLengthInput(valueText, "project parameter value");
-            }
-            catch (Exception ex)
-            {
-                draftValue = 0.0;
-                validationMessage = ex.Message;
+                try
+                {
+                    draftValue = ParseLengthInput(valueText, "project parameter value");
+                }
+                catch (Exception ex)
+                {
+                    validationMessage = ex.Message;
+                }
             }
 
             if (validationMessage == null)
             {
-                var preview = _viewModel.PreviewProjectParameter(nameText, draftValue, _selectedProjectParameterEditorId, formulaText);
+                var preview = _viewModel.PreviewProjectParameter(
+                    nameText,
+                    draftValue,
+                    _selectedProjectParameterEditorId,
+                    formulaText,
+                    valueKind,
+                    draftTextValue);
                 validationMessage = preview.ErrorMessage;
 
                 if (preview.HasFormula && string.IsNullOrWhiteSpace(validationMessage))
@@ -437,7 +481,9 @@ public partial class MainWindow
                 }
                 else if (!preview.HasFormula && !string.IsNullOrWhiteSpace(nameText) && string.IsNullOrWhiteSpace(validationMessage))
                 {
-                    previewText = $"Direct value: {FormatLengthForInput(preview.Value)}";
+                    previewText = valueKind == ProjectParameterValueKind.Text
+                        ? $"Direct value: {(string.IsNullOrWhiteSpace(preview.TextValue) ? "<empty>" : preview.TextValue)}"
+                        : $"Direct value: {FormatLengthForInput(preview.Value)}";
                 }
             }
         }
@@ -483,18 +529,24 @@ public partial class MainWindow
         if (ProjectParameterNameEditorTextBox == null || ProjectParameterValueEditorTextBox == null)
             throw new InvalidOperationException("Project parameter editor controls are not available.");
 
+        var valueKind = GetProjectParameterEditorValueKind();
+        var numericValue = valueKind == ProjectParameterValueKind.Length
+            ? ParseLengthInput(ProjectParameterValueEditorTextBox.Text, "project parameter value")
+            : 0.0;
         var isNewParameter = string.IsNullOrWhiteSpace(_selectedProjectParameterEditorId);
         var parameter = _viewModel.UpsertProjectParameter(
             ProjectParameterNameEditorTextBox.Text,
-            ParseLengthInput(ProjectParameterValueEditorTextBox.Text, "project parameter value"),
+            numericValue,
             _selectedProjectParameterEditorId,
-            formula: ProjectParameterFormulaEditorTextBox?.Text);
+            formula: ProjectParameterFormulaEditorTextBox?.Text,
+            valueKind: valueKind,
+            textValue: valueKind == ProjectParameterValueKind.Text ? ProjectParameterValueEditorTextBox.Text : null);
 
         _selectedProjectParameterEditorId = parameter.Id;
         EnsureProjectParameterSearchShows(parameter.Name);
         ActionLogService.Instance.Log(LogCategory.Property,
             isNewParameter ? "Project parameter added" : "Project parameter updated",
-            $"Name: {parameter.Name}, Value: {parameter.Value:0.###}");
+            $"Name: {parameter.Name}, Value: {parameter.GetValueText(FormatLengthForInput)}");
         HandleProjectParameterCatalogChanged();
         RefreshProjectParameterEditor(selectFirstIfNeeded: false);
         return parameter;
@@ -547,16 +599,23 @@ public partial class MainWindow
             HeightParameterBindingComboBox == null ||
             DepthParameterBindingComboBox == null ||
             ElevationParameterBindingComboBox == null ||
+            MaterialParameterBindingComboBox == null ||
+            ManufacturerParameterBindingComboBox == null ||
+            PartNumberParameterBindingComboBox == null ||
+            ReferenceUrlParameterBindingComboBox == null ||
             ProjectParameterBindingSummaryTextBlock == null)
         {
             return;
         }
 
-        var options = BuildProjectParameterBindingOptions();
-        ApplyProjectParameterBindingOptions(WidthParameterBindingComboBox, options);
-        ApplyProjectParameterBindingOptions(HeightParameterBindingComboBox, options);
-        ApplyProjectParameterBindingOptions(DepthParameterBindingComboBox, options);
-        ApplyProjectParameterBindingOptions(ElevationParameterBindingComboBox, options);
+        ApplyProjectParameterBindingOptions(WidthParameterBindingComboBox, BuildProjectParameterBindingOptions(ProjectParameterBindingTarget.Width));
+        ApplyProjectParameterBindingOptions(HeightParameterBindingComboBox, BuildProjectParameterBindingOptions(ProjectParameterBindingTarget.Height));
+        ApplyProjectParameterBindingOptions(DepthParameterBindingComboBox, BuildProjectParameterBindingOptions(ProjectParameterBindingTarget.Depth));
+        ApplyProjectParameterBindingOptions(ElevationParameterBindingComboBox, BuildProjectParameterBindingOptions(ProjectParameterBindingTarget.Elevation));
+        ApplyProjectParameterBindingOptions(MaterialParameterBindingComboBox, BuildProjectParameterBindingOptions(ProjectParameterBindingTarget.Material));
+        ApplyProjectParameterBindingOptions(ManufacturerParameterBindingComboBox, BuildProjectParameterBindingOptions(ProjectParameterBindingTarget.Manufacturer));
+        ApplyProjectParameterBindingOptions(PartNumberParameterBindingComboBox, BuildProjectParameterBindingOptions(ProjectParameterBindingTarget.PartNumber));
+        ApplyProjectParameterBindingOptions(ReferenceUrlParameterBindingComboBox, BuildProjectParameterBindingOptions(ProjectParameterBindingTarget.ReferenceUrl));
 
         if (components.Count == 0)
         {
@@ -564,6 +623,10 @@ public partial class MainWindow
             SelectProjectParameterBinding(HeightParameterBindingComboBox, parameterId: null, allowUnset: false);
             SelectProjectParameterBinding(DepthParameterBindingComboBox, parameterId: null, allowUnset: false);
             SelectProjectParameterBinding(ElevationParameterBindingComboBox, parameterId: null, allowUnset: false);
+            SelectProjectParameterBinding(MaterialParameterBindingComboBox, parameterId: null, allowUnset: false);
+            SelectProjectParameterBinding(ManufacturerParameterBindingComboBox, parameterId: null, allowUnset: false);
+            SelectProjectParameterBinding(PartNumberParameterBindingComboBox, parameterId: null, allowUnset: false);
+            SelectProjectParameterBinding(ReferenceUrlParameterBindingComboBox, parameterId: null, allowUnset: false);
             ProjectParameterBindingSummaryTextBlock.Text = BuildProjectParameterBindingSummaryText(components, isMultiSelection: false);
             return;
         }
@@ -575,6 +638,10 @@ public partial class MainWindow
             SelectProjectParameterBinding(HeightParameterBindingComboBox, component.Parameters.GetBinding(ProjectParameterBindingTarget.Height), allowUnset: false);
             SelectProjectParameterBinding(DepthParameterBindingComboBox, component.Parameters.GetBinding(ProjectParameterBindingTarget.Depth), allowUnset: false);
             SelectProjectParameterBinding(ElevationParameterBindingComboBox, component.Parameters.GetBinding(ProjectParameterBindingTarget.Elevation), allowUnset: false);
+            SelectProjectParameterBinding(MaterialParameterBindingComboBox, component.Parameters.GetBinding(ProjectParameterBindingTarget.Material), allowUnset: false);
+            SelectProjectParameterBinding(ManufacturerParameterBindingComboBox, component.Parameters.GetBinding(ProjectParameterBindingTarget.Manufacturer), allowUnset: false);
+            SelectProjectParameterBinding(PartNumberParameterBindingComboBox, component.Parameters.GetBinding(ProjectParameterBindingTarget.PartNumber), allowUnset: false);
+            SelectProjectParameterBinding(ReferenceUrlParameterBindingComboBox, component.Parameters.GetBinding(ProjectParameterBindingTarget.ReferenceUrl), allowUnset: false);
         }
         else
         {
@@ -582,6 +649,10 @@ public partial class MainWindow
             SelectSharedProjectParameterBinding(HeightParameterBindingComboBox, components, ProjectParameterBindingTarget.Height);
             SelectSharedProjectParameterBinding(DepthParameterBindingComboBox, components, ProjectParameterBindingTarget.Depth);
             SelectSharedProjectParameterBinding(ElevationParameterBindingComboBox, components, ProjectParameterBindingTarget.Elevation);
+            SelectSharedProjectParameterBinding(MaterialParameterBindingComboBox, components, ProjectParameterBindingTarget.Material);
+            SelectSharedProjectParameterBinding(ManufacturerParameterBindingComboBox, components, ProjectParameterBindingTarget.Manufacturer);
+            SelectSharedProjectParameterBinding(PartNumberParameterBindingComboBox, components, ProjectParameterBindingTarget.PartNumber);
+            SelectSharedProjectParameterBinding(ReferenceUrlParameterBindingComboBox, components, ProjectParameterBindingTarget.ReferenceUrl);
         }
 
         ProjectParameterBindingSummaryTextBlock.Text = BuildProjectParameterBindingSummaryText(components, isMultiSelection);
@@ -590,7 +661,7 @@ public partial class MainWindow
             RefreshProjectParameterEditor(selectFirstIfNeeded: false);
     }
 
-    private IReadOnlyList<ProjectParameterBindingOption> BuildProjectParameterBindingOptions()
+    private IReadOnlyList<ProjectParameterBindingOption> BuildProjectParameterBindingOptions(ProjectParameterBindingTarget target)
     {
         var options = new List<ProjectParameterBindingOption>
         {
@@ -598,10 +669,11 @@ public partial class MainWindow
         };
 
         options.AddRange(_viewModel.ProjectParameters
+            .Where(parameter => parameter.ValueKind == target.GetValueKind())
             .Select(parameter => new ProjectParameterBindingOption
             {
                 ParameterId = parameter.Id,
-                DisplayName = $"{(parameter.HasFormula ? "fx " : string.Empty)}{parameter.Name}{(string.IsNullOrWhiteSpace(parameter.FormulaError) ? string.Empty : " [invalid]")} ({FormatLengthForInput(parameter.Value)})"
+                DisplayName = $"{(parameter.HasFormula ? "fx " : string.Empty)}{parameter.Name}{(string.IsNullOrWhiteSpace(parameter.FormulaError) ? string.Empty : " [invalid]")} ({parameter.GetValueText(FormatLengthForInput)})"
             }));
 
         return options;
@@ -659,10 +731,10 @@ public partial class MainWindow
     private string BuildProjectParameterBindingSummaryText(IReadOnlyList<ElectricalComponent> components, bool isMultiSelection)
     {
         if (_viewModel.ProjectParameters.Count == 0)
-            return "No project parameters are defined yet. Use Manage Project Parameters to create reusable width, height, depth, or elevation controls.";
+            return "No project parameters are defined yet. Use Manage Project Parameters to create reusable length or text controls for dimensions and metadata fields.";
 
         if (components.Count == 0)
-            return $"{_viewModel.ProjectParameters.Count} project parameter(s) available for component dimensions.";
+            return $"{_viewModel.ProjectParameters.Count} project parameter(s) available for compatible component fields.";
 
         if (!isMultiSelection)
         {
@@ -681,6 +753,10 @@ public partial class MainWindow
         AddSharedBindingDescription(sharedDescriptions, components, ProjectParameterBindingTarget.Height, "Height", ref hasMixedBindings);
         AddSharedBindingDescription(sharedDescriptions, components, ProjectParameterBindingTarget.Depth, "Depth", ref hasMixedBindings);
         AddSharedBindingDescription(sharedDescriptions, components, ProjectParameterBindingTarget.Elevation, "Elevation", ref hasMixedBindings);
+        AddSharedBindingDescription(sharedDescriptions, components, ProjectParameterBindingTarget.Material, "Material", ref hasMixedBindings);
+        AddSharedBindingDescription(sharedDescriptions, components, ProjectParameterBindingTarget.Manufacturer, "Manufacturer", ref hasMixedBindings);
+        AddSharedBindingDescription(sharedDescriptions, components, ProjectParameterBindingTarget.PartNumber, "Part Number", ref hasMixedBindings);
+        AddSharedBindingDescription(sharedDescriptions, components, ProjectParameterBindingTarget.ReferenceUrl, "Reference URL", ref hasMixedBindings);
 
         if (sharedDescriptions.Count == 0 && !hasMixedBindings)
             return $"{_viewModel.ProjectParameters.Count} project parameter(s) available. The current selection is using direct values.";
@@ -712,6 +788,22 @@ public partial class MainWindow
         var elevation = DescribeProjectParameterBinding(component.Parameters.GetBinding(ProjectParameterBindingTarget.Elevation));
         if (elevation != null)
             yield return $"Elevation -> {elevation}";
+
+        var material = DescribeProjectParameterBinding(component.Parameters.GetBinding(ProjectParameterBindingTarget.Material));
+        if (material != null)
+            yield return $"Material -> {material}";
+
+        var manufacturer = DescribeProjectParameterBinding(component.Parameters.GetBinding(ProjectParameterBindingTarget.Manufacturer));
+        if (manufacturer != null)
+            yield return $"Manufacturer -> {manufacturer}";
+
+        var partNumber = DescribeProjectParameterBinding(component.Parameters.GetBinding(ProjectParameterBindingTarget.PartNumber));
+        if (partNumber != null)
+            yield return $"Part Number -> {partNumber}";
+
+        var referenceUrl = DescribeProjectParameterBinding(component.Parameters.GetBinding(ProjectParameterBindingTarget.ReferenceUrl));
+        if (referenceUrl != null)
+            yield return $"Reference URL -> {referenceUrl}";
     }
 
     private void AddSharedBindingDescription(List<string> sharedDescriptions, IReadOnlyList<ElectricalComponent> components, ProjectParameterBindingTarget target, string fieldLabel, ref bool hasMixedBindings)
@@ -750,6 +842,45 @@ public partial class MainWindow
         return false;
     }
 
+    private ProjectParameterValueKind GetProjectParameterEditorValueKind()
+    {
+        if (ProjectParameterValueKindComboBox?.SelectedItem is ComboBoxItem item &&
+            item.Tag is string tag &&
+            Enum.TryParse<ProjectParameterValueKind>(tag, out var valueKind))
+        {
+            return valueKind;
+        }
+
+        return ProjectParameterValueKind.Length;
+    }
+
+    private void SetProjectParameterEditorValueKind(ProjectParameterValueKind valueKind)
+    {
+        if (ProjectParameterValueKindComboBox == null)
+            return;
+
+        foreach (var item in ProjectParameterValueKindComboBox.Items.OfType<ComboBoxItem>())
+        {
+            if (item.Tag is not string tag || !Enum.TryParse<ProjectParameterValueKind>(tag, out var itemKind) || itemKind != valueKind)
+                continue;
+
+            ProjectParameterValueKindComboBox.SelectedItem = item;
+            return;
+        }
+    }
+
+    private static string BuildCompatibleTargetSummary(ProjectParameterValueKind valueKind)
+    {
+        var compatibleTargets = ProjectParameterBindingTargetExtensions.OrderedTargets
+            .Where(target => target.GetValueKind() == valueKind)
+            .Select(target => target.GetDisplayName())
+            .ToList();
+
+        return compatibleTargets.Count == 0
+            ? "No compatible component fields are available yet."
+            : $"Compatible component fields: {string.Join(", ", compatibleTargets)}.";
+    }
+
     private void StageProjectParameterValueChange(
         string parameterId,
         double value,
@@ -757,16 +888,42 @@ public partial class MainWindow
         Dictionary<string, (double Value, string FieldName)> stagedValues,
         ISet<string>? impactedDimensionalParameterIds = null)
     {
+        var parameter = _viewModel.GetProjectParameter(parameterId)
+            ?? throw new InvalidOperationException($"Project parameter '{parameterId}' no longer exists.");
+
+        if (parameter.ValueKind != ProjectParameterValueKind.Length)
+            throw new InvalidOperationException($"Project parameter '{parameter.Name}' is not a length parameter and cannot be bound to {fieldName}.");
+
         if (stagedValues.TryGetValue(parameterId, out var existing) && Math.Abs(existing.Value - value) > 1e-9)
         {
-            var parameter = _viewModel.GetProjectParameter(parameterId);
-            var displayName = parameter?.Name ?? parameterId;
             throw new InvalidOperationException(
-                $"Project parameter '{displayName}' cannot receive conflicting values from {existing.FieldName} and {fieldName} in the same apply action.");
+                $"Project parameter '{parameter.Name}' cannot receive conflicting values from {existing.FieldName} and {fieldName} in the same apply action.");
         }
 
         stagedValues[parameterId] = (value, fieldName);
         impactedDimensionalParameterIds?.Add(parameterId);
+    }
+
+    private void StageProjectParameterTextValueChange(
+        string parameterId,
+        string value,
+        string fieldName,
+        Dictionary<string, (string Value, string FieldName)> stagedValues)
+    {
+        var parameter = _viewModel.GetProjectParameter(parameterId)
+            ?? throw new InvalidOperationException($"Project parameter '{parameterId}' no longer exists.");
+
+        if (parameter.ValueKind != ProjectParameterValueKind.Text)
+            throw new InvalidOperationException($"Project parameter '{parameter.Name}' is not a text parameter and cannot be bound to {fieldName}.");
+
+        if (stagedValues.TryGetValue(parameterId, out var existing) &&
+            !string.Equals(existing.Value, value, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Project parameter '{parameter.Name}' cannot receive conflicting values from {existing.FieldName} and {fieldName} in the same apply action.");
+        }
+
+        stagedValues[parameterId] = (value, fieldName);
     }
 
     private HashSet<string> CommitProjectParameterValueChanges(Dictionary<string, (double Value, string FieldName)> stagedValues)
@@ -777,8 +934,31 @@ public partial class MainWindow
             var parameter = _viewModel.GetProjectParameter(parameterId)
                 ?? throw new InvalidOperationException($"Project parameter '{parameterId}' no longer exists.");
 
+            if (parameter.ValueKind != ProjectParameterValueKind.Length)
+                throw new InvalidOperationException($"Project parameter '{parameter.Name}' is not a length parameter.");
+
             if (Math.Abs(parameter.Value - stagedValue.Value) > 1e-9)
                 parameter.Value = stagedValue.Value;
+
+            changedParameterIds.Add(parameterId);
+        }
+
+        return changedParameterIds;
+    }
+
+    private HashSet<string> CommitProjectParameterTextValueChanges(Dictionary<string, (string Value, string FieldName)> stagedValues)
+    {
+        var changedParameterIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (parameterId, stagedValue) in stagedValues)
+        {
+            var parameter = _viewModel.GetProjectParameter(parameterId)
+                ?? throw new InvalidOperationException($"Project parameter '{parameterId}' no longer exists.");
+
+            if (parameter.ValueKind != ProjectParameterValueKind.Text)
+                throw new InvalidOperationException($"Project parameter '{parameter.Name}' is not a text parameter.");
+
+            if (!string.Equals(parameter.TextValue, stagedValue.Value, StringComparison.Ordinal))
+                parameter.TextValue = stagedValue.Value;
 
             changedParameterIds.Add(parameterId);
         }
@@ -800,20 +980,6 @@ public partial class MainWindow
 
     private static void SetLengthValue(ElectricalComponent component, ProjectParameterBindingTarget target, double value)
     {
-        switch (target)
-        {
-            case ProjectParameterBindingTarget.Width:
-                component.Parameters.Width = value;
-                break;
-            case ProjectParameterBindingTarget.Height:
-                component.Parameters.Height = value;
-                break;
-            case ProjectParameterBindingTarget.Depth:
-                component.Parameters.Depth = value;
-                break;
-            case ProjectParameterBindingTarget.Elevation:
-                component.Parameters.Elevation = value;
-                break;
-        }
+        component.Parameters.SetLengthValue(target, value);
     }
 }

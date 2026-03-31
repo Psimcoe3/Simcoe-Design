@@ -1,13 +1,88 @@
 using System;
+using System.Globalization;
 using System.Linq;
 using System.Windows;
 using ElectricalComponentSandbox.Markup.Models;
+using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.Services;
 
 namespace ElectricalComponentSandbox;
 
 public partial class MainWindow
 {
+    private void AddComponentParameterTag_Click(object sender, RoutedEventArgs e)
+    {
+        var selectedComponents = GetSelectedComponents();
+        if (selectedComponents.Count != 1)
+        {
+            MessageBox.Show("Select exactly one component before adding a parameter tag.", "Add Parameter Tag",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var component = _viewModel.SelectedComponent ?? selectedComponents[0];
+        var parameterLookup = ProjectParameterScheduleSupport.CreateParameterLookup(_viewModel.ProjectParameters);
+        var availableTargets = ProjectParameterBindingTargetExtensions.OrderedTargets
+            .Where(target => !string.IsNullOrWhiteSpace(component.Parameters.GetBinding(target)))
+            .ToList();
+
+        if (availableTargets.Count == 0)
+        {
+            MessageBox.Show("The selected component does not have any project-parameter-backed fields yet. Bind a length or text parameter first, then add the tag.",
+                "Add Parameter Tag", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var options = availableTargets
+            .Select((target, index) =>
+            {
+                var parameterName = DescribeProjectParameterBinding(component.Parameters.GetBinding(target)) ?? "(missing)";
+                var tagText = ProjectParameterScheduleSupport.BuildComponentTagText(component, target, parameterLookup, useFriendlyLengthFormatting: _viewModel.UnitSystemName == "Imperial");
+                return $"{index + 1}. {target.GetDisplayName()} -> {parameterName} [{tagText}]";
+            })
+            .ToArray();
+
+        var selectionInput = PromptInput(
+            "Add Parameter Tag",
+            $"Choose a bound field to tag for '{component.Name}':\n\n{string.Join("\n", options)}\n\nEnter the number:",
+            "1");
+        if (string.IsNullOrWhiteSpace(selectionInput))
+            return;
+
+        if (!int.TryParse(selectionInput, out var selectedIndex) || selectedIndex < 1 || selectedIndex > availableTargets.Count)
+        {
+            MessageBox.Show("Enter one of the listed option numbers.", "Add Parameter Tag",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var targetSelection = availableTargets[selectedIndex - 1];
+        var defaultPoint = string.Format(
+            CultureInfo.InvariantCulture,
+            "{0:0.###}, {1:0.###}",
+            component.Position.X + 1.0,
+            component.Position.Y + 1.0);
+
+        if (!TryPromptForDocumentPoint("Add Parameter Tag", "Tag insertion point (X, Y in document units):", defaultPoint, out var origin))
+            return;
+
+        var parameterId = component.Parameters.GetBinding(targetSelection);
+        var tagTextValue = ProjectParameterScheduleSupport.BuildComponentTagText(component, targetSelection, parameterLookup, useFriendlyLengthFormatting: _viewModel.UnitSystemName == "Imperial");
+        var markup = _drawingAnnotationMarkupService.CreateComponentParameterTagMarkup(
+            component.Id,
+            targetSelection,
+            string.Empty,
+            tagTextValue,
+            origin,
+            parameterId);
+
+        InsertGeneratedMarkups(
+            new[] { markup },
+            "Add parameter tag",
+            "Parameter tag added",
+            $"Component: {component.Name}, Field: {targetSelection.GetDisplayName()}, Parameter: {DescribeProjectParameterBinding(parameterId) ?? parameterId ?? "(direct)"}");
+    }
+
     // ── Callout ───────────────────────────────────────────────────────────────
 
     private void AddCallout_Click(object sender, RoutedEventArgs e)

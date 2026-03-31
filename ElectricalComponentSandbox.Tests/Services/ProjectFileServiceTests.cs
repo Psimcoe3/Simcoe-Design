@@ -285,4 +285,34 @@ public class ProjectFileServiceTests : IDisposable
         Assert.Equal(2, loaded.ProjectParameters.Count);
         Assert.Equal("[Base Width] * 2 + 0.5", loaded.ProjectParameters[1].Formula);
     }
+
+    [Fact]
+    public async Task SaveAndLoad_TextProjectParameterAndBinding_RoundTrips()
+    {
+        var parameter = new ProjectParameterDefinition
+        {
+            Name = "Shared Material",
+            ValueKind = ProjectParameterValueKind.Text,
+            TextValue = "PVC"
+        };
+        var box = new BoxComponent { Name = "Box 1" };
+        box.Parameters.SetBinding(ProjectParameterBindingTarget.Material, parameter.Id);
+        box.Parameters.Material = "PVC";
+
+        var project = new ProjectModel();
+        project.ProjectParameters.Add(parameter);
+        project.Components.Add(box);
+
+        var filePath = Path.Combine(_tempDir, "project-parameter-text.ecproj");
+
+        await _service.SaveProjectAsync(project, filePath);
+        var loaded = await _service.LoadProjectAsync(filePath);
+
+        Assert.NotNull(loaded);
+        Assert.Single(loaded.ProjectParameters);
+        Assert.Equal(ProjectParameterValueKind.Text, loaded.ProjectParameters[0].ValueKind);
+        Assert.Equal("PVC", loaded.ProjectParameters[0].TextValue);
+        Assert.Single(loaded.Components);
+        Assert.Equal(parameter.Id, loaded.Components[0].Parameters.GetBinding(ProjectParameterBindingTarget.Material));
+    }
 }

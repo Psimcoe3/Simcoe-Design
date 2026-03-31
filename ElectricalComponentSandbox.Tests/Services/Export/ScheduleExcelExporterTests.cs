@@ -37,11 +37,14 @@ public class ScheduleExcelExporterTests
             Assert.Contains("W=Shared Width", allComponents.Cell(3, 13).GetString(), StringComparison.OrdinalIgnoreCase);
 
             Assert.Equal("Name", projectParameters.Cell(2, 1).GetString());
+            Assert.Equal("Type", projectParameters.Cell(2, 2).GetString());
             Assert.Equal("Shared Width", projectParameters.Cell(3, 1).GetString());
-            Assert.Equal("2 + 2.25", projectParameters.Cell(3, 3).GetString());
-            Assert.Equal("W", projectParameters.Cell(3, 4).GetString());
-            Assert.Contains("1 comp", projectParameters.Cell(3, 5).GetString(), StringComparison.OrdinalIgnoreCase);
-            Assert.Equal("OK", projectParameters.Cell(3, 6).GetString());
+            Assert.Equal("Length", projectParameters.Cell(3, 2).GetString());
+            Assert.Equal("4.25", projectParameters.Cell(3, 3).GetString());
+            Assert.Equal("2 + 2.25", projectParameters.Cell(3, 4).GetString());
+            Assert.Equal("W", projectParameters.Cell(3, 5).GetString());
+            Assert.Contains("1 comp", projectParameters.Cell(3, 6).GetString(), StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("OK", projectParameters.Cell(3, 7).GetString());
         }
         finally
         {

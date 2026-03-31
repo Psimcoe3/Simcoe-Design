@@ -136,10 +136,12 @@ public class ScheduleTableServiceTests
         Assert.Equal("PROJECT PARAMETERS", table.Title);
         Assert.Single(table.Rows);
         Assert.Equal("Shared Width", table.Rows[0][0]);
-        Assert.Equal("2 + 2.25", table.Rows[0][2]);
-        Assert.Equal("W", table.Rows[0][3]);
-        Assert.Contains("1 comp", table.Rows[0][4]);
-        Assert.Equal("OK", table.Rows[0][5]);
+        Assert.Equal("Length", table.Rows[0][1]);
+        Assert.Equal("4.25", table.Rows[0][2]);
+        Assert.Equal("2 + 2.25", table.Rows[0][3]);
+        Assert.Equal("W", table.Rows[0][4]);
+        Assert.Contains("1 comp", table.Rows[0][5]);
+        Assert.Equal("OK", table.Rows[0][6]);
     }
 
     [Fact]

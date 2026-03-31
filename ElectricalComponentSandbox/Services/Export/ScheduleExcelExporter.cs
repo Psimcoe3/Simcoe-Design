@@ -1,5 +1,6 @@
 using ClosedXML.Excel;
 using ElectricalComponentSandbox.Models;
+using System.Globalization;
 
 namespace ElectricalComponentSandbox.Services.Export;
 
@@ -229,7 +230,7 @@ public class ScheduleExcelExporter
 
         var headers = new[]
         {
-            "Name", "Value (ft)", "Formula", "Bound Fields", "Used By", "Status"
+            "Name", "Type", "Value", "Formula", "Bound Fields", "Used By", "Status"
         };
         WriteHeaderRow(ws, 2, headers);
 
@@ -238,18 +239,21 @@ public class ScheduleExcelExporter
         {
             var usage = ProjectParameterScheduleSupport.GetUsage(parameter, all);
             ws.Cell(row, 1).Value = parameter.Name;
-            ws.Cell(row, 2).Value = parameter.Value;
-            ws.Cell(row, 3).Value = string.IsNullOrWhiteSpace(parameter.Formula) ? "(fixed)" : parameter.Formula;
-            ws.Cell(row, 4).Value = usage.TargetSummary;
-            ws.Cell(row, 5).Value = ProjectParameterScheduleSupport.FormatUsageSummary(usage);
-            ws.Cell(row, 6).Value = string.IsNullOrWhiteSpace(parameter.FormulaError) ? "OK" : parameter.FormulaError;
+            ws.Cell(row, 2).Value = parameter.ValueKind.ToString();
+            ws.Cell(row, 3).Value = ProjectParameterScheduleSupport.FormatParameterValue(parameter);
+            ws.Cell(row, 4).Value = parameter.SupportsFormula
+                ? (string.IsNullOrWhiteSpace(parameter.Formula) ? "(fixed)" : parameter.Formula)
+                : "(n/a)";
+            ws.Cell(row, 5).Value = usage.TargetSummary;
+            ws.Cell(row, 6).Value = ProjectParameterScheduleSupport.FormatUsageSummary(usage);
+            ws.Cell(row, 7).Value = string.IsNullOrWhiteSpace(parameter.FormulaError) ? "OK" : parameter.FormulaError;
 
             ApplyAlternateRowFill(ws, row, headers.Length);
             row++;
         }
 
         FormatSheet(ws, headers.Length);
-        ws.Column(2).Style.NumberFormat.Format = "0.###";
+        ws.Column(3).Style.NumberFormat.Format = "@";
     }
 
     // ── Style helpers ─────────────────────────────────────────────────────────

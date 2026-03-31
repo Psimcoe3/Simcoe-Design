@@ -1,4 +1,5 @@
 using ElectricalComponentSandbox.Models;
+using System.Globalization;
 
 namespace ElectricalComponentSandbox.Services;
 
@@ -19,13 +20,7 @@ internal static class ProjectParameterScheduleSupport
             => new(BindingCount, ComponentCount, BuildTargetSummary(Targets));
     }
 
-    private static readonly ProjectParameterBindingTarget[] OrderedTargets =
-    [
-        ProjectParameterBindingTarget.Width,
-        ProjectParameterBindingTarget.Height,
-        ProjectParameterBindingTarget.Depth,
-        ProjectParameterBindingTarget.Elevation
-    ];
+    private static readonly ProjectParameterBindingTarget[] OrderedTargets = ProjectParameterBindingTargetExtensions.OrderedTargets.ToArray();
 
     public static IReadOnlyDictionary<string, ProjectParameterDefinition> CreateParameterLookup(IEnumerable<ProjectParameterDefinition>? parameters)
     {
@@ -76,6 +71,24 @@ internal static class ProjectParameterScheduleSupport
             .ToList();
 
         return bindings.Count == 0 ? "Direct" : string.Join("; ", bindings);
+    }
+
+    public static string FormatParameterValue(ProjectParameterDefinition parameter, bool useFriendlyLengthFormatting = false)
+    {
+        Func<double, string> formatter = parameter.ValueKind == ProjectParameterValueKind.Length && useFriendlyLengthFormatting
+            ? value => UnitConversionService.FormatFeetInches(value)
+            : static value => value.ToString("0.###", CultureInfo.InvariantCulture);
+        return parameter.GetValueText(formatter);
+    }
+
+    public static string BuildComponentTagText(
+        ElectricalComponent component,
+        ProjectParameterBindingTarget target,
+        IReadOnlyDictionary<string, ProjectParameterDefinition> parameterLookup,
+        bool useFriendlyLengthFormatting = false)
+    {
+        var valueText = ResolveComponentFieldValue(component, target, parameterLookup, useFriendlyLengthFormatting);
+        return $"{target.GetDisplayName()}: {valueText}";
     }
 
     public static ProjectParameterUsageSummary GetUsage(ProjectParameterDefinition parameter, IReadOnlyList<ElectricalComponent> components)
@@ -145,13 +158,30 @@ internal static class ProjectParameterScheduleSupport
 
     private static string GetTargetLabel(ProjectParameterBindingTarget target)
     {
-        return target switch
+        return target.GetShortDisplayName();
+    }
+
+    private static string ResolveComponentFieldValue(
+        ElectricalComponent component,
+        ProjectParameterBindingTarget target,
+        IReadOnlyDictionary<string, ProjectParameterDefinition> parameterLookup,
+        bool useFriendlyLengthFormatting)
+    {
+        var parameterId = component.Parameters.GetBinding(target);
+        if (!string.IsNullOrWhiteSpace(parameterId) &&
+            parameterLookup.TryGetValue(parameterId, out var parameter) &&
+            parameter.ValueKind == target.GetValueKind())
         {
-            ProjectParameterBindingTarget.Width => "W",
-            ProjectParameterBindingTarget.Height => "H",
-            ProjectParameterBindingTarget.Depth => "D",
-            ProjectParameterBindingTarget.Elevation => "E",
-            _ => target.ToString()
+            return FormatParameterValue(parameter, useFriendlyLengthFormatting);
+        }
+
+        return target.GetValueKind() switch
+        {
+            ProjectParameterValueKind.Length => useFriendlyLengthFormatting
+                ? UnitConversionService.FormatFeetInches(component.Parameters.GetLengthValue(target))
+                : component.Parameters.GetLengthValue(target).ToString("0.###", CultureInfo.InvariantCulture),
+            ProjectParameterValueKind.Text => component.Parameters.GetTextValue(target),
+            _ => string.Empty
         };
     }
 }

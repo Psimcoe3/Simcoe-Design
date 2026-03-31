@@ -1,5 +1,6 @@
 using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.Markup.Models;
+using ElectricalComponentSandbox.Services;
 using ElectricalComponentSandbox.ViewModels;
 using System.Windows;
 
@@ -290,6 +291,43 @@ public partial class MainViewModelTests
 
         Assert.False(preview.CanSave);
         Assert.Contains("Unknown parameter", preview.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void UpsertProjectParameter_WithTextValue_UpdatesBoundComponentAndRefreshesParameterTag()
+    {
+        var vm = new MainViewModel();
+        vm.AddComponent(ComponentType.Box);
+        var component = Assert.Single(vm.Components);
+        var parameter = vm.UpsertProjectParameter(
+            "Shared Material",
+            0.0,
+            valueKind: ProjectParameterValueKind.Text,
+            textValue: "PVC");
+
+        component.Parameters.SetBinding(ProjectParameterBindingTarget.Material, parameter.Id);
+        vm.ApplyProjectParameterBindings();
+
+        var tagMarkup = new DrawingAnnotationMarkupService().CreateComponentParameterTagMarkup(
+            component.Id,
+            ProjectParameterBindingTarget.Material,
+            ProjectParameterBindingTarget.Material.GetDisplayName(),
+            component.Parameters.Material,
+            new Point(20, 30),
+            parameter.Id);
+        vm.Markups.Add(tagMarkup);
+
+        vm.UpsertProjectParameter(
+            "Shared Material",
+            0.0,
+            parameter.Id,
+            valueKind: ProjectParameterValueKind.Text,
+            textValue: "Copper");
+
+        Assert.True(vm.TryGetProjectParameterTextValue(parameter.Id, out var updatedValue));
+        Assert.Equal("Copper", updatedValue);
+        Assert.Equal("Copper", component.Parameters.Material);
+        Assert.Equal("Material: Copper", tagMarkup.TextContent);
     }
 
     [Fact]

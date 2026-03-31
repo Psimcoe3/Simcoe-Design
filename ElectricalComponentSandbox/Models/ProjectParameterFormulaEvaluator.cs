@@ -44,6 +44,9 @@ internal static class ProjectParameterFormulaEvaluator
 
             try
             {
+                if (!parameter.SupportsFormula && !string.IsNullOrWhiteSpace(parameter.Formula))
+                    return HandleFailure(parameter, "Text parameters do not support formulas.");
+
                 var value = parameter.HasFormula
                     ? ProjectParameterFormulaParser.Parse(parameter.Formula, ResolveReference)
                     : parameter.Value;

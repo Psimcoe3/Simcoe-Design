@@ -15,10 +15,12 @@ namespace ElectricalComponentSandbox.ViewModels;
 public sealed record ProjectParameterDraftPreview(
     string Name,
     string Formula,
+    ProjectParameterValueKind ValueKind,
     double Value,
+    string TextValue,
     string? ErrorMessage)
 {
-    public bool HasFormula => !string.IsNullOrWhiteSpace(Formula);
+    public bool HasFormula => ValueKind == ProjectParameterValueKind.Length && !string.IsNullOrWhiteSpace(Formula);
     public bool CanSave => string.IsNullOrWhiteSpace(ErrorMessage);
 }
 
@@ -179,9 +181,15 @@ public class MainViewModel : INotifyPropertyChanged
         return ProjectParameters.FirstOrDefault(parameter => string.Equals(parameter.Id, parameterId, StringComparison.Ordinal));
     }
 
-    public ProjectParameterDefinition UpsertProjectParameter(string name, double value, string? parameterId = null, string? formula = null)
+    public ProjectParameterDefinition UpsertProjectParameter(
+        string name,
+        double value,
+        string? parameterId = null,
+        string? formula = null,
+        ProjectParameterValueKind valueKind = ProjectParameterValueKind.Length,
+        string? textValue = null)
     {
-        var preview = BuildProjectParameterPreview(name, value, parameterId, formula, throwOnError: true);
+        var preview = BuildProjectParameterPreview(name, value, parameterId, formula, valueKind, textValue, throwOnError: true);
         var trimmedName = preview.Name;
         var trimmedFormula = preview.Formula;
 
@@ -196,8 +204,10 @@ public class MainViewModel : INotifyPropertyChanged
 
         var previousName = parameter.Name;
         parameter.Name = trimmedName;
+        parameter.ValueKind = preview.ValueKind;
         parameter.Formula = trimmedFormula;
-        parameter.Value = value;
+        parameter.Value = preview.Value;
+        parameter.TextValue = preview.TextValue;
 
         if (!string.IsNullOrWhiteSpace(previousName) &&
             !string.Equals(previousName, trimmedName, StringComparison.OrdinalIgnoreCase))
@@ -206,13 +216,19 @@ public class MainViewModel : INotifyPropertyChanged
         }
 
         RecalculateProjectParameterValues(throwOnError: true);
-        ApplyProjectParameterBindings(BuildProjectParameterValueLookup());
+        ApplyProjectParameterBindings(BuildProjectParameterLookup());
         OnPropertyChanged(nameof(ProjectParameters));
         return parameter;
     }
 
-    public ProjectParameterDraftPreview PreviewProjectParameter(string name, double value, string? parameterId = null, string? formula = null)
-        => BuildProjectParameterPreview(name, value, parameterId, formula, throwOnError: false);
+    public ProjectParameterDraftPreview PreviewProjectParameter(
+        string name,
+        double value,
+        string? parameterId = null,
+        string? formula = null,
+        ProjectParameterValueKind valueKind = ProjectParameterValueKind.Length,
+        string? textValue = null)
+        => BuildProjectParameterPreview(name, value, parameterId, formula, valueKind, textValue, throwOnError: false);
 
     public bool RemoveProjectParameter(string parameterId)
     {
@@ -225,7 +241,7 @@ public class MainViewModel : INotifyPropertyChanged
             component.Parameters.ClearBindingReference(parameterId);
 
         RecalculateProjectParameterValues(throwOnError: false);
-        ApplyProjectParameterBindings(BuildProjectParameterValueLookup());
+        ApplyProjectParameterBindings(BuildProjectParameterLookup());
 
         OnPropertyChanged(nameof(ProjectParameters));
         return true;
@@ -245,7 +261,7 @@ public class MainViewModel : INotifyPropertyChanged
     public bool TryGetProjectParameterValue(string? parameterId, out double value)
     {
         var parameter = GetProjectParameter(parameterId);
-        if (parameter != null)
+        if (parameter is { ValueKind: ProjectParameterValueKind.Length })
         {
             value = parameter.Value;
             return true;
@@ -255,46 +271,63 @@ public class MainViewModel : INotifyPropertyChanged
         return false;
     }
 
+    public bool TryGetProjectParameterTextValue(string? parameterId, out string value)
+    {
+        var parameter = GetProjectParameter(parameterId);
+        if (parameter is { ValueKind: ProjectParameterValueKind.Text })
+        {
+            value = parameter.TextValue;
+            return true;
+        }
+
+        value = string.Empty;
+        return false;
+    }
+
     public void ApplyProjectParameterBindings()
     {
         RecalculateProjectParameterValues(throwOnError: false);
-        ApplyProjectParameterBindings(BuildProjectParameterValueLookup());
+        ApplyProjectParameterBindings(BuildProjectParameterLookup());
     }
 
     public void ApplyProjectParameterBindings(ElectricalComponent component)
     {
         RecalculateProjectParameterValues(throwOnError: false);
-        ApplyProjectParameterBindings(component, BuildProjectParameterValueLookup());
+        var parameterLookup = BuildProjectParameterLookup();
+        ApplyProjectParameterBindings(component, parameterLookup);
+        RefreshComponentParameterTagMarkups(parameterLookup);
     }
 
-    private void ApplyProjectParameterBindings(IReadOnlyDictionary<string, double> parameterLookup)
+    private void ApplyProjectParameterBindings(IReadOnlyDictionary<string, ProjectParameterDefinition> parameterLookup)
     {
         foreach (var component in Components)
             ApplyProjectParameterBindings(component, parameterLookup);
+
+        RefreshComponentParameterTagMarkups(parameterLookup);
     }
 
-    private static void ApplyProjectParameterBindings(ElectricalComponent component, IReadOnlyDictionary<string, double> parameterLookup)
+    private static void ApplyProjectParameterBindings(ElectricalComponent component, IReadOnlyDictionary<string, ProjectParameterDefinition> parameterLookup)
     {
-        if (TryResolveProjectParameterValue(parameterLookup, component.Parameters.GetBinding(ProjectParameterBindingTarget.Width), out var width))
-            component.Parameters.Width = width;
+        foreach (var target in ProjectParameterBindingTargetExtensions.OrderedTargets)
+        {
+            var parameterId = component.Parameters.GetBinding(target);
+            if (string.IsNullOrWhiteSpace(parameterId) ||
+                !parameterLookup.TryGetValue(parameterId, out var parameter) ||
+                parameter.ValueKind != target.GetValueKind())
+            {
+                continue;
+            }
 
-        if (TryResolveProjectParameterValue(parameterLookup, component.Parameters.GetBinding(ProjectParameterBindingTarget.Height), out var height))
-            component.Parameters.Height = height;
-
-        if (TryResolveProjectParameterValue(parameterLookup, component.Parameters.GetBinding(ProjectParameterBindingTarget.Depth), out var depth))
-            component.Parameters.Depth = depth;
-
-        if (TryResolveProjectParameterValue(parameterLookup, component.Parameters.GetBinding(ProjectParameterBindingTarget.Elevation), out var elevation))
-            component.Parameters.Elevation = elevation;
-    }
-
-    private static bool TryResolveProjectParameterValue(IReadOnlyDictionary<string, double> parameterLookup, string? parameterId, out double value)
-    {
-        if (!string.IsNullOrWhiteSpace(parameterId) && parameterLookup.TryGetValue(parameterId, out value))
-            return true;
-
-        value = 0.0;
-        return false;
+            switch (target.GetValueKind())
+            {
+                case ProjectParameterValueKind.Length:
+                    component.Parameters.SetLengthValue(target, parameter.Value);
+                    break;
+                case ProjectParameterValueKind.Text:
+                    component.Parameters.SetTextValue(target, parameter.TextValue);
+                    break;
+            }
+        }
     }
 
     public void RecalculateProjectParameterValues(bool throwOnError)
@@ -307,24 +340,34 @@ public class MainViewModel : INotifyPropertyChanged
             {
                 Id = parameter.Id,
                 Name = parameter.Name,
+                ValueKind = parameter.ValueKind,
                 Value = parameter.Value,
+                TextValue = parameter.TextValue,
                 Formula = parameter.Formula
             })
             .ToList();
     }
 
-    private Dictionary<string, double> BuildProjectParameterValueLookup()
+    private Dictionary<string, ProjectParameterDefinition> BuildProjectParameterLookup()
     {
         return ProjectParameters
             .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Id))
             .GroupBy(parameter => parameter.Id, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.Last().Value, StringComparer.Ordinal);
+            .ToDictionary(group => group.Key, group => group.Last(), StringComparer.Ordinal);
     }
 
-    private ProjectParameterDraftPreview BuildProjectParameterPreview(string name, double value, string? parameterId, string? formula, bool throwOnError)
+    private ProjectParameterDraftPreview BuildProjectParameterPreview(
+        string name,
+        double value,
+        string? parameterId,
+        string? formula,
+        ProjectParameterValueKind valueKind,
+        string? textValue,
+        bool throwOnError)
     {
         var trimmedName = name?.Trim() ?? string.Empty;
         var trimmedFormula = formula?.Trim() ?? string.Empty;
+        var normalizedTextValue = textValue ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(trimmedName))
         {
@@ -332,7 +375,7 @@ public class MainViewModel : INotifyPropertyChanged
             if (throwOnError)
                 throw new ArgumentException(message, nameof(name));
 
-            return new ProjectParameterDraftPreview(trimmedName, trimmedFormula, value, message);
+            return new ProjectParameterDraftPreview(trimmedName, trimmedFormula, valueKind, value, normalizedTextValue, message);
         }
 
         var duplicate = ProjectParameters.FirstOrDefault(parameter =>
@@ -344,7 +387,25 @@ public class MainViewModel : INotifyPropertyChanged
             if (throwOnError)
                 throw new InvalidOperationException(message);
 
-            return new ProjectParameterDraftPreview(trimmedName, trimmedFormula, value, message);
+            return new ProjectParameterDraftPreview(trimmedName, trimmedFormula, valueKind, value, normalizedTextValue, message);
+        }
+
+        if (valueKind != ProjectParameterValueKind.Length && !string.IsNullOrWhiteSpace(trimmedFormula))
+        {
+            const string message = "Text parameters do not support formulas.";
+            if (throwOnError)
+                throw new InvalidOperationException(message);
+
+            return new ProjectParameterDraftPreview(trimmedName, trimmedFormula, valueKind, value, normalizedTextValue, message);
+        }
+
+        var incompatibleBindingMessage = BuildProjectParameterTypeCompatibilityMessage(parameterId, valueKind);
+        if (!string.IsNullOrWhiteSpace(incompatibleBindingMessage))
+        {
+            if (throwOnError)
+                throw new InvalidOperationException(incompatibleBindingMessage);
+
+            return new ProjectParameterDraftPreview(trimmedName, trimmedFormula, valueKind, value, normalizedTextValue, incompatibleBindingMessage);
         }
 
         var previewParameters = CloneProjectParameters();
@@ -359,8 +420,10 @@ public class MainViewModel : INotifyPropertyChanged
         }
 
         previewParameter.Name = trimmedName;
-        previewParameter.Formula = trimmedFormula;
+        previewParameter.ValueKind = valueKind;
+        previewParameter.Formula = valueKind == ProjectParameterValueKind.Length ? trimmedFormula : string.Empty;
         previewParameter.Value = value;
+        previewParameter.TextValue = normalizedTextValue;
 
         if (!string.IsNullOrWhiteSpace(previousName) &&
             !string.Equals(previousName, trimmedName, StringComparison.OrdinalIgnoreCase))
@@ -375,7 +438,32 @@ public class MainViewModel : INotifyPropertyChanged
             ? null
             : $"Formula for '{firstInvalid.Name}' is invalid: {firstInvalid.FormulaError}";
 
-        return new ProjectParameterDraftPreview(trimmedName, trimmedFormula, previewParameter.Value, errorMessage);
+        return new ProjectParameterDraftPreview(
+            trimmedName,
+            previewParameter.Formula,
+            previewParameter.ValueKind,
+            previewParameter.Value,
+            previewParameter.TextValue,
+            errorMessage);
+    }
+
+    private string? BuildProjectParameterTypeCompatibilityMessage(string? parameterId, ProjectParameterValueKind valueKind)
+    {
+        if (string.IsNullOrWhiteSpace(parameterId))
+            return null;
+
+        var incompatibleTargets = Components
+            .SelectMany(component => ProjectParameterBindingTargetExtensions.OrderedTargets
+                .Where(target => string.Equals(component.Parameters.GetBinding(target), parameterId, StringComparison.Ordinal)))
+            .Where(target => target.GetValueKind() != valueKind)
+            .Distinct()
+            .ToList();
+
+        if (incompatibleTargets.Count == 0)
+            return null;
+
+        var targetSummary = string.Join(", ", incompatibleTargets.Select(target => target.GetDisplayName()));
+        return $"This parameter is still bound to incompatible component fields ({targetSummary}). Remove those bindings before changing its type.";
     }
 
     private static void PropagateProjectParameterRename(IEnumerable<ProjectParameterDefinition> parameters, string oldName, string newName, string renamedParameterId)
@@ -1221,7 +1309,8 @@ public class MainViewModel : INotifyPropertyChanged
     {
         ActionLogService.Instance.Log(LogCategory.Edit, "Undo", $"CanUndo: {UndoRedo.CanUndo}");
         UndoRedo.Undo();
-        MarkupTool.RefreshReviewContext();
+        RefreshComponentParameterTagMarkups(BuildProjectParameterLookup());
+        RefreshMarkupReviewContext();
         OnPropertyChanged(nameof(SelectedComponent));
     }
     
@@ -1229,7 +1318,8 @@ public class MainViewModel : INotifyPropertyChanged
     {
         ActionLogService.Instance.Log(LogCategory.Edit, "Redo", $"CanRedo: {UndoRedo.CanRedo}");
         UndoRedo.Redo();
-        MarkupTool.RefreshReviewContext();
+        RefreshComponentParameterTagMarkups(BuildProjectParameterLookup());
+        RefreshMarkupReviewContext();
         OnPropertyChanged(nameof(SelectedComponent));
     }
     
@@ -1365,6 +1455,107 @@ public class MainViewModel : INotifyPropertyChanged
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    public void RefreshComponentParameterTagMarkups()
+        => RefreshComponentParameterTagMarkups(BuildProjectParameterLookup());
+
+    private void RefreshComponentParameterTagMarkups(IReadOnlyDictionary<string, ProjectParameterDefinition> parameterLookup)
+    {
+        var componentsById = Components
+            .Where(component => !string.IsNullOrWhiteSpace(component.Id))
+            .GroupBy(component => component.Id, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Last(), StringComparer.Ordinal);
+
+        var anyChanged = RefreshComponentParameterTagMarkups(Markups, componentsById, parameterLookup, updateShadowTree: true);
+        foreach (var sheet in Sheets)
+        {
+            if (ReferenceEquals(sheet, SelectedSheet))
+                continue;
+
+            anyChanged |= RefreshComponentParameterTagMarkups(sheet.Markups, componentsById, parameterLookup, updateShadowTree: false);
+        }
+
+        if (!anyChanged)
+            return;
+
+        PersistActiveSheetState();
+        RefreshMarkupReviewContext();
+    }
+
+    private bool RefreshComponentParameterTagMarkups(
+        IEnumerable<MarkupRecord> markups,
+        IReadOnlyDictionary<string, ElectricalComponent> componentsById,
+        IReadOnlyDictionary<string, ProjectParameterDefinition> parameterLookup,
+        bool updateShadowTree)
+    {
+        var anyChanged = false;
+        foreach (var markup in markups)
+        {
+            if (!TryRefreshComponentParameterTagMarkup(markup, componentsById, parameterLookup))
+                continue;
+
+            anyChanged = true;
+            if (updateShadowTree)
+                ShadowTree.AddOrUpdate(markup);
+        }
+
+        return anyChanged;
+    }
+
+    private bool TryRefreshComponentParameterTagMarkup(
+        MarkupRecord markup,
+        IReadOnlyDictionary<string, ElectricalComponent> componentsById,
+        IReadOnlyDictionary<string, ProjectParameterDefinition> parameterLookup)
+    {
+        if (!TryGetComponentParameterTagBinding(markup, out var componentId, out var target))
+            return false;
+
+        var label = markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.AnnotationTextKeyField, out var textKey) &&
+                    !string.IsNullOrWhiteSpace(textKey)
+            ? textKey
+            : target.GetDisplayName();
+
+        var nextText = componentsById.TryGetValue(componentId, out var component)
+            ? ProjectParameterScheduleSupport.BuildComponentTagText(component, target, parameterLookup, useFriendlyLengthFormatting: UnitSystemName == "Imperial")
+            : $"{label}: (missing component)";
+
+        if (string.Equals(markup.TextContent, nextText, StringComparison.Ordinal))
+            return false;
+
+        DrawingAnnotationMarkupService.UpdateTextMarkupText(markup, nextText);
+        return true;
+    }
+
+    private static bool TryGetComponentParameterTagBinding(
+        MarkupRecord markup,
+        out string componentId,
+        out ProjectParameterBindingTarget target)
+    {
+        componentId = string.Empty;
+        target = default;
+
+        if (markup.Type != MarkupType.Text)
+            return false;
+
+        if (!markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.AnnotationKindField, out var annotationKind) ||
+            !string.Equals(annotationKind, DrawingAnnotationMarkupService.ComponentParameterTagAnnotationKind, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (!markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.ComponentParameterTagComponentIdField, out var componentIdValue) ||
+            string.IsNullOrWhiteSpace(componentIdValue) ||
+            !markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.ComponentParameterTagTargetField, out var targetText) ||
+            !Enum.TryParse(targetText, out target))
+        {
+            componentId = string.Empty;
+            return false;
+        }
+
+        componentId = componentIdValue;
+
+        return true;
     }
 
     private IReadOnlyList<MarkupRecord> GetProjectReviewMarkups()

@@ -2,6 +2,7 @@ using System.Linq;
 using System.Globalization;
 using System.Windows;
 using ElectricalComponentSandbox.Markup.Models;
+using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.Rendering;
 
 namespace ElectricalComponentSandbox.Services;
@@ -22,12 +23,16 @@ public sealed class DrawingAnnotationMarkupService
     public const string ScheduleTableAnnotationKind = "ScheduleTable";
     public const string SymbolLegendAnnotationKind = "SymbolLegend";
     public const string TitleBlockAnnotationKind = "TitleBlock";
+    public const string ComponentParameterTagAnnotationKind = "ComponentParameterTag";
     public const string TextRoleTitle = "Title";
     public const string TextRoleHeader = "Header";
     public const string TextRoleCell = "Cell";
     public const string TextRoleFieldLabel = "FieldLabel";
     public const string TextRoleFieldValue = "FieldValue";
     public const string TextRoleZoneLabel = "ZoneLabel";
+    public const string ComponentParameterTagComponentIdField = "ComponentParameterTagComponentId";
+    public const string ComponentParameterTagTargetField = "ComponentParameterTagTarget";
+    public const string ComponentParameterTagParameterIdField = "ComponentParameterTagParameterId";
     public const string TextAlignField = "TextAlign";
     public const string BoldField = "Bold";
     public const double PdfPointsPerInch = 72.0;
@@ -387,6 +392,50 @@ public sealed class DrawingAnnotationMarkupService
         }
 
         return markups;
+    }
+
+    public MarkupRecord CreateComponentParameterTagMarkup(
+        string componentId,
+        ProjectParameterBindingTarget target,
+        string label,
+        string valueText,
+        Point origin,
+        string? parameterId = null,
+        string layerId = DefaultLayerId)
+    {
+        var groupId = Guid.NewGuid().ToString("N");
+        var markup = CreateTextMarkup(
+            string.IsNullOrWhiteSpace(label) ? valueText : $"{label}: {valueText}",
+            origin,
+            layerId,
+            groupId,
+            fontSize: 10.5,
+            strokeColor: "#FF111827",
+            subject: "Component Parameter Tag",
+            label: string.IsNullOrWhiteSpace(label) ? target.GetDisplayName() : label,
+            bold: true);
+        SetStructuredTextMetadata(markup, ComponentParameterTagAnnotationKind, TextRoleFieldValue, string.IsNullOrWhiteSpace(label) ? target.GetDisplayName() : label);
+        markup.Metadata.CustomFields[ComponentParameterTagComponentIdField] = componentId;
+        markup.Metadata.CustomFields[ComponentParameterTagTargetField] = target.ToString();
+        if (!string.IsNullOrWhiteSpace(parameterId))
+            markup.Metadata.CustomFields[ComponentParameterTagParameterIdField] = parameterId;
+
+        return markup;
+    }
+
+    public static void UpdateTextMarkupText(MarkupRecord markup, string text)
+    {
+        var anchor = markup.Vertices.Count > 0 ? markup.Vertices[0] : markup.BoundingRect.Location;
+        var align = TextAlign.Left;
+        if (markup.Metadata.CustomFields.TryGetValue(TextAlignField, out var alignValue) &&
+            Enum.TryParse(alignValue, ignoreCase: true, out TextAlign parsedAlign))
+        {
+            align = parsedAlign;
+        }
+
+        markup.TextContent = text;
+        markup.BoundingRect = EstimateTextBounds(anchor, text, markup.Appearance.FontSize, align);
+        markup.Metadata.ModifiedUtc = DateTime.UtcNow;
     }
 
     private static IEnumerable<MarkupRecord> CreateSymbolMarkups(

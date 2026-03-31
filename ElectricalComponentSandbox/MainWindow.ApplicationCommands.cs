@@ -35,6 +35,8 @@ public partial class MainWindow
             ? ApplySingleComponentProperties(component)
             : ApplySharedPropertiesToSelection(selectedComponents);
 
+        _viewModel.RefreshComponentParameterTagMarkups();
+
         UpdateViewport();
         Update2DCanvas();
         UpdatePropertiesPanel();
@@ -88,6 +90,7 @@ public partial class MainWindow
             double.Parse(RotationZTextBox.Text));
 
         var stagedProjectParameterValues = new Dictionary<string, (double Value, string FieldName)>(StringComparer.Ordinal);
+        var stagedProjectParameterTextValues = new Dictionary<string, (string Value, string FieldName)>(StringComparer.Ordinal);
         var impactedCatalogParameterIds = new HashSet<string>(StringComparer.Ordinal);
         var projectParametersTouched = false;
 
@@ -100,13 +103,18 @@ public partial class MainWindow
         ApplySingleLengthField(component, ElevationTextBox, ElevationParameterBindingComboBox, ProjectParameterBindingTarget.Elevation, "Elevation",
             stagedProjectParameterValues, impactedDimensionalParameterIds: null, ref projectParametersTouched);
 
-        component.Parameters.Material = MaterialTextBox.Text;
+        ApplySingleTextField(component, MaterialTextBox, MaterialParameterBindingComboBox, ProjectParameterBindingTarget.Material, "Material",
+            stagedProjectParameterTextValues, ref projectParametersTouched);
         component.Parameters.Color = ColorTextBox.Text;
-        component.Parameters.Manufacturer = ManufacturerTextBox.Text;
-        component.Parameters.PartNumber = PartNumberTextBox.Text;
-        component.Parameters.ReferenceUrl = ReferenceUrlTextBox.Text;
+        ApplySingleTextField(component, ManufacturerTextBox, ManufacturerParameterBindingComboBox, ProjectParameterBindingTarget.Manufacturer, "Manufacturer",
+            stagedProjectParameterTextValues, ref projectParametersTouched);
+        ApplySingleTextField(component, PartNumberTextBox, PartNumberParameterBindingComboBox, ProjectParameterBindingTarget.PartNumber, "Part Number",
+            stagedProjectParameterTextValues, ref projectParametersTouched);
+        ApplySingleTextField(component, ReferenceUrlTextBox, ReferenceUrlParameterBindingComboBox, ProjectParameterBindingTarget.ReferenceUrl, "Reference URL",
+            stagedProjectParameterTextValues, ref projectParametersTouched);
 
         var changedParameterIds = CommitProjectParameterValueChanges(stagedProjectParameterValues);
+        changedParameterIds.UnionWith(CommitProjectParameterTextValueChanges(stagedProjectParameterTextValues));
         if (projectParametersTouched || changedParameterIds.Count > 0)
             _viewModel.ApplyProjectParameterBindings();
 
@@ -131,6 +139,7 @@ public partial class MainWindow
     private bool ApplySharedPropertiesToSelection(IReadOnlyList<ElectricalComponent> components)
     {
         var stagedProjectParameterValues = new Dictionary<string, (double Value, string FieldName)>(StringComparer.Ordinal);
+        var stagedProjectParameterTextValues = new Dictionary<string, (string Value, string FieldName)>(StringComparer.Ordinal);
         var impactedCatalogParameterIds = new HashSet<string>(StringComparer.Ordinal);
         var projectParametersTouched = false;
 
@@ -142,11 +151,15 @@ public partial class MainWindow
             stagedProjectParameterValues, impactedCatalogParameterIds, ref projectParametersTouched);
         var applyElevation = TryApplySharedLengthField(components, ElevationTextBox, ElevationParameterBindingComboBox, ProjectParameterBindingTarget.Elevation, "Elevation",
             stagedProjectParameterValues, impactedDimensionalParameterIds: null, ref projectParametersTouched);
-        var applyMaterial = !string.IsNullOrWhiteSpace(MaterialTextBox.Text);
+        var applyMaterial = TryApplySharedTextField(components, MaterialTextBox, MaterialParameterBindingComboBox, ProjectParameterBindingTarget.Material, "Material",
+            stagedProjectParameterTextValues, ref projectParametersTouched);
         var applyColor = !string.IsNullOrWhiteSpace(ColorTextBox.Text);
-        var applyManufacturer = !string.IsNullOrWhiteSpace(ManufacturerTextBox.Text);
-        var applyPartNumber = !string.IsNullOrWhiteSpace(PartNumberTextBox.Text);
-        var applyReferenceUrl = !string.IsNullOrWhiteSpace(ReferenceUrlTextBox.Text);
+        var applyManufacturer = TryApplySharedTextField(components, ManufacturerTextBox, ManufacturerParameterBindingComboBox, ProjectParameterBindingTarget.Manufacturer, "Manufacturer",
+            stagedProjectParameterTextValues, ref projectParametersTouched);
+        var applyPartNumber = TryApplySharedTextField(components, PartNumberTextBox, PartNumberParameterBindingComboBox, ProjectParameterBindingTarget.PartNumber, "Part Number",
+            stagedProjectParameterTextValues, ref projectParametersTouched);
+        var applyReferenceUrl = TryApplySharedTextField(components, ReferenceUrlTextBox, ReferenceUrlParameterBindingComboBox, ProjectParameterBindingTarget.ReferenceUrl, "Reference URL",
+            stagedProjectParameterTextValues, ref projectParametersTouched);
         var applyLayer = LayerComboBox.SelectedItem is Layer;
 
         if (!applyWidth && !applyHeight && !applyDepth && !applyMaterial && !applyElevation && !applyColor &&
@@ -158,6 +171,7 @@ public partial class MainWindow
         }
 
         var changedParameterIds = CommitProjectParameterValueChanges(stagedProjectParameterValues);
+        changedParameterIds.UnionWith(CommitProjectParameterTextValueChanges(stagedProjectParameterTextValues));
         if (projectParametersTouched || changedParameterIds.Count > 0)
             _viewModel.ApplyProjectParameterBindings();
 
@@ -166,16 +180,8 @@ public partial class MainWindow
 
         foreach (var component in components)
         {
-            if (applyMaterial)
-                component.Parameters.Material = MaterialTextBox.Text;
             if (applyColor)
                 component.Parameters.Color = ColorTextBox.Text;
-            if (applyManufacturer)
-                component.Parameters.Manufacturer = ManufacturerTextBox.Text;
-            if (applyPartNumber)
-                component.Parameters.PartNumber = PartNumberTextBox.Text;
-            if (applyReferenceUrl)
-                component.Parameters.ReferenceUrl = ReferenceUrlTextBox.Text;
             if (layer != null)
                 component.LayerId = layer.Id;
 
@@ -197,6 +203,31 @@ public partial class MainWindow
         }
 
         return catalogDataCleared;
+    }
+
+    private void ApplySingleTextField(
+        ElectricalComponent component,
+        TextBox textBox,
+        ComboBox bindingComboBox,
+        ProjectParameterBindingTarget target,
+        string fieldName,
+        Dictionary<string, (string Value, string FieldName)> stagedProjectParameterValues,
+        ref bool projectParametersTouched)
+    {
+        var value = textBox.Text ?? string.Empty;
+        var selectedParameterId = TryGetExplicitProjectParameterBindingSelection(bindingComboBox, out var bindingId)
+            ? bindingId
+            : null;
+
+        component.Parameters.SetBinding(target, selectedParameterId);
+        if (!string.IsNullOrWhiteSpace(selectedParameterId))
+        {
+            StageProjectParameterTextValueChange(selectedParameterId, value, fieldName, stagedProjectParameterValues);
+            projectParametersTouched = true;
+            return;
+        }
+
+        component.Parameters.SetTextValue(target, value);
     }
 
     private void ApplySingleLengthField(
@@ -269,6 +300,49 @@ public partial class MainWindow
         return hasValueInput || bindingSelectionChangesAny;
     }
 
+    private bool TryApplySharedTextField(
+        IReadOnlyList<ElectricalComponent> components,
+        TextBox textBox,
+        ComboBox bindingComboBox,
+        ProjectParameterBindingTarget target,
+        string fieldName,
+        Dictionary<string, (string Value, string FieldName)> stagedProjectParameterValues,
+        ref bool projectParametersTouched)
+    {
+        var hasValueInput = !string.IsNullOrWhiteSpace(textBox.Text);
+        var hasExplicitBindingSelection = TryGetExplicitProjectParameterBindingSelection(bindingComboBox, out var selectedParameterId);
+        var bindingSelectionChangesAny = hasExplicitBindingSelection && components.Any(component =>
+            !string.Equals(component.Parameters.GetBinding(target), selectedParameterId, StringComparison.Ordinal));
+
+        if (!hasValueInput && !bindingSelectionChangesAny)
+            return false;
+
+        var parsedValue = hasValueInput ? textBox.Text ?? string.Empty : null;
+        foreach (var component in components)
+        {
+            var bindingIdToApply = component.Parameters.GetBinding(target);
+            if (bindingSelectionChangesAny)
+            {
+                bindingIdToApply = selectedParameterId;
+                component.Parameters.SetBinding(target, selectedParameterId);
+            }
+
+            if (!string.IsNullOrWhiteSpace(bindingIdToApply))
+            {
+                if (parsedValue != null)
+                    StageProjectParameterTextValueChange(bindingIdToApply, parsedValue, fieldName, stagedProjectParameterValues);
+
+                projectParametersTouched = true;
+            }
+            else if (parsedValue != null)
+            {
+                component.Parameters.SetTextValue(target, parsedValue);
+            }
+        }
+
+        return hasValueInput || bindingSelectionChangesAny;
+    }
+
     private static bool ClearCatalogMetadataIfDimensionsChanged(ElectricalComponent component)
     {
         var parameters = component.Parameters;
@@ -288,6 +362,9 @@ public partial class MainWindow
             string.IsNullOrWhiteSpace(parameters.ReferenceUrl))
             return false;
 
+        parameters.SetBinding(ProjectParameterBindingTarget.Manufacturer, null);
+        parameters.SetBinding(ProjectParameterBindingTarget.PartNumber, null);
+        parameters.SetBinding(ProjectParameterBindingTarget.ReferenceUrl, null);
         parameters.Manufacturer = string.Empty;
         parameters.PartNumber = string.Empty;
         parameters.ReferenceUrl = string.Empty;

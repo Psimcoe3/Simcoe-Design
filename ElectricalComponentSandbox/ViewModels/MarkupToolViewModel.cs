@@ -413,7 +413,8 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
     public bool HasTextEditableSelection =>
         _selectedMarkup?.Type == MarkupType.Text &&
-        HasStructuredSelection;
+        HasStructuredSelection &&
+        !string.Equals(SelectedMarkupAnnotationKind, DrawingAnnotationMarkupService.ComponentParameterTagAnnotationKind, StringComparison.Ordinal);
 
     public string SelectedMarkupTextEditSummary
     {
@@ -421,6 +422,9 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         {
             if (_selectedMarkup == null)
                 return string.Empty;
+
+            if (string.Equals(SelectedMarkupAnnotationKind, DrawingAnnotationMarkupService.ComponentParameterTagAnnotationKind, StringComparison.Ordinal))
+                return "Component parameter tags stay bound to live component data and are not edited directly";
 
             return HasTextEditableSelection
                 ? "Direct text edit available for structured schedule, legend, and title-block text"
