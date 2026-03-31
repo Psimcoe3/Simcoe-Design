@@ -213,6 +213,61 @@ public partial class MainViewModelTests
     }
 
     [Fact]
+    public void UpsertProjectParameter_WithFormula_ComputesDerivedValueAndBoundComponent()
+    {
+        var vm = new MainViewModel();
+        var baseParameter = vm.UpsertProjectParameter("Base Width", 2.0);
+        var derivedParameter = vm.UpsertProjectParameter("Derived Width", 0.0, formula: "[Base Width] * 2 + 0.5");
+        var component = new BoxComponent();
+        component.Parameters.SetBinding(ProjectParameterBindingTarget.Width, derivedParameter.Id);
+        vm.Components.Add(component);
+
+        vm.ApplyProjectParameterBindings();
+
+        Assert.Equal(baseParameter.Id, vm.GetProjectParameter(baseParameter.Id)?.Id);
+        Assert.Equal(4.5, derivedParameter.Value, 6);
+        Assert.Equal(4.5, component.Parameters.Width, 6);
+    }
+
+    [Fact]
+    public void UpsertProjectParameter_RenamePropagatesFormulaReferences()
+    {
+        var vm = new MainViewModel();
+        var baseParameter = vm.UpsertProjectParameter("Base Width", 2.0);
+        var derivedParameter = vm.UpsertProjectParameter("Derived Width", 0.0, formula: "[Base Width] * 2");
+
+        vm.UpsertProjectParameter("Primary Width", 2.0, baseParameter.Id);
+
+        var updatedBase = vm.GetProjectParameter(baseParameter.Id);
+        var updatedDerived = vm.GetProjectParameter(derivedParameter.Id);
+        Assert.NotNull(updatedBase);
+        Assert.NotNull(updatedDerived);
+        Assert.Equal("Primary Width", updatedBase!.Name);
+        Assert.Equal("[Primary Width] * 2", updatedDerived!.Formula);
+        Assert.Equal(4.0, updatedDerived.Value, 6);
+    }
+
+    [Fact]
+    public void UpsertProjectParameter_CircularFormula_ThrowsAndLeavesExistingValuesUnchanged()
+    {
+        var vm = new MainViewModel();
+        var first = vm.UpsertProjectParameter("Width A", 1.0);
+        var second = vm.UpsertProjectParameter("Width B", 0.0, formula: "[Width A] * 2");
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            vm.UpsertProjectParameter("Width A", 1.0, first.Id, formula: "[Width B] + 1"));
+
+        Assert.Contains("Circular reference", ex.Message, StringComparison.OrdinalIgnoreCase);
+        var updatedFirst = vm.GetProjectParameter(first.Id);
+        var updatedSecond = vm.GetProjectParameter(second.Id);
+        Assert.NotNull(updatedFirst);
+        Assert.NotNull(updatedSecond);
+        Assert.Equal(string.Empty, updatedFirst!.Formula);
+        Assert.Equal("[Width A] * 2", updatedSecond!.Formula);
+        Assert.Equal(2.0, updatedSecond.Value, 6);
+    }
+
+    [Fact]
     public void AddSheet_AndSelectSheet_PreservesSheetScopedState()
     {
         var vm = new MainViewModel();

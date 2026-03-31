@@ -16,144 +16,418 @@ public partial class MainWindow
         public string DisplayName { get; init; } = string.Empty;
     }
 
+    private sealed class ProjectParameterEditorItem
+    {
+        public string ParameterId { get; init; } = string.Empty;
+        public string Name { get; init; } = string.Empty;
+        public string DisplayName { get; init; } = string.Empty;
+    }
+
+    private string? _selectedProjectParameterEditorId;
+    private bool _isUpdatingProjectParameterEditor;
+
+    internal void SetProjectParameterEditorVisibleForTesting(bool isVisible)
+        => SetProjectParameterEditorVisibility(isVisible);
+
+    internal void SetProjectParameterSearchForTesting(string searchText)
+    {
+        if (ProjectParameterSearchTextBox != null)
+            ProjectParameterSearchTextBox.Text = searchText;
+    }
+
+    internal IReadOnlyList<string> GetVisibleProjectParameterNamesForTesting()
+    {
+        if (ProjectParameterListBox == null)
+            return Array.Empty<string>();
+
+        return ProjectParameterListBox.Items
+            .OfType<ProjectParameterEditorItem>()
+            .Select(item => item.Name)
+            .ToList();
+    }
+
+    internal bool SelectProjectParameterForTesting(string parameterName)
+    {
+        if (ProjectParameterListBox == null)
+            return false;
+
+        var item = ProjectParameterListBox.Items
+            .OfType<ProjectParameterEditorItem>()
+            .FirstOrDefault(candidate => string.Equals(candidate.Name, parameterName, StringComparison.OrdinalIgnoreCase));
+        if (item == null)
+            return false;
+
+        ProjectParameterListBox.SelectedItem = item;
+        return true;
+    }
+
+    internal void SetProjectParameterEditorDraftForTesting(string name, string valueText, string formulaText = "")
+    {
+        if (ProjectParameterNameEditorTextBox != null)
+            ProjectParameterNameEditorTextBox.Text = name;
+
+        if (ProjectParameterValueEditorTextBox != null)
+            ProjectParameterValueEditorTextBox.Text = valueText;
+
+        if (ProjectParameterFormulaEditorTextBox != null)
+            ProjectParameterFormulaEditorTextBox.Text = formulaText;
+    }
+
+    internal void BeginNewProjectParameterDraftForTesting()
+        => BeginNewProjectParameterDraft();
+
+    internal bool SaveProjectParameterEditorForTesting()
+    {
+        SaveProjectParameterEditor();
+        return true;
+    }
+
+    internal bool DeleteSelectedProjectParameterForTesting()
+        => DeleteSelectedProjectParameter(confirmDelete: false, showFeedbackIfNone: false);
+
+    internal (bool IsVisible, string SaveCaption, bool DeleteEnabled, string UsageText, string SelectedName, string FormulaText, bool ValueReadOnly) GetProjectParameterEditorStateForTesting()
+    {
+        return (
+            ProjectParameterEditorPanel?.Visibility == Visibility.Visible,
+            ProjectParameterSaveButton?.Content?.ToString() ?? string.Empty,
+            ProjectParameterDeleteButton?.IsEnabled == true,
+            ProjectParameterUsageTextBlock?.Text ?? string.Empty,
+            ProjectParameterNameEditorTextBox?.Text ?? string.Empty,
+            ProjectParameterFormulaEditorTextBox?.Text ?? string.Empty,
+            ProjectParameterValueEditorTextBox?.IsReadOnly == true);
+    }
+
     private void ManageProjectParameters_Click(object sender, RoutedEventArgs e)
+        => SetProjectParameterEditorVisibility(ProjectParameterEditorPanel?.Visibility != Visibility.Visible);
+
+    private void SetProjectParameterEditorVisibility(bool isVisible)
+    {
+        if (ProjectParameterEditorPanel == null || ManageProjectParametersButton == null)
+            return;
+
+        ProjectParameterEditorPanel.Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
+        ManageProjectParametersButton.Content = isVisible
+            ? "Hide Project Parameter Editor"
+            : "Manage Project Parameters...";
+
+        if (isVisible)
+            RefreshProjectParameterEditor(selectFirstIfNeeded: true);
+    }
+
+    private void ProjectParameterSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_isUpdatingProjectParameterEditor)
+            return;
+
+        RefreshProjectParameterEditor(selectFirstIfNeeded: false);
+    }
+
+    private void ProjectParameterFormulaEditorTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_isUpdatingProjectParameterEditor)
+            return;
+
+        UpdateProjectParameterValueInputState();
+    }
+
+    private void ProjectParameterListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isUpdatingProjectParameterEditor)
+            return;
+
+        if (ProjectParameterListBox?.SelectedItem is ProjectParameterEditorItem selectedItem)
+        {
+            LoadProjectParameterEditorSelection(selectedItem.ParameterId);
+        }
+        else if (!HasProjectParameterEditorDraft())
+        {
+            LoadNewProjectParameterDraft();
+        }
+    }
+
+    private void NewProjectParameter_Click(object sender, RoutedEventArgs e)
+        => BeginNewProjectParameterDraft();
+
+    private void SaveProjectParameter_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            var input = PromptInput(
-                "Project Parameters",
-                $"Current project parameters:\n\n{BuildProjectParameterCatalogPrompt()}\n\n" +
-                "1. Add parameter\n" +
-                "2. Update parameter\n" +
-                "3. Delete parameter\n\n" +
-                "Enter an action number:",
-                "1");
-            if (input == null)
-                return;
-
-            switch (input.Trim())
-            {
-                case "1":
-                    AddProjectParameter();
-                    break;
-                case "2":
-                    UpdateProjectParameter();
-                    break;
-                case "3":
-                    DeleteProjectParameter();
-                    break;
-                default:
-                    MessageBox.Show("Enter 1, 2, or 3.", "Project Parameters", MessageBoxButton.OK, MessageBoxImage.Information);
-                    break;
-            }
+            SaveProjectParameterEditor();
         }
         catch (Exception ex)
         {
-            ActionLogService.Instance.LogError(LogCategory.Property, "Project parameter management failed", ex);
-            MessageBox.Show($"Unable to manage project parameters: {ex.Message}", "Project Parameters", MessageBoxButton.OK, MessageBoxImage.Error);
+            ActionLogService.Instance.LogError(LogCategory.Property, "Failed to save project parameter", ex);
+            MessageBox.Show($"Unable to save the project parameter: {ex.Message}", "Project Parameter Editor", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
-    private void AddProjectParameter()
+    private void DeleteProjectParameter_Click(object sender, RoutedEventArgs e)
     {
-        var name = PromptInput("Add Project Parameter", "Parameter name:", $"Parameter {_viewModel.ProjectParameters.Count + 1}");
-        if (string.IsNullOrWhiteSpace(name))
-            return;
-
-        var valueInput = PromptInput(
-            "Add Project Parameter",
-            "Parameter value (feet-inches or decimal feet):",
-            FormatLengthForInput(GetSuggestedProjectParameterValue()));
-        if (valueInput == null)
-            return;
-
-        var value = ParseLengthInput(valueInput, "project parameter value");
-        var parameter = _viewModel.UpsertProjectParameter(name, value);
-        ActionLogService.Instance.Log(LogCategory.Property, "Project parameter added",
-            $"Name: {parameter.Name}, Value: {parameter.Value:0.###}");
-        HandleProjectParameterCatalogChanged();
-    }
-
-    private void UpdateProjectParameter()
-    {
-        var parameter = PromptForProjectParameterSelection("Update Project Parameter", "Select the parameter to update:");
-        if (parameter == null)
-            return;
-
-        var name = PromptInput("Update Project Parameter", "Parameter name:", parameter.Name);
-        if (string.IsNullOrWhiteSpace(name))
-            return;
-
-        var valueInput = PromptInput(
-            "Update Project Parameter",
-            "Parameter value (feet-inches or decimal feet):",
-            FormatLengthForInput(parameter.Value));
-        if (valueInput == null)
-            return;
-
-        var value = ParseLengthInput(valueInput, "project parameter value");
-        _viewModel.UpsertProjectParameter(name, value, parameter.Id);
-        ActionLogService.Instance.Log(LogCategory.Property, "Project parameter updated",
-            $"Name: {name.Trim()}, Value: {value:0.###}");
-        HandleProjectParameterCatalogChanged();
-    }
-
-    private void DeleteProjectParameter()
-    {
-        var parameter = PromptForProjectParameterSelection("Delete Project Parameter", "Select the parameter to delete:");
-        if (parameter == null)
-            return;
-
-        var confirmation = MessageBox.Show(
-            $"Delete project parameter '{parameter.Name}'?\n\nBound components will keep their current numeric values and be unbound.",
-            "Delete Project Parameter",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
-        if (confirmation != MessageBoxResult.Yes)
-            return;
-
-        if (_viewModel.RemoveProjectParameter(parameter.Id))
+        try
         {
-            ActionLogService.Instance.Log(LogCategory.Property, "Project parameter deleted", $"Name: {parameter.Name}");
-            HandleProjectParameterCatalogChanged();
+            DeleteSelectedProjectParameter(confirmDelete: true, showFeedbackIfNone: true);
         }
-    }
-
-    private ProjectParameterDefinition? PromptForProjectParameterSelection(string title, string prompt)
-    {
-        if (_viewModel.ProjectParameters.Count == 0)
+        catch (Exception ex)
         {
-            MessageBox.Show("No project parameters are defined yet.", title, MessageBoxButton.OK, MessageBoxImage.Information);
-            return null;
+            ActionLogService.Instance.LogError(LogCategory.Property, "Failed to delete project parameter", ex);
+            MessageBox.Show($"Unable to delete the project parameter: {ex.Message}", "Project Parameter Editor", MessageBoxButton.OK, MessageBoxImage.Error);
         }
-
-        var list = BuildProjectParameterCatalogPrompt();
-        var input = PromptInput(title, $"{prompt}\n\n{list}\n\nEnter a number or exact name:", "1");
-        if (input == null)
-            return null;
-
-        if (int.TryParse(input.Trim(), out var ordinal) && ordinal >= 1 && ordinal <= _viewModel.ProjectParameters.Count)
-            return _viewModel.ProjectParameters[ordinal - 1];
-
-        return _viewModel.ProjectParameters.FirstOrDefault(parameter =>
-            string.Equals(parameter.Name, input.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
-    private string BuildProjectParameterCatalogPrompt()
-    {
-        if (_viewModel.ProjectParameters.Count == 0)
-            return "(none)";
+    private void CloseProjectParameterEditor_Click(object sender, RoutedEventArgs e)
+        => SetProjectParameterEditorVisibility(isVisible: false);
 
-        return string.Join(
-            "\n",
-            _viewModel.ProjectParameters.Select((parameter, index) =>
-                $"{index + 1}. {parameter.Name} = {FormatLengthForInput(parameter.Value)}"));
+    private void BeginNewProjectParameterDraft()
+    {
+        _selectedProjectParameterEditorId = null;
+        if (ProjectParameterListBox != null)
+        {
+            _isUpdatingProjectParameterEditor = true;
+            ProjectParameterListBox.SelectedItem = null;
+            _isUpdatingProjectParameterEditor = false;
+        }
+
+        LoadNewProjectParameterDraft();
+    }
+
+    private void RefreshProjectParameterEditor(bool selectFirstIfNeeded)
+    {
+        if (ProjectParameterListBox == null)
+            return;
+
+        var items = BuildProjectParameterEditorItems().ToList();
+        var preserveDraft = _selectedProjectParameterEditorId == null && HasProjectParameterEditorDraft();
+        ProjectParameterEditorItem? selectedItem = null;
+        if (!string.IsNullOrWhiteSpace(_selectedProjectParameterEditorId))
+        {
+            selectedItem = items.FirstOrDefault(item => string.Equals(item.ParameterId, _selectedProjectParameterEditorId, StringComparison.Ordinal));
+        }
+
+        if (selectedItem == null && selectFirstIfNeeded && items.Count > 0 && !preserveDraft)
+            selectedItem = items[0];
+
+        _isUpdatingProjectParameterEditor = true;
+        ProjectParameterListBox.ItemsSource = items;
+        ProjectParameterListBox.SelectedItem = selectedItem;
+        _isUpdatingProjectParameterEditor = false;
+
+        if (selectedItem != null)
+        {
+            LoadProjectParameterEditorSelection(selectedItem.ParameterId);
+            return;
+        }
+
+        _selectedProjectParameterEditorId = null;
+        if (!preserveDraft)
+            LoadNewProjectParameterDraft();
+        else
+            UpdateProjectParameterEditorCommandState();
+    }
+
+    private IEnumerable<ProjectParameterEditorItem> BuildProjectParameterEditorItems()
+    {
+        var searchText = ProjectParameterSearchTextBox?.Text?.Trim() ?? string.Empty;
+
+        return _viewModel.ProjectParameters
+            .Where(parameter => string.IsNullOrWhiteSpace(searchText) ||
+                                parameter.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(parameter => parameter.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(parameter =>
+            {
+                var (bindingCount, componentCount) = GetProjectParameterUsage(parameter.Id);
+                var componentSummary = componentCount == 1 ? "1 comp" : $"{componentCount} comps";
+                var bindingSummary = bindingCount == 1 ? "1 binding" : $"{bindingCount} bindings";
+                return new ProjectParameterEditorItem
+                {
+                    ParameterId = parameter.Id,
+                    Name = parameter.Name,
+                    DisplayName = $"{(parameter.HasFormula ? "fx " : string.Empty)}{parameter.Name} = {FormatLengthForInput(parameter.Value)} | {componentSummary} | {bindingSummary}"
+                };
+            });
+    }
+
+    private (int BindingCount, int ComponentCount) GetProjectParameterUsage(string parameterId)
+    {
+        var bindingCount = 0;
+        var componentCount = 0;
+
+        foreach (var component in _viewModel.Components)
+        {
+            var componentBindingCount = 0;
+            componentBindingCount += string.Equals(component.Parameters.GetBinding(ProjectParameterBindingTarget.Width), parameterId, StringComparison.Ordinal) ? 1 : 0;
+            componentBindingCount += string.Equals(component.Parameters.GetBinding(ProjectParameterBindingTarget.Height), parameterId, StringComparison.Ordinal) ? 1 : 0;
+            componentBindingCount += string.Equals(component.Parameters.GetBinding(ProjectParameterBindingTarget.Depth), parameterId, StringComparison.Ordinal) ? 1 : 0;
+            componentBindingCount += string.Equals(component.Parameters.GetBinding(ProjectParameterBindingTarget.Elevation), parameterId, StringComparison.Ordinal) ? 1 : 0;
+
+            if (componentBindingCount > 0)
+            {
+                bindingCount += componentBindingCount;
+                componentCount++;
+            }
+        }
+
+        return (bindingCount, componentCount);
     }
 
     private double GetSuggestedProjectParameterValue()
     {
         var selectedComponent = _viewModel.SelectedComponent;
         return selectedComponent?.Parameters.Width ?? 1.0;
+    }
+
+    private bool HasProjectParameterEditorDraft()
+        => ProjectParameterNameEditorTextBox != null && !string.IsNullOrWhiteSpace(ProjectParameterNameEditorTextBox.Text);
+
+    private void LoadProjectParameterEditorSelection(string parameterId)
+    {
+        var parameter = _viewModel.GetProjectParameter(parameterId);
+        if (parameter == null)
+        {
+            LoadNewProjectParameterDraft();
+            return;
+        }
+
+        _selectedProjectParameterEditorId = parameter.Id;
+        _isUpdatingProjectParameterEditor = true;
+        if (ProjectParameterNameEditorTextBox != null)
+            ProjectParameterNameEditorTextBox.Text = parameter.Name;
+        if (ProjectParameterValueEditorTextBox != null)
+            ProjectParameterValueEditorTextBox.Text = FormatLengthForInput(parameter.Value);
+        if (ProjectParameterFormulaEditorTextBox != null)
+            ProjectParameterFormulaEditorTextBox.Text = parameter.Formula;
+        _isUpdatingProjectParameterEditor = false;
+
+        UpdateProjectParameterValueInputState();
+        if (ProjectParameterUsageTextBlock != null)
+        {
+            var (bindingCount, componentCount) = GetProjectParameterUsage(parameter.Id);
+            var usageSummary = bindingCount == 0
+                ? "Not bound yet. Use the binding pickers above to assign this parameter to component dimensions."
+                : $"Used by {bindingCount} field binding(s) across {componentCount} component(s).";
+            var formulaSummary = parameter.HasFormula
+                ? $" Formula: {parameter.Formula}"
+                : " Fixed value parameter.";
+
+            ProjectParameterUsageTextBlock.Text = string.IsNullOrWhiteSpace(parameter.FormulaError)
+                ? usageSummary + formulaSummary
+                : $"Formula error: {parameter.FormulaError} Current stored value remains {FormatLengthForInput(parameter.Value)}.";
+        }
+
+        UpdateProjectParameterEditorCommandState();
+    }
+
+    private void LoadNewProjectParameterDraft()
+    {
+        _selectedProjectParameterEditorId = null;
+        _isUpdatingProjectParameterEditor = true;
+        if (ProjectParameterNameEditorTextBox != null)
+            ProjectParameterNameEditorTextBox.Text = string.Empty;
+        if (ProjectParameterValueEditorTextBox != null)
+            ProjectParameterValueEditorTextBox.Text = FormatLengthForInput(GetSuggestedProjectParameterValue());
+        if (ProjectParameterFormulaEditorTextBox != null)
+            ProjectParameterFormulaEditorTextBox.Text = string.Empty;
+        _isUpdatingProjectParameterEditor = false;
+
+        UpdateProjectParameterValueInputState();
+        if (ProjectParameterUsageTextBlock != null)
+        {
+            ProjectParameterUsageTextBlock.Text = _viewModel.ProjectParameters.Count == 0
+                ? "No project parameters exist yet. Create one to reuse the same dimensional value across multiple components."
+                : "Enter a name and value, then add the parameter. Optional formulas use [Parameter Name] references with decimal arithmetic, for example [Base Width] * 2 + 0.5.";
+        }
+
+        UpdateProjectParameterEditorCommandState();
+    }
+
+    private void UpdateProjectParameterValueInputState()
+    {
+        if (ProjectParameterValueEditorTextBox == null || ProjectParameterFormulaEditorTextBox == null)
+            return;
+
+        var hasFormula = !string.IsNullOrWhiteSpace(ProjectParameterFormulaEditorTextBox.Text);
+        ProjectParameterValueEditorTextBox.IsReadOnly = hasFormula;
+        ProjectParameterValueEditorTextBox.ToolTip = hasFormula
+            ? "Formula-driven parameters recalculate the value on save. The value box is a computed preview."
+            : null;
+    }
+
+    private void UpdateProjectParameterEditorCommandState()
+    {
+        var hasSelection = !string.IsNullOrWhiteSpace(_selectedProjectParameterEditorId);
+        if (ProjectParameterSaveButton != null)
+            ProjectParameterSaveButton.Content = hasSelection ? "Save Changes" : "Add Parameter";
+        if (ProjectParameterDeleteButton != null)
+            ProjectParameterDeleteButton.IsEnabled = hasSelection;
+    }
+
+    private void EnsureProjectParameterSearchShows(string parameterName)
+    {
+        if (ProjectParameterSearchTextBox == null)
+            return;
+
+        var searchText = ProjectParameterSearchTextBox.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(searchText) || parameterName.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _isUpdatingProjectParameterEditor = true;
+        ProjectParameterSearchTextBox.Text = string.Empty;
+        _isUpdatingProjectParameterEditor = false;
+    }
+
+    private ProjectParameterDefinition SaveProjectParameterEditor()
+    {
+        if (ProjectParameterNameEditorTextBox == null || ProjectParameterValueEditorTextBox == null)
+            throw new InvalidOperationException("Project parameter editor controls are not available.");
+
+        var isNewParameter = string.IsNullOrWhiteSpace(_selectedProjectParameterEditorId);
+        var parameter = _viewModel.UpsertProjectParameter(
+            ProjectParameterNameEditorTextBox.Text,
+            ParseLengthInput(ProjectParameterValueEditorTextBox.Text, "project parameter value"),
+            _selectedProjectParameterEditorId,
+            formula: ProjectParameterFormulaEditorTextBox?.Text);
+
+        _selectedProjectParameterEditorId = parameter.Id;
+        EnsureProjectParameterSearchShows(parameter.Name);
+        ActionLogService.Instance.Log(LogCategory.Property,
+            isNewParameter ? "Project parameter added" : "Project parameter updated",
+            $"Name: {parameter.Name}, Value: {parameter.Value:0.###}");
+        HandleProjectParameterCatalogChanged();
+        RefreshProjectParameterEditor(selectFirstIfNeeded: false);
+        return parameter;
+    }
+
+    private bool DeleteSelectedProjectParameter(bool confirmDelete, bool showFeedbackIfNone)
+    {
+        var parameter = _viewModel.GetProjectParameter(_selectedProjectParameterEditorId);
+        if (parameter == null)
+        {
+            if (showFeedbackIfNone)
+            {
+                MessageBox.Show("Select a project parameter to delete.", "Project Parameter Editor", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        if (confirmDelete)
+        {
+            var confirmation = MessageBox.Show(
+                $"Delete project parameter '{parameter.Name}'?\n\nBound components will keep their current numeric values and be unbound.",
+                "Delete Project Parameter",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (confirmation != MessageBoxResult.Yes)
+                return false;
+        }
+
+        if (!_viewModel.RemoveProjectParameter(parameter.Id))
+            return false;
+
+        _selectedProjectParameterEditorId = null;
+        ActionLogService.Instance.Log(LogCategory.Property, "Project parameter deleted", $"Name: {parameter.Name}");
+        HandleProjectParameterCatalogChanged();
+        RefreshProjectParameterEditor(selectFirstIfNeeded: true);
+        return true;
     }
 
     private void HandleProjectParameterCatalogChanged()
@@ -207,6 +481,9 @@ public partial class MainWindow
         }
 
         ProjectParameterBindingSummaryTextBlock.Text = BuildProjectParameterBindingSummaryText(components, isMultiSelection);
+
+        if (ProjectParameterEditorPanel?.Visibility == Visibility.Visible)
+            RefreshProjectParameterEditor(selectFirstIfNeeded: false);
     }
 
     private IReadOnlyList<ProjectParameterBindingOption> BuildProjectParameterBindingOptions()

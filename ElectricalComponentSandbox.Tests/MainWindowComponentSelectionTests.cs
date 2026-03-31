@@ -157,6 +157,117 @@ public class MainWindowComponentSelectionTests
     }
 
     [Fact]
+    public void ProjectParameterEditorForTesting_SearchFiltersVisibleParameters()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.UpsertProjectParameter("Width - Shared", 4.25);
+            viewModel.UpsertProjectParameter("Height - Shared", 6.0);
+
+            viewModel.SelectSingleComponent(selected[0]);
+            window.UpdatePropertiesPanelForTesting();
+            window.SetProjectParameterEditorVisibleForTesting(true);
+            window.SetProjectParameterSearchForTesting("Height");
+
+            var state = window.GetProjectParameterEditorStateForTesting();
+            var visibleNames = window.GetVisibleProjectParameterNamesForTesting();
+
+            Assert.True(state.IsVisible);
+            Assert.Single(visibleNames);
+            Assert.Equal("Height - Shared", visibleNames[0]);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void ProjectParameterEditorForTesting_SaveAddsAndRenamesParameter()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.SelectSingleComponent(selected[0]);
+            window.UpdatePropertiesPanelForTesting();
+            window.SetProjectParameterEditorVisibleForTesting(true);
+
+            window.SetProjectParameterEditorDraftForTesting("Width - Shared", "4.25");
+            Assert.True(window.SaveProjectParameterEditorForTesting());
+
+            Assert.Single(viewModel.ProjectParameters);
+            Assert.Equal("Width - Shared", viewModel.ProjectParameters[0].Name);
+            Assert.Equal(4.25, viewModel.ProjectParameters[0].Value, 6);
+
+            Assert.True(window.SelectProjectParameterForTesting("Width - Shared"));
+            window.SetProjectParameterEditorDraftForTesting("Width - Revised", "5.0");
+            Assert.True(window.SaveProjectParameterEditorForTesting());
+
+            Assert.Single(viewModel.ProjectParameters);
+            Assert.Equal("Width - Revised", viewModel.ProjectParameters[0].Name);
+            Assert.Equal(5.0, viewModel.ProjectParameters[0].Value, 6);
+            Assert.Equal("Width - Revised", window.GetProjectParameterEditorStateForTesting().SelectedName);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void ProjectParameterEditorForTesting_DeleteUnbindsSelectedAndPeerComponents()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            var peer = CreateComponent("Box 3", 10, 0, 10, Colors.Green);
+            viewModel.Components.Add(peer);
+
+            var parameter = viewModel.UpsertProjectParameter("Shared Width", 3.0);
+            selected[0].Parameters.SetBinding(ProjectParameterBindingTarget.Width, parameter.Id);
+            peer.Parameters.SetBinding(ProjectParameterBindingTarget.Width, parameter.Id);
+            viewModel.ApplyProjectParameterBindings();
+
+            viewModel.SelectSingleComponent(selected[0]);
+            window.UpdatePropertiesPanelForTesting();
+            window.SetProjectParameterEditorVisibleForTesting(true);
+
+            Assert.True(window.SelectProjectParameterForTesting("Shared Width"));
+            Assert.True(window.DeleteSelectedProjectParameterForTesting());
+
+            Assert.Empty(viewModel.ProjectParameters);
+            Assert.Null(selected[0].Parameters.GetBinding(ProjectParameterBindingTarget.Width));
+            Assert.Null(peer.Parameters.GetBinding(ProjectParameterBindingTarget.Width));
+            Assert.Equal(3.0, selected[0].Parameters.Width, 6);
+            Assert.Equal(3.0, peer.Parameters.Width, 6);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void ProjectParameterEditorForTesting_SaveFormulaParameterComputesDerivedValueAndUpdatesBindings()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.UpsertProjectParameter("Base Width", 2.0);
+            viewModel.SelectSingleComponent(selected[0]);
+            window.UpdatePropertiesPanelForTesting();
+            window.SetProjectParameterEditorVisibleForTesting(true);
+
+            window.BeginNewProjectParameterDraftForTesting();
+            window.SetProjectParameterEditorDraftForTesting("Derived Width", "1.0", "[Base Width] * 2.5");
+            Assert.True(window.SaveProjectParameterEditorForTesting());
+
+            var derived = Assert.Single(viewModel.ProjectParameters.Where(parameter => parameter.Name == "Derived Width"));
+            selected[0].Parameters.SetBinding(ProjectParameterBindingTarget.Width, derived.Id);
+            viewModel.ApplyProjectParameterBindings();
+            window.UpdatePropertiesPanelForTesting();
+
+            var editorState = window.GetProjectParameterEditorStateForTesting();
+            var widthTextBox = FindRequired<TextBox>(window, "WidthTextBox");
+
+            Assert.Equal("[Base Width] * 2.5", derived.Formula);
+            Assert.Equal(5.0, derived.Value, 6);
+            Assert.Equal("5'-0\"", widthTextBox.Text);
+            Assert.Equal("[Base Width] * 2.5", editorState.FormulaText);
+            Assert.True(editorState.ValueReadOnly);
+            return 0;
+        });
+    }
+
+    [Fact]
     public void TryMoveSelectedComponentsForTesting_AbsoluteModeAppliesPrimaryDeltaToAllSelected()
     {
         RunWithSelectedComponentsWindow((window, viewModel, selected) =>

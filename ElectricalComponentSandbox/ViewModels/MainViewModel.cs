@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using System.Windows.Media.Media3D;
 using ElectricalComponentSandbox.Markup.Models;
 using ElectricalComponentSandbox.Models;
@@ -168,17 +169,42 @@ public class MainViewModel : INotifyPropertyChanged
         return ProjectParameters.FirstOrDefault(parameter => string.Equals(parameter.Id, parameterId, StringComparison.Ordinal));
     }
 
-    public ProjectParameterDefinition UpsertProjectParameter(string name, double value, string? parameterId = null)
+    public ProjectParameterDefinition UpsertProjectParameter(string name, double value, string? parameterId = null, string? formula = null)
     {
         var trimmedName = name?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(trimmedName))
             throw new ArgumentException("Project parameter name cannot be empty.", nameof(name));
+
+        var trimmedFormula = formula?.Trim() ?? string.Empty;
 
         var duplicate = ProjectParameters.FirstOrDefault(parameter =>
             !string.Equals(parameter.Id, parameterId, StringComparison.Ordinal) &&
             string.Equals(parameter.Name, trimmedName, StringComparison.OrdinalIgnoreCase));
         if (duplicate != null)
             throw new InvalidOperationException($"A project parameter named '{trimmedName}' already exists.");
+
+        var previewParameters = CloneProjectParameters();
+        var previewParameter = previewParameters.FirstOrDefault(parameter => string.Equals(parameter.Id, parameterId, StringComparison.Ordinal));
+        var previousName = previewParameter?.Name;
+        if (previewParameter == null)
+        {
+            previewParameter = new ProjectParameterDefinition();
+            if (!string.IsNullOrWhiteSpace(parameterId))
+                previewParameter.Id = parameterId;
+            previewParameters.Add(previewParameter);
+        }
+
+        previewParameter.Name = trimmedName;
+        previewParameter.Formula = trimmedFormula;
+        previewParameter.Value = value;
+
+        if (!string.IsNullOrWhiteSpace(previousName) &&
+            !string.Equals(previousName, trimmedName, StringComparison.OrdinalIgnoreCase))
+        {
+            PropagateProjectParameterRename(previewParameters, previousName, trimmedName, previewParameter.Id);
+        }
+
+        ProjectParameterFormulaEvaluator.EvaluateAll(previewParameters, throwOnError: true);
 
         var parameter = GetProjectParameter(parameterId);
         if (parameter == null)
@@ -189,8 +215,18 @@ public class MainViewModel : INotifyPropertyChanged
             ProjectParameters.Add(parameter);
         }
 
+        previousName = parameter.Name;
         parameter.Name = trimmedName;
+        parameter.Formula = trimmedFormula;
         parameter.Value = value;
+
+        if (!string.IsNullOrWhiteSpace(previousName) &&
+            !string.Equals(previousName, trimmedName, StringComparison.OrdinalIgnoreCase))
+        {
+            PropagateProjectParameterRename(ProjectParameters, previousName, trimmedName, parameter.Id);
+        }
+
+        RecalculateProjectParameterValues(throwOnError: true);
         ApplyProjectParameterBindings();
         OnPropertyChanged(nameof(ProjectParameters));
         return parameter;
@@ -206,6 +242,9 @@ public class MainViewModel : INotifyPropertyChanged
         foreach (var component in Components)
             component.Parameters.ClearBindingReference(parameterId);
 
+        RecalculateProjectParameterValues(throwOnError: false);
+        ApplyProjectParameterBindings();
+
         OnPropertyChanged(nameof(ProjectParameters));
         return true;
     }
@@ -213,6 +252,11 @@ public class MainViewModel : INotifyPropertyChanged
     public void ClearProjectParameters()
     {
         ProjectParameters.Clear();
+        foreach (var component in Components)
+        {
+            component.Parameters.Bindings = new ComponentParameterBindings();
+        }
+
         OnPropertyChanged(nameof(ProjectParameters));
     }
 
@@ -231,6 +275,7 @@ public class MainViewModel : INotifyPropertyChanged
 
     public void ApplyProjectParameterBindings()
     {
+        RecalculateProjectParameterValues(throwOnError: false);
         var parameterLookup = ProjectParameters
             .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Id))
             .GroupBy(parameter => parameter.Id, StringComparer.Ordinal)
@@ -242,6 +287,7 @@ public class MainViewModel : INotifyPropertyChanged
 
     public void ApplyProjectParameterBindings(ElectricalComponent component)
     {
+        RecalculateProjectParameterValues(throwOnError: false);
         var parameterLookup = ProjectParameters
             .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Id))
             .GroupBy(parameter => parameter.Id, StringComparer.Ordinal)
@@ -272,6 +318,46 @@ public class MainViewModel : INotifyPropertyChanged
 
         value = 0.0;
         return false;
+    }
+
+    public void RecalculateProjectParameterValues(bool throwOnError)
+        => ProjectParameterFormulaEvaluator.EvaluateAll(ProjectParameters, throwOnError);
+
+    private List<ProjectParameterDefinition> CloneProjectParameters()
+    {
+        return ProjectParameters
+            .Select(parameter => new ProjectParameterDefinition
+            {
+                Id = parameter.Id,
+                Name = parameter.Name,
+                Value = parameter.Value,
+                Formula = parameter.Formula
+            })
+            .ToList();
+    }
+
+    private static void PropagateProjectParameterRename(IEnumerable<ProjectParameterDefinition> parameters, string oldName, string newName, string renamedParameterId)
+    {
+        foreach (var parameter in parameters)
+        {
+            if (string.Equals(parameter.Id, renamedParameterId, StringComparison.Ordinal))
+                continue;
+
+            parameter.Formula = ReplaceFormulaReference(parameter.Formula, oldName, newName);
+        }
+    }
+
+    private static string ReplaceFormulaReference(string formula, string oldName, string newName)
+    {
+        if (string.IsNullOrWhiteSpace(formula) || string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase))
+            return formula;
+
+        return Regex.Replace(
+            formula,
+            @"\[(?<name>[^\]]+)\]",
+            match => string.Equals(match.Groups["name"].Value.Trim(), oldName, StringComparison.OrdinalIgnoreCase)
+                ? $"[{newName}]"
+                : match.Value);
     }
 
     public bool ToggleComponentSelection(ElectricalComponent component)

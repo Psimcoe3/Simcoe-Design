@@ -268,4 +268,21 @@ public class ProjectFileServiceTests : IDisposable
         Assert.Single(loaded.Components);
         Assert.Equal(parameter.Id, loaded.Components[0].Parameters.GetBinding(ProjectParameterBindingTarget.Width));
     }
+
+    [Fact]
+    public async Task SaveAndLoad_ProjectParameterFormula_RoundTrips()
+    {
+        var project = new ProjectModel();
+        project.ProjectParameters.Add(new ProjectParameterDefinition { Name = "Base Width", Value = 2.0 });
+        project.ProjectParameters.Add(new ProjectParameterDefinition { Name = "Derived Width", Value = 4.5, Formula = "[Base Width] * 2 + 0.5" });
+
+        var filePath = Path.Combine(_tempDir, "project-parameter-formula.ecproj");
+
+        await _service.SaveProjectAsync(project, filePath);
+        var loaded = await _service.LoadProjectAsync(filePath);
+
+        Assert.NotNull(loaded);
+        Assert.Equal(2, loaded.ProjectParameters.Count);
+        Assert.Equal("[Base Width] * 2 + 0.5", loaded.ProjectParameters[1].Formula);
+    }
 }
