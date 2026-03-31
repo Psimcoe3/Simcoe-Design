@@ -25,6 +25,8 @@ public partial class MainWindow
 
     private string? _selectedProjectParameterEditorId;
     private bool _isUpdatingProjectParameterEditor;
+    private string? _projectParameterEditorValidationMessage;
+    private string _projectParameterEditorPreviewText = string.Empty;
 
     internal void SetProjectParameterEditorVisibleForTesting(bool isVisible)
         => SetProjectParameterEditorVisibility(isVisible);
@@ -85,16 +87,19 @@ public partial class MainWindow
     internal bool DeleteSelectedProjectParameterForTesting()
         => DeleteSelectedProjectParameter(confirmDelete: false, showFeedbackIfNone: false);
 
-    internal (bool IsVisible, string SaveCaption, bool DeleteEnabled, string UsageText, string SelectedName, string FormulaText, bool ValueReadOnly) GetProjectParameterEditorStateForTesting()
+    internal (bool IsVisible, string SaveCaption, bool SaveEnabled, bool DeleteEnabled, string UsageText, string SelectedName, string FormulaText, bool ValueReadOnly, string PreviewText, string ValidationText) GetProjectParameterEditorStateForTesting()
     {
         return (
             ProjectParameterEditorPanel?.Visibility == Visibility.Visible,
             ProjectParameterSaveButton?.Content?.ToString() ?? string.Empty,
+            ProjectParameterSaveButton?.IsEnabled == true,
             ProjectParameterDeleteButton?.IsEnabled == true,
             ProjectParameterUsageTextBlock?.Text ?? string.Empty,
             ProjectParameterNameEditorTextBox?.Text ?? string.Empty,
             ProjectParameterFormulaEditorTextBox?.Text ?? string.Empty,
-            ProjectParameterValueEditorTextBox?.IsReadOnly == true);
+            ProjectParameterValueEditorTextBox?.IsReadOnly == true,
+            ProjectParameterPreviewTextBlock?.Text ?? string.Empty,
+            ProjectParameterValidationTextBlock?.Text ?? string.Empty);
     }
 
     private void ManageProjectParameters_Click(object sender, RoutedEventArgs e)
@@ -127,7 +132,23 @@ public partial class MainWindow
         if (_isUpdatingProjectParameterEditor)
             return;
 
-        UpdateProjectParameterValueInputState();
+        RefreshProjectParameterEditorDraftFeedback();
+    }
+
+    private void ProjectParameterNameEditorTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_isUpdatingProjectParameterEditor)
+            return;
+
+        RefreshProjectParameterEditorDraftFeedback();
+    }
+
+    private void ProjectParameterValueEditorTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_isUpdatingProjectParameterEditor)
+            return;
+
+        RefreshProjectParameterEditorDraftFeedback();
     }
 
     private void ProjectParameterListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -241,7 +262,7 @@ public partial class MainWindow
                 {
                     ParameterId = parameter.Id,
                     Name = parameter.Name,
-                    DisplayName = $"{(parameter.HasFormula ? "fx " : string.Empty)}{parameter.Name} = {FormatLengthForInput(parameter.Value)} | {componentSummary} | {bindingSummary}"
+                    DisplayName = $"{(parameter.HasFormula ? "fx " : string.Empty)}{parameter.Name}{(string.IsNullOrWhiteSpace(parameter.FormulaError) ? string.Empty : " [invalid]")} = {FormatLengthForInput(parameter.Value)} | {componentSummary} | {bindingSummary}"
                 };
             });
     }
@@ -297,7 +318,6 @@ public partial class MainWindow
             ProjectParameterFormulaEditorTextBox.Text = parameter.Formula;
         _isUpdatingProjectParameterEditor = false;
 
-        UpdateProjectParameterValueInputState();
         if (ProjectParameterUsageTextBlock != null)
         {
             var (bindingCount, componentCount) = GetProjectParameterUsage(parameter.Id);
@@ -313,7 +333,7 @@ public partial class MainWindow
                 : $"Formula error: {parameter.FormulaError} Current stored value remains {FormatLengthForInput(parameter.Value)}.";
         }
 
-        UpdateProjectParameterEditorCommandState();
+            RefreshProjectParameterEditorDraftFeedback();
     }
 
     private void LoadNewProjectParameterDraft()
@@ -328,7 +348,6 @@ public partial class MainWindow
             ProjectParameterFormulaEditorTextBox.Text = string.Empty;
         _isUpdatingProjectParameterEditor = false;
 
-        UpdateProjectParameterValueInputState();
         if (ProjectParameterUsageTextBlock != null)
         {
             ProjectParameterUsageTextBlock.Text = _viewModel.ProjectParameters.Count == 0
@@ -336,7 +355,7 @@ public partial class MainWindow
                 : "Enter a name and value, then add the parameter. Optional formulas use [Parameter Name] references with decimal arithmetic, for example [Base Width] * 2 + 0.5.";
         }
 
-        UpdateProjectParameterEditorCommandState();
+        RefreshProjectParameterEditorDraftFeedback();
     }
 
     private void UpdateProjectParameterValueInputState()
@@ -354,10 +373,90 @@ public partial class MainWindow
     private void UpdateProjectParameterEditorCommandState()
     {
         var hasSelection = !string.IsNullOrWhiteSpace(_selectedProjectParameterEditorId);
+        var hasName = !string.IsNullOrWhiteSpace(ProjectParameterNameEditorTextBox?.Text);
         if (ProjectParameterSaveButton != null)
+        {
             ProjectParameterSaveButton.Content = hasSelection ? "Save Changes" : "Add Parameter";
+            ProjectParameterSaveButton.IsEnabled = hasName && string.IsNullOrWhiteSpace(_projectParameterEditorValidationMessage);
+        }
         if (ProjectParameterDeleteButton != null)
             ProjectParameterDeleteButton.IsEnabled = hasSelection;
+    }
+
+    private void RefreshProjectParameterEditorDraftFeedback()
+    {
+        UpdateProjectParameterValueInputState();
+
+        if (ProjectParameterNameEditorTextBox == null ||
+            ProjectParameterValueEditorTextBox == null ||
+            ProjectParameterFormulaEditorTextBox == null)
+        {
+            return;
+        }
+
+        var nameText = ProjectParameterNameEditorTextBox.Text;
+        var formulaText = ProjectParameterFormulaEditorTextBox.Text;
+        var valueText = ProjectParameterValueEditorTextBox.Text;
+
+        string? validationMessage = null;
+        var previewText = string.Empty;
+
+        if (!string.IsNullOrWhiteSpace(nameText) || !string.IsNullOrWhiteSpace(formulaText) || !string.IsNullOrWhiteSpace(_selectedProjectParameterEditorId))
+        {
+            double draftValue;
+            try
+            {
+                draftValue = ParseLengthInput(valueText, "project parameter value");
+            }
+            catch (Exception ex)
+            {
+                draftValue = 0.0;
+                validationMessage = ex.Message;
+            }
+
+            if (validationMessage == null)
+            {
+                var preview = _viewModel.PreviewProjectParameter(nameText, draftValue, _selectedProjectParameterEditorId, formulaText);
+                validationMessage = preview.ErrorMessage;
+
+                if (preview.HasFormula && string.IsNullOrWhiteSpace(validationMessage))
+                {
+                    var formattedPreview = FormatLengthForInput(preview.Value);
+                    previewText = $"Computed preview: {formattedPreview}";
+                    if (!string.Equals(ProjectParameterValueEditorTextBox.Text, formattedPreview, StringComparison.Ordinal))
+                    {
+                        _isUpdatingProjectParameterEditor = true;
+                        ProjectParameterValueEditorTextBox.Text = formattedPreview;
+                        _isUpdatingProjectParameterEditor = false;
+                    }
+                }
+                else if (!preview.HasFormula && !string.IsNullOrWhiteSpace(nameText) && string.IsNullOrWhiteSpace(validationMessage))
+                {
+                    previewText = $"Direct value: {FormatLengthForInput(preview.Value)}";
+                }
+            }
+        }
+
+        _projectParameterEditorValidationMessage = validationMessage;
+        _projectParameterEditorPreviewText = previewText;
+
+        if (ProjectParameterPreviewTextBlock != null)
+        {
+            ProjectParameterPreviewTextBlock.Text = _projectParameterEditorPreviewText;
+            ProjectParameterPreviewTextBlock.Visibility = string.IsNullOrWhiteSpace(_projectParameterEditorPreviewText)
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+        }
+
+        if (ProjectParameterValidationTextBlock != null)
+        {
+            ProjectParameterValidationTextBlock.Text = _projectParameterEditorValidationMessage ?? string.Empty;
+            ProjectParameterValidationTextBlock.Visibility = string.IsNullOrWhiteSpace(_projectParameterEditorValidationMessage)
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+        }
+
+        UpdateProjectParameterEditorCommandState();
     }
 
     private void EnsureProjectParameterSearchShows(string parameterName)
@@ -497,7 +596,7 @@ public partial class MainWindow
             .Select(parameter => new ProjectParameterBindingOption
             {
                 ParameterId = parameter.Id,
-                DisplayName = $"{parameter.Name} ({FormatLengthForInput(parameter.Value)})"
+                DisplayName = $"{(parameter.HasFormula ? "fx " : string.Empty)}{parameter.Name}{(string.IsNullOrWhiteSpace(parameter.FormulaError) ? string.Empty : " [invalid]")} ({FormatLengthForInput(parameter.Value)})"
             }));
 
         return options;

@@ -270,7 +270,7 @@ public partial class MainWindow
 
     private void InsertScheduleTable_Click(object sender, RoutedEventArgs e)
     {
-        var types = new[] { "Equipment Schedule", "Conduit Schedule", "Circuit Summary" };
+        var types = new[] { "Equipment Schedule", "Conduit Schedule", "Circuit Summary", "Project Parameter Schedule" };
         var list = string.Join("\n", types.Select((t, i) => $"{i + 1}. {t}"));
         var input = PromptInput("Insert Schedule Table",
             $"Select schedule type:\n\n{list}", "1");
@@ -282,13 +282,16 @@ public partial class MainWindow
         switch (idx)
         {
             case 1:
-                table = service.GenerateEquipmentSchedule(_viewModel.Components.ToList());
+                table = service.GenerateEquipmentSchedule(_viewModel.Components.ToList(), _viewModel.ProjectParameters.ToList());
                 break;
             case 2:
-                table = service.GenerateConduitSchedule(_viewModel.Components.ToList());
+                table = service.GenerateConduitSchedule(_viewModel.Components.ToList(), _viewModel.ProjectParameters.ToList());
                 break;
             case 3:
                 table = service.GenerateCircuitSummary(_viewModel.Circuits.ToList());
+                break;
+            case 4:
+                table = service.GenerateProjectParameterSchedule(_viewModel.ProjectParameters.ToList(), _viewModel.Components.ToList());
                 break;
             default:
                 return;

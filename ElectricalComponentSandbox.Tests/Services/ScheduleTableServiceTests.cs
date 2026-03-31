@@ -26,6 +26,19 @@ public class ScheduleTableServiceTests
     }
 
     [Fact]
+    public void GenerateEquipmentSchedule_WithProjectParameterBindings_IncludesBindingSummaryColumn()
+    {
+        var component = ElectricalComponentCatalog.CreateDefaultComponent(ComponentType.Box);
+        var parameter = new ProjectParameterDefinition { Id = "width-param", Name = "Shared Width", Value = 4.25 };
+        component.Parameters.SetBinding(ProjectParameterBindingTarget.Width, parameter.Id);
+
+        var table = _sut.GenerateEquipmentSchedule(new[] { component }, new[] { parameter });
+
+        Assert.Contains(table.Columns, column => column.Header == "PARAMETERS");
+        Assert.Contains("W=Shared Width", table.Rows[0]);
+    }
+
+    [Fact]
     public void GenerateEquipmentSchedule_Empty_ReturnsEmptyRows()
     {
         var table = _sut.GenerateEquipmentSchedule(Array.Empty<ElectricalComponent>());
@@ -103,6 +116,30 @@ public class ScheduleTableServiceTests
         // Last column should be voltage drop percentage
         var lastCol = table.Rows[0][^1];
         Assert.Contains("%", lastCol);
+    }
+
+    [Fact]
+    public void GenerateProjectParameterSchedule_IncludesFormulaValuesAndUsageSummary()
+    {
+        var parameter = new ProjectParameterDefinition
+        {
+            Id = "width-param",
+            Name = "Shared Width",
+            Value = 4.25,
+            Formula = "2 + 2.25"
+        };
+        var component = ElectricalComponentCatalog.CreateDefaultComponent(ComponentType.Box);
+        component.Parameters.SetBinding(ProjectParameterBindingTarget.Width, parameter.Id);
+
+        var table = _sut.GenerateProjectParameterSchedule(new[] { parameter }, new[] { component });
+
+        Assert.Equal("PROJECT PARAMETERS", table.Title);
+        Assert.Single(table.Rows);
+        Assert.Equal("Shared Width", table.Rows[0][0]);
+        Assert.Equal("2 + 2.25", table.Rows[0][2]);
+        Assert.Equal("W", table.Rows[0][3]);
+        Assert.Contains("1 comp", table.Rows[0][4]);
+        Assert.Equal("OK", table.Rows[0][5]);
     }
 
     [Fact]

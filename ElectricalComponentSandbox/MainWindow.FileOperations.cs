@@ -456,7 +456,7 @@ public partial class MainWindow
         try
         {
             var exp = new Services.Export.ScheduleExcelExporter();
-            exp.ExportSchedule(_viewModel.Components, dlg.FileName);
+            exp.ExportSchedule(_viewModel.Components, dlg.FileName, _viewModel.ProjectParameters);
             System.Windows.MessageBox.Show("Schedule export complete.", "Export Schedule",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }

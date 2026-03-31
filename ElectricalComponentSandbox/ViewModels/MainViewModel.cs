@@ -12,6 +12,16 @@ using ElectricalComponentSandbox.Services.Export;
 
 namespace ElectricalComponentSandbox.ViewModels;
 
+public sealed record ProjectParameterDraftPreview(
+    string Name,
+    string Formula,
+    double Value,
+    string? ErrorMessage)
+{
+    public bool HasFormula => !string.IsNullOrWhiteSpace(Formula);
+    public bool CanSave => string.IsNullOrWhiteSpace(ErrorMessage);
+}
+
 public class MainViewModel : INotifyPropertyChanged
 {
     private ElectricalComponent? _selectedComponent;
@@ -171,40 +181,9 @@ public class MainViewModel : INotifyPropertyChanged
 
     public ProjectParameterDefinition UpsertProjectParameter(string name, double value, string? parameterId = null, string? formula = null)
     {
-        var trimmedName = name?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(trimmedName))
-            throw new ArgumentException("Project parameter name cannot be empty.", nameof(name));
-
-        var trimmedFormula = formula?.Trim() ?? string.Empty;
-
-        var duplicate = ProjectParameters.FirstOrDefault(parameter =>
-            !string.Equals(parameter.Id, parameterId, StringComparison.Ordinal) &&
-            string.Equals(parameter.Name, trimmedName, StringComparison.OrdinalIgnoreCase));
-        if (duplicate != null)
-            throw new InvalidOperationException($"A project parameter named '{trimmedName}' already exists.");
-
-        var previewParameters = CloneProjectParameters();
-        var previewParameter = previewParameters.FirstOrDefault(parameter => string.Equals(parameter.Id, parameterId, StringComparison.Ordinal));
-        var previousName = previewParameter?.Name;
-        if (previewParameter == null)
-        {
-            previewParameter = new ProjectParameterDefinition();
-            if (!string.IsNullOrWhiteSpace(parameterId))
-                previewParameter.Id = parameterId;
-            previewParameters.Add(previewParameter);
-        }
-
-        previewParameter.Name = trimmedName;
-        previewParameter.Formula = trimmedFormula;
-        previewParameter.Value = value;
-
-        if (!string.IsNullOrWhiteSpace(previousName) &&
-            !string.Equals(previousName, trimmedName, StringComparison.OrdinalIgnoreCase))
-        {
-            PropagateProjectParameterRename(previewParameters, previousName, trimmedName, previewParameter.Id);
-        }
-
-        ProjectParameterFormulaEvaluator.EvaluateAll(previewParameters, throwOnError: true);
+        var preview = BuildProjectParameterPreview(name, value, parameterId, formula, throwOnError: true);
+        var trimmedName = preview.Name;
+        var trimmedFormula = preview.Formula;
 
         var parameter = GetProjectParameter(parameterId);
         if (parameter == null)
@@ -215,7 +194,7 @@ public class MainViewModel : INotifyPropertyChanged
             ProjectParameters.Add(parameter);
         }
 
-        previousName = parameter.Name;
+        var previousName = parameter.Name;
         parameter.Name = trimmedName;
         parameter.Formula = trimmedFormula;
         parameter.Value = value;
@@ -231,6 +210,9 @@ public class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(ProjectParameters));
         return parameter;
     }
+
+    public ProjectParameterDraftPreview PreviewProjectParameter(string name, double value, string? parameterId = null, string? formula = null)
+        => BuildProjectParameterPreview(name, value, parameterId, formula, throwOnError: false);
 
     public bool RemoveProjectParameter(string parameterId)
     {
@@ -334,6 +316,63 @@ public class MainViewModel : INotifyPropertyChanged
                 Formula = parameter.Formula
             })
             .ToList();
+    }
+
+    private ProjectParameterDraftPreview BuildProjectParameterPreview(string name, double value, string? parameterId, string? formula, bool throwOnError)
+    {
+        var trimmedName = name?.Trim() ?? string.Empty;
+        var trimmedFormula = formula?.Trim() ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(trimmedName))
+        {
+            const string message = "Project parameter name cannot be empty.";
+            if (throwOnError)
+                throw new ArgumentException(message, nameof(name));
+
+            return new ProjectParameterDraftPreview(trimmedName, trimmedFormula, value, message);
+        }
+
+        var duplicate = ProjectParameters.FirstOrDefault(parameter =>
+            !string.Equals(parameter.Id, parameterId, StringComparison.Ordinal) &&
+            string.Equals(parameter.Name, trimmedName, StringComparison.OrdinalIgnoreCase));
+        if (duplicate != null)
+        {
+            var message = $"A project parameter named '{trimmedName}' already exists.";
+            if (throwOnError)
+                throw new InvalidOperationException(message);
+
+            return new ProjectParameterDraftPreview(trimmedName, trimmedFormula, value, message);
+        }
+
+        var previewParameters = CloneProjectParameters();
+        var previewParameter = previewParameters.FirstOrDefault(parameter => string.Equals(parameter.Id, parameterId, StringComparison.Ordinal));
+        var previousName = previewParameter?.Name;
+        if (previewParameter == null)
+        {
+            previewParameter = new ProjectParameterDefinition();
+            if (!string.IsNullOrWhiteSpace(parameterId))
+                previewParameter.Id = parameterId;
+            previewParameters.Add(previewParameter);
+        }
+
+        previewParameter.Name = trimmedName;
+        previewParameter.Formula = trimmedFormula;
+        previewParameter.Value = value;
+
+        if (!string.IsNullOrWhiteSpace(previousName) &&
+            !string.Equals(previousName, trimmedName, StringComparison.OrdinalIgnoreCase))
+        {
+            PropagateProjectParameterRename(previewParameters, previousName, trimmedName, previewParameter.Id);
+        }
+
+        ProjectParameterFormulaEvaluator.EvaluateAll(previewParameters, throwOnError);
+
+        var firstInvalid = previewParameters.FirstOrDefault(parameter => !string.IsNullOrWhiteSpace(parameter.FormulaError));
+        var errorMessage = firstInvalid == null
+            ? null
+            : $"Formula for '{firstInvalid.Name}' is invalid: {firstInvalid.FormulaError}";
+
+        return new ProjectParameterDraftPreview(trimmedName, trimmedFormula, previewParameter.Value, errorMessage);
     }
 
     private static void PropagateProjectParameterRename(IEnumerable<ProjectParameterDefinition> parameters, string oldName, string newName, string renamedParameterId)

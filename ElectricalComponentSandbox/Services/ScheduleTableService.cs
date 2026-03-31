@@ -85,8 +85,10 @@ public class ScheduleTableService
     /// Generates an equipment schedule from all components.
     /// </summary>
     public ScheduleTable GenerateEquipmentSchedule(
-        IReadOnlyList<ElectricalComponent> components)
+        IReadOnlyList<ElectricalComponent> components,
+        IReadOnlyList<ProjectParameterDefinition>? projectParameters = null)
     {
+        var parameterLookup = ProjectParameterScheduleSupport.CreateParameterLookup(projectParameters);
         var table = new ScheduleTable
         {
             Title = "EQUIPMENT SCHEDULE",
@@ -96,6 +98,7 @@ public class ScheduleTableService
                 new ScheduleColumn { Header = "TYPE", Width = 80 },
                 new ScheduleColumn { Header = "SIZE (W x H x D)", Width = 120 },
                 new ScheduleColumn { Header = "ELEVATION", Width = 70, Alignment = HorizontalAlignment.Right },
+                new ScheduleColumn { Header = "PARAMETERS", Width = 150 },
                 new ScheduleColumn { Header = "MATERIAL", Width = 80 },
                 new ScheduleColumn { Header = "MANUFACTURER", Width = 100 },
                 new ScheduleColumn { Header = "LAYER", Width = 80 }
@@ -110,6 +113,7 @@ public class ScheduleTableService
                 c.Type.ToString(),
                 $"{c.Parameters.Width:F1} x {c.Parameters.Height:F1} x {c.Parameters.Depth:F1}",
                 c.Parameters.Elevation.ToString("F1"),
+                ProjectParameterScheduleSupport.BuildComponentBindingSummary(c, parameterLookup),
                 c.Parameters.Material,
                 c.Parameters.Manufacturer,
                 c.LayerId
@@ -123,8 +127,10 @@ public class ScheduleTableService
     /// Generates a conduit schedule from conduit components.
     /// </summary>
     public ScheduleTable GenerateConduitSchedule(
-        IReadOnlyList<ElectricalComponent> components)
+        IReadOnlyList<ElectricalComponent> components,
+        IReadOnlyList<ProjectParameterDefinition>? projectParameters = null)
     {
+        var parameterLookup = ProjectParameterScheduleSupport.CreateParameterLookup(projectParameters);
         var conduits = components
             .Where(c => c.Type == ComponentType.Conduit)
             .Cast<ConduitComponent>()
@@ -142,6 +148,7 @@ public class ScheduleTableService
                 new ScheduleColumn { Header = "LENGTH (ft)", Width = 80, Alignment = HorizontalAlignment.Right },
                 new ScheduleColumn { Header = "BENDS", Width = 50, Alignment = HorizontalAlignment.Center },
                 new ScheduleColumn { Header = "ELEVATION", Width = 70, Alignment = HorizontalAlignment.Right },
+                new ScheduleColumn { Header = "PARAMETERS", Width = 150 },
                 new ScheduleColumn { Header = "LAYER", Width = 80 }
             }
         };
@@ -156,7 +163,43 @@ public class ScheduleTableService
                 c.Length.ToString("F1"),
                 c.BendPoints.Count.ToString(),
                 c.Parameters.Elevation.ToString("F1"),
+                ProjectParameterScheduleSupport.BuildComponentBindingSummary(c, parameterLookup),
                 c.LayerId
+            });
+        }
+
+        return table;
+    }
+
+    public ScheduleTable GenerateProjectParameterSchedule(
+        IReadOnlyList<ProjectParameterDefinition> parameters,
+        IReadOnlyList<ElectricalComponent> components)
+    {
+        var table = new ScheduleTable
+        {
+            Title = "PROJECT PARAMETERS",
+            Columns =
+            {
+                new ScheduleColumn { Header = "NAME", Width = 120 },
+                new ScheduleColumn { Header = "VALUE", Width = 70, Alignment = HorizontalAlignment.Right },
+                new ScheduleColumn { Header = "FORMULA", Width = 180 },
+                new ScheduleColumn { Header = "BOUND FIELDS", Width = 85, Alignment = HorizontalAlignment.Center },
+                new ScheduleColumn { Header = "USED BY", Width = 110 },
+                new ScheduleColumn { Header = "STATUS", Width = 150 }
+            }
+        };
+
+        foreach (var parameter in parameters.OrderBy(parameter => parameter.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var usage = ProjectParameterScheduleSupport.GetUsage(parameter, components);
+            table.Rows.Add(new[]
+            {
+                parameter.Name,
+                parameter.Value.ToString("0.###"),
+                string.IsNullOrWhiteSpace(parameter.Formula) ? "(fixed)" : parameter.Formula,
+                usage.TargetSummary,
+                ProjectParameterScheduleSupport.FormatUsageSummary(usage),
+                string.IsNullOrWhiteSpace(parameter.FormulaError) ? "OK" : parameter.FormulaError
             });
         }
 

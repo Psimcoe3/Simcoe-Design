@@ -268,6 +268,31 @@ public partial class MainViewModelTests
     }
 
     [Fact]
+    public void PreviewProjectParameter_WithFormula_ReturnsComputedValue()
+    {
+        var vm = new MainViewModel();
+        vm.UpsertProjectParameter("Base Width", 2.0);
+
+        var preview = vm.PreviewProjectParameter("Derived Width", 1.0, formula: "[Base Width] * 2.5");
+
+        Assert.True(preview.CanSave);
+        Assert.True(preview.HasFormula);
+        Assert.Equal(5.0, preview.Value, 6);
+        Assert.Null(preview.ErrorMessage);
+    }
+
+    [Fact]
+    public void PreviewProjectParameter_WithUnknownReference_ReturnsInlineError()
+    {
+        var vm = new MainViewModel();
+
+        var preview = vm.PreviewProjectParameter("Derived Width", 1.0, formula: "[Missing Width] * 2.5");
+
+        Assert.False(preview.CanSave);
+        Assert.Contains("Unknown parameter", preview.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void AddSheet_AndSelectSheet_PreservesSheetScopedState()
     {
         var vm = new MainViewModel();

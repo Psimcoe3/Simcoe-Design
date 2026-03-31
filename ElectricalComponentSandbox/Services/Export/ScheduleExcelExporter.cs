@@ -34,23 +34,26 @@ public class ScheduleExcelExporter
     /// <summary>
     /// Generates schedule workbook and saves it to <paramref name="outputPath"/>.
     /// </summary>
-    public void ExportSchedule(IEnumerable<ElectricalComponent> components, string outputPath)
+    public void ExportSchedule(IEnumerable<ElectricalComponent> components, string outputPath, IEnumerable<ProjectParameterDefinition>? projectParameters = null)
     {
         var all = components.ToList();
+        var parameterList = projectParameters?.ToList() ?? [];
+        var parameterLookup = ProjectParameterScheduleSupport.CreateParameterLookup(parameterList);
 
         using var wb = new XLWorkbook();
 
-        AddAllComponentsSheet(wb, all);
-        AddConduitSheet(wb, all.OfType<ConduitComponent>().ToList());
-        AddPanelSheet(wb, all.OfType<PanelComponent>().ToList());
-        AddBoxSheet(wb, all.OfType<BoxComponent>().ToList());
+        AddAllComponentsSheet(wb, all, parameterLookup);
+        AddConduitSheet(wb, all.OfType<ConduitComponent>().ToList(), parameterLookup);
+        AddPanelSheet(wb, all.OfType<PanelComponent>().ToList(), parameterLookup);
+        AddBoxSheet(wb, all.OfType<BoxComponent>().ToList(), parameterLookup);
+        AddProjectParametersSheet(wb, parameterList, all);
 
         wb.SaveAs(outputPath);
     }
 
     // ── Sheet builders ────────────────────────────────────────────────────────
 
-    private void AddAllComponentsSheet(XLWorkbook wb, List<ElectricalComponent> all)
+    private void AddAllComponentsSheet(XLWorkbook wb, List<ElectricalComponent> all, IReadOnlyDictionary<string, ProjectParameterDefinition> parameterLookup)
     {
         var ws = wb.Worksheets.Add("All Components");
 
@@ -60,7 +63,7 @@ public class ScheduleExcelExporter
         {
             "ID", "Name", "Type", "Layer",
             "Width (in)", "Height (in)", "Depth (in)", "Elevation (in)",
-            "Material", "Manufacturer", "Part Number", "Reference URL"
+            "Material", "Manufacturer", "Part Number", "Reference URL", "Parameter Bindings"
         };
         WriteHeaderRow(ws, 2, headers);
 
@@ -80,6 +83,7 @@ public class ScheduleExcelExporter
             ws.Cell(row, 10).Value = p.Manufacturer;
             ws.Cell(row, 11).Value = p.PartNumber;
             ws.Cell(row, 12).Value = p.ReferenceUrl;
+            ws.Cell(row, 13).Value = ProjectParameterScheduleSupport.BuildComponentBindingSummary(c, parameterLookup);
 
             ApplyAlternateRowFill(ws, row, headers.Length);
             row++;
@@ -88,7 +92,7 @@ public class ScheduleExcelExporter
         FormatSheet(ws, headers.Length);
     }
 
-    private void AddConduitSheet(XLWorkbook wb, List<ConduitComponent> conduits)
+    private void AddConduitSheet(XLWorkbook wb, List<ConduitComponent> conduits, IReadOnlyDictionary<string, ProjectParameterDefinition> parameterLookup)
     {
         var ws = wb.Worksheets.Add("Conduit Schedule");
 
@@ -98,7 +102,7 @@ public class ScheduleExcelExporter
         {
             "ID", "Name", "Conduit Type", "Trade Diameter (in)", "Length (ft)",
             "Bend Type", "Bend Radius (in)", "Material", "Manufacturer", "Part Number",
-            "Elevation (in)", "Layer"
+            "Elevation (in)", "Layer", "Parameter Bindings"
         };
         WriteHeaderRow(ws, 2, headers);
 
@@ -118,6 +122,7 @@ public class ScheduleExcelExporter
             ws.Cell(row, 10).Value = p.PartNumber;
             ws.Cell(row, 11).Value = p.Elevation;
             ws.Cell(row, 12).Value = c.LayerId;
+            ws.Cell(row, 13).Value = ProjectParameterScheduleSupport.BuildComponentBindingSummary(c, parameterLookup);
 
             ApplyAlternateRowFill(ws, row, headers.Length);
             row++;
@@ -137,7 +142,7 @@ public class ScheduleExcelExporter
         }
     }
 
-    private void AddPanelSheet(XLWorkbook wb, List<PanelComponent> panels)
+    private void AddPanelSheet(XLWorkbook wb, List<PanelComponent> panels, IReadOnlyDictionary<string, ProjectParameterDefinition> parameterLookup)
     {
         var ws = wb.Worksheets.Add("Panel Schedule");
 
@@ -147,7 +152,7 @@ public class ScheduleExcelExporter
         {
             "ID", "Name", "Panel Type", "Amperage (A)", "Circuit Count",
             "Width (in)", "Height (in)", "Depth (in)", "Elevation (in)",
-            "Material", "Manufacturer", "Part Number", "Layer"
+            "Material", "Manufacturer", "Part Number", "Layer", "Parameter Bindings"
         };
         WriteHeaderRow(ws, 2, headers);
 
@@ -168,6 +173,7 @@ public class ScheduleExcelExporter
             ws.Cell(row, 11).Value = p.Manufacturer;
             ws.Cell(row, 12).Value = p.PartNumber;
             ws.Cell(row, 13).Value = p2.LayerId;
+            ws.Cell(row, 14).Value = ProjectParameterScheduleSupport.BuildComponentBindingSummary(p2, parameterLookup);
 
             ApplyAlternateRowFill(ws, row, headers.Length);
             row++;
@@ -176,7 +182,7 @@ public class ScheduleExcelExporter
         FormatSheet(ws, headers.Length);
     }
 
-    private void AddBoxSheet(XLWorkbook wb, List<BoxComponent> boxes)
+    private void AddBoxSheet(XLWorkbook wb, List<BoxComponent> boxes, IReadOnlyDictionary<string, ProjectParameterDefinition> parameterLookup)
     {
         var ws = wb.Worksheets.Add("Box Schedule");
 
@@ -186,7 +192,7 @@ public class ScheduleExcelExporter
         {
             "ID", "Name", "Box Type", "Knockout Count",
             "Width (in)", "Height (in)", "Depth (in)", "Elevation (in)",
-            "Material", "Manufacturer", "Part Number", "Layer"
+            "Material", "Manufacturer", "Part Number", "Layer", "Parameter Bindings"
         };
         WriteHeaderRow(ws, 2, headers);
 
@@ -206,12 +212,44 @@ public class ScheduleExcelExporter
             ws.Cell(row, 10).Value = p.Manufacturer;
             ws.Cell(row, 11).Value = p.PartNumber;
             ws.Cell(row, 12).Value = b.LayerId;
+            ws.Cell(row, 13).Value = ProjectParameterScheduleSupport.BuildComponentBindingSummary(b, parameterLookup);
 
             ApplyAlternateRowFill(ws, row, headers.Length);
             row++;
         }
 
         FormatSheet(ws, headers.Length);
+    }
+
+    private void AddProjectParametersSheet(XLWorkbook wb, List<ProjectParameterDefinition> parameters, List<ElectricalComponent> all)
+    {
+        var ws = wb.Worksheets.Add("Project Parameters");
+
+        WriteTitleRow(ws, 1, "Project Parameters Schedule");
+
+        var headers = new[]
+        {
+            "Name", "Value (ft)", "Formula", "Bound Fields", "Used By", "Status"
+        };
+        WriteHeaderRow(ws, 2, headers);
+
+        int row = 3;
+        foreach (var parameter in parameters.OrderBy(parameter => parameter.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var usage = ProjectParameterScheduleSupport.GetUsage(parameter, all);
+            ws.Cell(row, 1).Value = parameter.Name;
+            ws.Cell(row, 2).Value = parameter.Value;
+            ws.Cell(row, 3).Value = string.IsNullOrWhiteSpace(parameter.Formula) ? "(fixed)" : parameter.Formula;
+            ws.Cell(row, 4).Value = usage.TargetSummary;
+            ws.Cell(row, 5).Value = ProjectParameterScheduleSupport.FormatUsageSummary(usage);
+            ws.Cell(row, 6).Value = string.IsNullOrWhiteSpace(parameter.FormulaError) ? "OK" : parameter.FormulaError;
+
+            ApplyAlternateRowFill(ws, row, headers.Length);
+            row++;
+        }
+
+        FormatSheet(ws, headers.Length);
+        ws.Column(2).Style.NumberFormat.Format = "0.###";
     }
 
     // ── Style helpers ─────────────────────────────────────────────────────────

@@ -268,6 +268,50 @@ public class MainWindowComponentSelectionTests
     }
 
     [Fact]
+    public void ProjectParameterEditorForTesting_FormulaPreviewShowsComputedValueAndKeepsSaveEnabled()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.UpsertProjectParameter("Base Width", 2.0);
+            viewModel.SelectSingleComponent(selected[0]);
+            window.UpdatePropertiesPanelForTesting();
+            window.SetProjectParameterEditorVisibleForTesting(true);
+
+            window.BeginNewProjectParameterDraftForTesting();
+            window.SetProjectParameterEditorDraftForTesting("Derived Width", "1.0", "[Base Width] * 2.5");
+
+            var state = window.GetProjectParameterEditorStateForTesting();
+            var valueTextBox = FindRequired<TextBox>(window, "ProjectParameterValueEditorTextBox");
+
+            Assert.True(state.SaveEnabled);
+            Assert.Equal("5'-0\"", valueTextBox.Text);
+            Assert.Contains("Computed preview", state.PreviewText);
+            Assert.True(string.IsNullOrWhiteSpace(state.ValidationText));
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void ProjectParameterEditorForTesting_InvalidFormulaShowsInlineErrorAndDisablesSave()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.SelectSingleComponent(selected[0]);
+            window.UpdatePropertiesPanelForTesting();
+            window.SetProjectParameterEditorVisibleForTesting(true);
+
+            window.BeginNewProjectParameterDraftForTesting();
+            window.SetProjectParameterEditorDraftForTesting("Derived Width", "1.0", "[Missing Width] * 2.5");
+
+            var state = window.GetProjectParameterEditorStateForTesting();
+
+            Assert.False(state.SaveEnabled);
+            Assert.Contains("Unknown parameter", state.ValidationText, StringComparison.OrdinalIgnoreCase);
+            return 0;
+        });
+    }
+
+    [Fact]
     public void TryMoveSelectedComponentsForTesting_AbsoluteModeAppliesPrimaryDeltaToAllSelected()
     {
         RunWithSelectedComponentsWindow((window, viewModel, selected) =>
