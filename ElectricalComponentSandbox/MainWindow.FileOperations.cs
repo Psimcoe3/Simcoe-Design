@@ -23,6 +23,7 @@ public partial class MainWindow
             _viewModel.ClearProjectParameters();
             _viewModel.Layers.Clear();
             _viewModel.ResetDrawingSheets();
+            _viewModel.ProjectName = "Untitled Project";
             _viewModel.UndoRedo.Clear();
             _currentFilePath = null;
             Title = "Electrical Component Sandbox";

@@ -151,11 +151,11 @@ public partial class MainWindow
         var template = service.GetDefaultTemplate(paperSize);
 
         // Fill template with project info
-        template.ProjectName = "Untitled Project";
+        template.ProjectName = _viewModel.ProjectName;
+        template.Description = _viewModel.SelectedSheet?.Name ?? template.Description;
+        template.DrawingNumber = _viewModel.SelectedSheet?.Number ?? template.DrawingNumber;
         template.DrawnBy = Environment.UserName;
         template.Date = DateTime.Now.ToString("MM/dd/yyyy");
-
-        var geometry = service.GenerateBorderGeometry(template);
 
         if (!TryPromptForDocumentPoint(
                 "Insert Title Block",
@@ -166,12 +166,22 @@ public partial class MainWindow
             return;
         }
 
-        var markups = _drawingAnnotationMarkupService.CreateTitleBlockMarkups(geometry, origin);
-        InsertGeneratedMarkups(
-            markups,
-            "Insert title block",
-            "Inserted title block",
-            $"Paper: {paperSize}, Size: {template.PaperWidth}x{template.PaperHeight}");
+        if (_viewModel.SelectedSheet == null)
+            return;
+
+        var instance = new LiveTitleBlockInstance
+        {
+            Origin = origin,
+            Template = template
+        };
+
+        _viewModel.UndoRedo.Execute(new ViewModelLiveTitleBlockAddAction(_viewModel, _viewModel.SelectedSheet, instance));
+        _viewModel.MarkupTool.SelectedMarkup = _viewModel.Markups.LastOrDefault(markup =>
+            markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.LiveTitleBlockInstanceIdField, out var instanceId) &&
+            string.Equals(instanceId, instance.Id, StringComparison.Ordinal));
+        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+        ActionLogService.Instance.Log(LogCategory.Edit, "Live title block inserted",
+            $"Paper: {paperSize}, Size: {template.PaperWidth}x{template.PaperHeight}, Sheet: {_viewModel.SelectedSheet.DisplayName}");
     }
 
     // ── Offset Conduit ───────────────────────────────────────────────────────

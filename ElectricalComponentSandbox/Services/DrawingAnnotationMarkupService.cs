@@ -25,6 +25,7 @@ public sealed class DrawingAnnotationMarkupService
     public const string TitleBlockAnnotationKind = "TitleBlock";
     public const string ComponentParameterTagAnnotationKind = "ComponentParameterTag";
     public const string LiveScheduleInstanceIdField = "LiveScheduleInstanceId";
+    public const string LiveTitleBlockInstanceIdField = "LiveTitleBlockInstanceId";
     public const string TextRoleTitle = "Title";
     public const string TextRoleHeader = "Header";
     public const string TextRoleCell = "Cell";
@@ -292,10 +293,14 @@ public sealed class DrawingAnnotationMarkupService
         TitleBlockBorderGeometry geometry,
         Point origin,
         string layerId = DefaultLayerId,
-        double pointsPerInch = PdfPointsPerInch)
+        double pointsPerInch = PdfPointsPerInch,
+        string? groupId = null,
+        string? liveTitleBlockInstanceId = null)
     {
         var markups = new List<MarkupRecord>();
-        var groupId = Guid.NewGuid().ToString("N");
+        var resolvedGroupId = string.IsNullOrWhiteSpace(groupId)
+            ? Guid.NewGuid().ToString("N")
+            : groupId;
 
         var outerRect = ScaleRect(geometry.OuterBorder, origin, pointsPerInch);
         var innerRect = ScaleRect(geometry.InnerBorder, origin, pointsPerInch);
@@ -304,7 +309,7 @@ public sealed class DrawingAnnotationMarkupService
         markups.Add(CreateRectangleMarkup(
             outerRect,
             layerId,
-            groupId,
+            resolvedGroupId,
             strokeColor: "#FF111827",
             strokeWidth: 1.5,
             fillColor: null,
@@ -314,7 +319,7 @@ public sealed class DrawingAnnotationMarkupService
         markups.Add(CreateRectangleMarkup(
             innerRect,
             layerId,
-            groupId,
+            resolvedGroupId,
             strokeColor: "#FF1F2937",
             strokeWidth: 1.0,
             fillColor: null,
@@ -324,7 +329,7 @@ public sealed class DrawingAnnotationMarkupService
         markups.Add(CreateRectangleMarkup(
             titleBlockRect,
             layerId,
-            groupId,
+            resolvedGroupId,
             strokeColor: "#FF374151",
             strokeWidth: 1.0,
             fillColor: null,
@@ -341,7 +346,7 @@ public sealed class DrawingAnnotationMarkupService
                 position,
                 tickEnd,
                 layerId,
-                groupId,
+                resolvedGroupId,
                 strokeColor: "#FF4B5563",
                 strokeWidth: 0.9,
                 subject: "Zone Mark",
@@ -351,7 +356,7 @@ public sealed class DrawingAnnotationMarkupService
                 zone.Label,
                 labelPoint,
                 layerId,
-                groupId,
+                resolvedGroupId,
                 fontSize: 8.0,
                 strokeColor: "#FF374151",
                 subject: "Zone Label",
@@ -368,7 +373,7 @@ public sealed class DrawingAnnotationMarkupService
             markups.Add(CreateRectangleMarkup(
                 rect,
                 layerId,
-                groupId,
+                resolvedGroupId,
                 strokeColor: "#FF6B7280",
                 strokeWidth: 0.9,
                 fillColor: null,
@@ -379,7 +384,7 @@ public sealed class DrawingAnnotationMarkupService
                 cell.Label,
                 new Point(rect.X + 4.0, rect.Y + 10.0),
                 layerId,
-                groupId,
+                resolvedGroupId,
                 fontSize: 6.6,
                 strokeColor: "#FF6B7280",
                 subject: "Title Block Label",
@@ -394,7 +399,7 @@ public sealed class DrawingAnnotationMarkupService
                     cell.Value,
                     new Point(rect.X + 4.0, rect.Y + Math.Min(rect.Height - 4.0, 22.0)),
                     layerId,
-                    groupId,
+                    resolvedGroupId,
                     fontSize: 8.8,
                     strokeColor: "#FF111827",
                     subject: "Title Block Value",
@@ -402,6 +407,12 @@ public sealed class DrawingAnnotationMarkupService
                 SetStructuredTextMetadata(valueMarkup, TitleBlockAnnotationKind, TextRoleFieldValue, cell.Label);
                 markups.Add(valueMarkup);
             }
+        }
+
+        if (!string.IsNullOrWhiteSpace(liveTitleBlockInstanceId))
+        {
+            foreach (var markup in markups)
+                markup.Metadata.CustomFields[LiveTitleBlockInstanceIdField] = liveTitleBlockInstanceId;
         }
 
         return markups;

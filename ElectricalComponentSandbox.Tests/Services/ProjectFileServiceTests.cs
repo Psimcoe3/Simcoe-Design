@@ -290,6 +290,36 @@ public class ProjectFileServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAndLoad_LiveTitleBlocks_RoundTrips()
+    {
+        var titleBlockService = new TitleBlockService();
+        var sheet = DrawingSheet.CreateDefault(1);
+        sheet.LiveTitleBlocks.Add(new LiveTitleBlockInstance
+        {
+            Origin = new Point(72, 72),
+            GroupId = "title-group",
+            Template = titleBlockService.GetDefaultTemplate(PaperSizeType.ANSI_B)
+        });
+
+        var project = new ProjectModel
+        {
+            Name = "Tower Renovation",
+            Sheets = [sheet]
+        };
+        var filePath = Path.Combine(_tempDir, "live-titleblocks.ecproj");
+
+        await _service.SaveProjectAsync(project, filePath);
+        var loaded = await _service.LoadProjectAsync(filePath);
+
+        Assert.NotNull(loaded);
+        Assert.Equal("Tower Renovation", loaded.Name);
+        Assert.Single(loaded.Sheets);
+        Assert.Single(loaded.Sheets[0].LiveTitleBlocks);
+        Assert.Equal(new Point(72, 72), loaded.Sheets[0].LiveTitleBlocks[0].Origin);
+        Assert.Equal(PaperSizeType.ANSI_B, loaded.Sheets[0].LiveTitleBlocks[0].Template.PaperSize);
+    }
+
+    [Fact]
     public async Task SaveAndLoad_ProjectParametersAndBindings_RoundTrip()
     {
         var parameter = new ProjectParameterDefinition { Name = "Shared Width", Value = 4.25 };

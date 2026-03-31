@@ -1,4 +1,5 @@
 using System.Windows;
+using ElectricalComponentSandbox.Models;
 
 namespace ElectricalComponentSandbox.Services;
 
@@ -148,6 +149,13 @@ public class TitleBlockService
 {
     private static readonly string[] HorizontalZoneLabels = { "A", "B", "C", "D", "E", "F", "G", "H" };
     private static readonly string[] VerticalZoneLabels = { "1", "2", "3", "4", "5", "6" };
+    private static readonly HashSet<string> LiveBoundFieldLabels = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "PROJECT",
+        "DESCRIPTION",
+        "DRAWING NO",
+        "SHEET"
+    };
 
     /// <summary>
     /// Returns the standard paper dimensions (width, height) in inches for a given paper size type.
@@ -232,6 +240,112 @@ public class TitleBlockService
             Description = "DRAWING DESCRIPTION"
         };
     }
+
+    public TitleBlockTemplate CloneTemplate(TitleBlockTemplate template)
+    {
+        ArgumentNullException.ThrowIfNull(template);
+
+        return new TitleBlockTemplate
+        {
+            Name = template.Name,
+            PaperSize = template.PaperSize,
+            BorderMargin = template.BorderMargin,
+            TitleBlockHeight = template.TitleBlockHeight,
+            RevisionHistoryRows = template.RevisionHistoryRows,
+            CompanyName = template.CompanyName,
+            ProjectName = template.ProjectName,
+            DrawingNumber = template.DrawingNumber,
+            SheetNumber = template.SheetNumber,
+            DrawnBy = template.DrawnBy,
+            CheckedBy = template.CheckedBy,
+            Date = template.Date,
+            Scale = template.Scale,
+            Description = template.Description
+        };
+    }
+
+    public TitleBlockTemplate BuildResolvedTemplate(
+        TitleBlockTemplate template,
+        string projectName,
+        DrawingSheet sheet,
+        int sheetIndex,
+        int sheetCount)
+    {
+        ArgumentNullException.ThrowIfNull(template);
+        ArgumentNullException.ThrowIfNull(sheet);
+
+        var resolved = CloneTemplate(template);
+        resolved.ProjectName = string.IsNullOrWhiteSpace(projectName) ? resolved.ProjectName : projectName.Trim();
+        resolved.Description = sheet.Name;
+        resolved.DrawingNumber = sheet.Number;
+        resolved.SheetNumber = $"{Math.Max(1, sheetIndex)} OF {Math.Max(1, sheetCount)}";
+        return resolved;
+    }
+
+    public static bool IsLiveBoundFieldLabel(string? label)
+        => !string.IsNullOrWhiteSpace(label) && LiveBoundFieldLabels.Contains(label.Trim());
+
+    public static bool TrySetFieldValue(TitleBlockTemplate template, string? label, string? value)
+    {
+        ArgumentNullException.ThrowIfNull(template);
+
+        var normalizedLabel = NormalizeFieldLabel(label);
+        var nextValue = value ?? string.Empty;
+        switch (normalizedLabel)
+        {
+            case "COMPANY":
+                template.CompanyName = nextValue;
+                return true;
+            case "PROJECT":
+                template.ProjectName = nextValue;
+                return true;
+            case "DRAWING NO":
+                template.DrawingNumber = nextValue;
+                return true;
+            case "SHEET":
+                template.SheetNumber = nextValue;
+                return true;
+            case "DRAWN BY":
+                template.DrawnBy = nextValue;
+                return true;
+            case "CHECKED BY":
+                template.CheckedBy = nextValue;
+                return true;
+            case "DATE":
+                template.Date = nextValue;
+                return true;
+            case "SCALE":
+                template.Scale = nextValue;
+                return true;
+            case "DESCRIPTION":
+                template.Description = nextValue;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    public static string? TryGetFieldValue(TitleBlockTemplate template, string? label)
+    {
+        ArgumentNullException.ThrowIfNull(template);
+
+        return NormalizeFieldLabel(label) switch
+        {
+            "COMPANY" => template.CompanyName,
+            "PROJECT" => template.ProjectName,
+            "DRAWING NO" => template.DrawingNumber,
+            "SHEET" => template.SheetNumber,
+            "DRAWN BY" => template.DrawnBy,
+            "CHECKED BY" => template.CheckedBy,
+            "DATE" => template.Date,
+            "SCALE" => template.Scale,
+            "DESCRIPTION" => template.Description,
+            _ => null
+        };
+    }
+
+    private static string NormalizeFieldLabel(string? label)
+        => string.IsNullOrWhiteSpace(label) ? string.Empty : label.Trim().ToUpperInvariant();
 
     /// <summary>
     /// Generates zone tick marks along the inner border perimeter.

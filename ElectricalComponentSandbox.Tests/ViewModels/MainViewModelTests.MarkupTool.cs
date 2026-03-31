@@ -436,6 +436,52 @@ public partial class MainViewModelTests
     }
 
     [Fact]
+    public void MarkupTool_SelectedLiveTitleBlockBoundField_ReportsReadOnlyBinding()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            TextContent = "Tower Renovation"
+        };
+        markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationKindField] = DrawingAnnotationMarkupService.TitleBlockAnnotationKind;
+        markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationTextRoleField] = DrawingAnnotationMarkupService.TextRoleFieldValue;
+        markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationTextKeyField] = "PROJECT";
+        markup.Metadata.CustomFields[DrawingAnnotationMarkupService.LiveTitleBlockInstanceIdField] = "title-1";
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasStructuredSelection);
+        Assert.False(vm.MarkupTool.HasTextEditableSelection);
+        Assert.Equal("This title block field stays bound to sheet/project data and is not edited directly", vm.MarkupTool.SelectedMarkupTextEditSummary);
+        Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupTextShortcutHint);
+    }
+
+    [Fact]
+    public void MarkupTool_SelectedLiveTitleBlockUnboundField_AllowsEditing()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            TextContent = "Engineer A"
+        };
+        markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationKindField] = DrawingAnnotationMarkupService.TitleBlockAnnotationKind;
+        markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationTextRoleField] = DrawingAnnotationMarkupService.TextRoleFieldValue;
+        markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationTextKeyField] = "DRAWN BY";
+        markup.Metadata.CustomFields[DrawingAnnotationMarkupService.LiveTitleBlockInstanceIdField] = "title-1";
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasTextEditableSelection);
+        Assert.Equal("Direct text edit updates the live title block instance for unbound fields", vm.MarkupTool.SelectedMarkupTextEditSummary);
+        Assert.Equal("Shortcut: F2", vm.MarkupTool.SelectedMarkupTextShortcutHint);
+        Assert.Equal("Current Value: Engineer A", vm.MarkupTool.SelectedMarkupTextDetails);
+    }
+
+    [Fact]
     public void MarkupTool_RefreshSelectedMarkupPresentation_UpdatesTextDetailsAfterEdit()
     {
         var vm = new MainViewModel();

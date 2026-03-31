@@ -5,6 +5,7 @@ using System.Windows.Media;
 using ElectricalComponentSandbox.Markup.Models;
 using ElectricalComponentSandbox.Rendering;
 using ElectricalComponentSandbox.Services;
+using ElectricalComponentSandbox.ViewModels;
 
 namespace ElectricalComponentSandbox;
 
@@ -338,6 +339,9 @@ public partial class MainWindow
 
     private bool TryEditStructuredMarkupText(MarkupRecord markup, bool showFeedbackIfUnsupported = false)
     {
+        if (TryEditLiveTitleBlockField(markup, showFeedbackIfUnsupported, out var liveTitleBlockHandled))
+            return liveTitleBlockHandled;
+
         if (!CanEditStructuredMarkupText(markup, out var annotationKind, out var textRole))
         {
             if (showFeedbackIfUnsupported)
@@ -364,6 +368,52 @@ public partial class MainWindow
         QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
         ActionLogService.Instance.Log(LogCategory.Edit, "Structured markup text edited",
             $"Kind: {annotationKind}, Role: {textRole}, Label: {markup.Metadata.Label}");
+        return true;
+    }
+
+    private bool TryEditLiveTitleBlockField(MarkupRecord markup, bool showFeedbackIfUnsupported, out bool handled)
+    {
+        handled = false;
+
+        if (markup.Type != MarkupType.Text ||
+            !markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.AnnotationKindField, out var annotationKind) ||
+            !string.Equals(annotationKind, DrawingAnnotationMarkupService.TitleBlockAnnotationKind, StringComparison.Ordinal) ||
+            !markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.LiveTitleBlockInstanceIdField, out var instanceId) ||
+            string.IsNullOrWhiteSpace(instanceId) ||
+            !markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.AnnotationTextRoleField, out var textRole) ||
+            !string.Equals(textRole, DrawingAnnotationMarkupService.TextRoleFieldValue, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        handled = true;
+        var fieldLabel = markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.AnnotationTextKeyField, out var textKey)
+            ? textKey ?? string.Empty
+            : markup.Metadata.Label;
+
+        if (TitleBlockService.IsLiveBoundFieldLabel(fieldLabel))
+        {
+            if (showFeedbackIfUnsupported)
+            {
+                MessageBox.Show("This title block field stays bound to sheet/project data and is not edited directly.", "Edit Title Block Field",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return true;
+        }
+
+        var title = GetStructuredMarkupEditTitle(annotationKind, textRole);
+        var prompt = GetStructuredMarkupEditPrompt(markup, annotationKind, textRole);
+        var input = PromptInput(title, prompt, markup.TextContent);
+        if (input == null || string.Equals(input, markup.TextContent, StringComparison.Ordinal))
+            return true;
+
+        var action = new LiveTitleBlockFieldEditAction(_viewModel, instanceId, fieldLabel, markup.TextContent, input);
+        _viewModel.UndoRedo.Execute(action);
+        _viewModel.MarkupTool.RefreshSelectedMarkupPresentation();
+        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+        ActionLogService.Instance.Log(LogCategory.Edit, "Live title block field edited",
+            $"Field: {fieldLabel}, Sheet: {_viewModel.SelectedSheet?.DisplayName ?? "(none)"}");
         return true;
     }
 
@@ -2054,6 +2104,16 @@ public partial class MainWindow
             return false;
         }
 
+        if (string.Equals(annotationKind, DrawingAnnotationMarkupService.TitleBlockAnnotationKind, StringComparison.Ordinal) &&
+            markup.Metadata.CustomFields.ContainsKey(DrawingAnnotationMarkupService.LiveTitleBlockInstanceIdField) &&
+            string.Equals(textRole, DrawingAnnotationMarkupService.TextRoleFieldValue, StringComparison.Ordinal) &&
+            TitleBlockService.IsLiveBoundFieldLabel(markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.AnnotationTextKeyField, out var textKey)
+                ? textKey
+                : markup.Metadata.Label))
+        {
+            return false;
+        }
+
         return textRole is DrawingAnnotationMarkupService.TextRoleTitle or
             DrawingAnnotationMarkupService.TextRoleCell or
             DrawingAnnotationMarkupService.TextRoleFieldValue;
@@ -2250,4 +2310,28 @@ internal sealed class MarkupTextChangeAction : IUndoableAction
 
         return new Rect(x, anchor.Y - height, width, height);
     }
+}
+
+internal sealed class LiveTitleBlockFieldEditAction : IUndoableAction
+{
+    private readonly MainViewModel _viewModel;
+    private readonly string _instanceId;
+    private readonly string _fieldLabel;
+    private readonly string _oldValue;
+    private readonly string _newValue;
+
+    public LiveTitleBlockFieldEditAction(MainViewModel viewModel, string instanceId, string fieldLabel, string oldValue, string newValue)
+    {
+        _viewModel = viewModel;
+        _instanceId = instanceId;
+        _fieldLabel = fieldLabel;
+        _oldValue = oldValue;
+        _newValue = newValue;
+    }
+
+    public string Description => $"Edit live title block field {_fieldLabel}";
+
+    public void Execute() => _viewModel.UpdateLiveTitleBlockFieldValue(_instanceId, _fieldLabel, _newValue);
+
+    public void Undo() => _viewModel.UpdateLiveTitleBlockFieldValue(_instanceId, _fieldLabel, _oldValue);
 }

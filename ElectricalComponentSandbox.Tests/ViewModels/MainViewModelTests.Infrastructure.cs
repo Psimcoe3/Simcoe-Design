@@ -622,4 +622,130 @@ public partial class MainViewModelTests
         Assert.Single(vm.SelectedSheet!.LiveSchedules);
         Assert.Contains(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent == "Lighting");
     }
+
+    [Fact]
+    public void AddLiveTitleBlockInstance_RendersManagedTitleBlockAndPersistsToProjectModel()
+    {
+        var vm = new MainViewModel
+        {
+            ProjectName = "Tower Renovation"
+        };
+        var sheet = Assert.IsType<DrawingSheet>(vm.SelectedSheet);
+        var instance = new LiveTitleBlockInstance
+        {
+            Origin = new Point(72, 72),
+            Template = new TitleBlockService().GetDefaultTemplate(PaperSizeType.ANSI_B)
+        };
+
+        vm.AddLiveTitleBlockInstance(sheet, instance);
+
+        Assert.Single(sheet.LiveTitleBlocks);
+        Assert.Contains(vm.Markups, markup =>
+            markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.LiveTitleBlockInstanceIdField, out var instanceId) &&
+            string.Equals(instanceId, instance.Id, StringComparison.Ordinal));
+        Assert.Contains(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent == "Tower Renovation");
+
+        var project = vm.ToProjectModel();
+
+        Assert.Equal("Tower Renovation", project.Name);
+        Assert.Single(project.Sheets[0].LiveTitleBlocks);
+    }
+
+    [Fact]
+    public void RefreshLiveTitleBlockMarkups_UpdatesBoundFieldsWhenSheetAndProjectChange()
+    {
+        var vm = new MainViewModel
+        {
+            ProjectName = "Tower Renovation"
+        };
+        var sheet = Assert.IsType<DrawingSheet>(vm.SelectedSheet);
+        var instance = new LiveTitleBlockInstance
+        {
+            Origin = new Point(72, 72),
+            Template = new TitleBlockService().GetDefaultTemplate(PaperSizeType.ANSI_B)
+        };
+
+        vm.AddLiveTitleBlockInstance(sheet, instance);
+        vm.RenameSheet(sheet, "E201", "Lighting Plan");
+        vm.ProjectName = "Campus Upgrade";
+
+        Assert.Contains(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent == "Campus Upgrade");
+        Assert.Contains(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent == "Lighting Plan");
+        Assert.Contains(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent == "E201");
+        Assert.Contains(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent == "1 OF 1");
+    }
+
+    [Fact]
+    public void UpdateLiveTitleBlockFieldValue_UpdatesUnboundFieldAndPreservesBindings()
+    {
+        var service = new TitleBlockService();
+        var vm = new MainViewModel
+        {
+            ProjectName = "Tower Renovation"
+        };
+        var sheet = Assert.IsType<DrawingSheet>(vm.SelectedSheet);
+        var template = service.GetDefaultTemplate(PaperSizeType.ANSI_B);
+        template.DrawnBy = "Engineer A";
+        var instance = new LiveTitleBlockInstance
+        {
+            Origin = new Point(72, 72),
+            Template = template
+        };
+
+        vm.AddLiveTitleBlockInstance(sheet, instance);
+
+        var changed = vm.UpdateLiveTitleBlockFieldValue(instance.Id, "DRAWN BY", "Engineer B");
+
+        Assert.True(changed);
+        Assert.Contains(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent == "Engineer B");
+        Assert.DoesNotContain(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent == "Engineer A");
+        Assert.Contains(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent == "Tower Renovation");
+    }
+
+    [Fact]
+    public void AddSheet_RefreshesLiveTitleBlockSheetCountAcrossSheets()
+    {
+        var vm = new MainViewModel();
+        var firstSheet = Assert.IsType<DrawingSheet>(vm.SelectedSheet);
+        var instance = new LiveTitleBlockInstance
+        {
+            Origin = new Point(72, 72),
+            Template = new TitleBlockService().GetDefaultTemplate(PaperSizeType.ANSI_B)
+        };
+
+        vm.AddLiveTitleBlockInstance(firstSheet, instance);
+        vm.AddSheet("Review Sheet");
+
+        Assert.Contains(firstSheet.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent == "1 OF 2");
+    }
+
+    [Fact]
+    public void LoadFromProject_RendersLiveTitleBlocksUsingPersistedBindings()
+    {
+        var service = new TitleBlockService();
+        var sheet = DrawingSheet.CreateDefault(1);
+        sheet.Number = "A101";
+        sheet.Name = "Floor Plan";
+        sheet.LiveTitleBlocks.Add(new LiveTitleBlockInstance
+        {
+            Origin = new Point(72, 72),
+            Template = service.GetDefaultTemplate(PaperSizeType.ANSI_B)
+        });
+        var project = new ProjectModel
+        {
+            Name = "Tower Renovation",
+            Sheets = [sheet],
+            ActiveSheetId = sheet.Id
+        };
+
+        var vm = new MainViewModel();
+
+        vm.LoadFromProject(project);
+
+        Assert.Equal("Tower Renovation", vm.ProjectName);
+        Assert.Single(vm.SelectedSheet!.LiveTitleBlocks);
+        Assert.Contains(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent == "Tower Renovation");
+        Assert.Contains(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent == "Floor Plan");
+        Assert.Contains(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent == "A101");
+    }
 }

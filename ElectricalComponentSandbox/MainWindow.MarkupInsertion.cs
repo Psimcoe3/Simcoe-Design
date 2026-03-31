@@ -90,3 +90,23 @@ internal sealed class ViewModelLiveScheduleAddAction : IUndoableAction
 
     public void Undo() => _viewModel.RemoveLiveScheduleInstance(_sheet, _instance.Id);
 }
+
+internal sealed class ViewModelLiveTitleBlockAddAction : IUndoableAction
+{
+    private readonly MainViewModel _viewModel;
+    private readonly DrawingSheet _sheet;
+    private readonly LiveTitleBlockInstance _instance;
+
+    public ViewModelLiveTitleBlockAddAction(MainViewModel viewModel, DrawingSheet sheet, LiveTitleBlockInstance instance)
+    {
+        _viewModel = viewModel;
+        _sheet = sheet;
+        _instance = instance;
+    }
+
+    public string Description => $"Insert {_instance.DisplayName}";
+
+    public void Execute() => _viewModel.AddLiveTitleBlockInstance(_sheet, _instance);
+
+    public void Undo() => _viewModel.RemoveLiveTitleBlockInstance(_sheet, _instance.Id);
+}

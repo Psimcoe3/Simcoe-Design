@@ -411,11 +411,21 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
     public string SelectedMarkupAnnotationKey => GetSelectedMarkupCustomField(DrawingAnnotationMarkupService.AnnotationTextKeyField);
 
+    private bool IsLiveTitleBlockSelection =>
+        _selectedMarkup?.Metadata.CustomFields.ContainsKey(DrawingAnnotationMarkupService.LiveTitleBlockInstanceIdField) == true &&
+        string.Equals(SelectedMarkupAnnotationKind, DrawingAnnotationMarkupService.TitleBlockAnnotationKind, StringComparison.Ordinal);
+
+    private bool IsBoundLiveTitleBlockFieldSelection =>
+        IsLiveTitleBlockSelection &&
+        string.Equals(SelectedMarkupAnnotationRole, DrawingAnnotationMarkupService.TextRoleFieldValue, StringComparison.Ordinal) &&
+        TitleBlockService.IsLiveBoundFieldLabel(SelectedMarkupAnnotationKey);
+
     public bool HasTextEditableSelection =>
         _selectedMarkup?.Type == MarkupType.Text &&
         HasStructuredSelection &&
         !string.Equals(SelectedMarkupAnnotationKind, DrawingAnnotationMarkupService.ComponentParameterTagAnnotationKind, StringComparison.Ordinal) &&
-        !_selectedMarkup.Metadata.CustomFields.ContainsKey(DrawingAnnotationMarkupService.LiveScheduleInstanceIdField);
+        !_selectedMarkup.Metadata.CustomFields.ContainsKey(DrawingAnnotationMarkupService.LiveScheduleInstanceIdField) &&
+        !IsBoundLiveTitleBlockFieldSelection;
 
     public string SelectedMarkupTextEditSummary
     {
@@ -429,6 +439,12 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
             if (_selectedMarkup.Metadata.CustomFields.ContainsKey(DrawingAnnotationMarkupService.LiveScheduleInstanceIdField))
                 return "Live schedules regenerate from project data and are not edited directly";
+
+            if (IsBoundLiveTitleBlockFieldSelection)
+                return "This title block field stays bound to sheet/project data and is not edited directly";
+
+            if (IsLiveTitleBlockSelection)
+                return "Direct text edit updates the live title block instance for unbound fields";
 
             return HasTextEditableSelection
                 ? "Direct text edit available for structured schedule, legend, and title-block text"

@@ -45,6 +45,8 @@ public class DrawingSheet : INotifyPropertyChanged
 
     public List<LiveScheduleInstance> LiveSchedules { get; set; } = new();
 
+    public List<LiveTitleBlockInstance> LiveTitleBlocks { get; set; } = new();
+
     public List<NamedView> NamedViews { get; set; } = new();
 
     public PlotLayout? PlotLayout { get; set; }

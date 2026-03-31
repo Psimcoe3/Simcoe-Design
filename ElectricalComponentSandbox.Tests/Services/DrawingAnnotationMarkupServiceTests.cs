@@ -116,6 +116,25 @@ public class DrawingAnnotationMarkupServiceTests
     }
 
     [Fact]
+    public void CreateTitleBlockMarkups_WithLiveTitleBlockMetadata_StampsManagedInstanceId()
+    {
+        var titleBlockService = new TitleBlockService();
+        var geometry = titleBlockService.GenerateBorderGeometry(titleBlockService.GetDefaultTemplate(PaperSizeType.ANSI_B));
+
+        var markups = _sut.CreateTitleBlockMarkups(
+            geometry,
+            new Point(12, 18),
+            groupId: "title-group",
+            liveTitleBlockInstanceId: "title-1");
+
+        Assert.All(markups, markup =>
+        {
+            Assert.Equal("title-group", markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField]);
+            Assert.Equal("title-1", markup.Metadata.CustomFields[DrawingAnnotationMarkupService.LiveTitleBlockInstanceIdField]);
+        });
+    }
+
+    [Fact]
     public void CreateComponentParameterTagMarkup_PopulatesBindingMetadata()
     {
         var markup = _sut.CreateComponentParameterTagMarkup(

@@ -1,3 +1,4 @@
+using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.Services;
 using Xunit;
 
@@ -80,5 +81,26 @@ public class TitleBlockServiceTests
         Assert.Contains(geometry.TitleBlockCells, c => c.Label == "PROJECT");
         Assert.Contains(geometry.TitleBlockCells, c => c.Label == "DRAWING NO");
         Assert.Contains(geometry.TitleBlockCells, c => c.Label == "REVISIONS");
+    }
+
+    [Fact]
+    public void BuildResolvedTemplate_AppliesProjectAndSheetBindings()
+    {
+        var service = new TitleBlockService();
+        var template = service.GetDefaultTemplate(PaperSizeType.ANSI_B);
+        template.CompanyName = "Simcoe Electric";
+        var sheet = new DrawingSheet
+        {
+            Number = "E201",
+            Name = "Lighting Plan"
+        };
+
+        var resolved = service.BuildResolvedTemplate(template, "Tower Renovation", sheet, 2, 5);
+
+        Assert.Equal("Tower Renovation", resolved.ProjectName);
+        Assert.Equal("Lighting Plan", resolved.Description);
+        Assert.Equal("E201", resolved.DrawingNumber);
+        Assert.Equal("2 OF 5", resolved.SheetNumber);
+        Assert.Equal("Simcoe Electric", resolved.CompanyName);
     }
 }

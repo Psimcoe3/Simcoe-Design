@@ -33,6 +33,7 @@ public class MainViewModel : INotifyPropertyChanged
     private bool _snapToGrid = true;
     private double _gridSize = 1.0;
     private Layer? _activeLayer;
+    private string _projectName = "Untitled Project";
     private string _unitSystem = "Imperial";
     private PlotLayout? _activePlotLayout;
     private PdfUnderlay? _pdfUnderlay;
@@ -41,6 +42,7 @@ public class MainViewModel : INotifyPropertyChanged
     private double _polarIncrementDeg = 45.0;
     private DimensionStyleDefinition? _activeDimensionStyle;
     private readonly ScheduleTableService _scheduleTableService = new();
+    private readonly TitleBlockService _titleBlockService = new();
     private readonly DrawingAnnotationMarkupService _drawingAnnotationMarkupService = new();
 
     public ObservableCollection<ElectricalComponent> Components { get; } = new();
@@ -560,6 +562,21 @@ public class MainViewModel : INotifyPropertyChanged
             OnPropertyChanged();
         }
     }
+
+    public string ProjectName
+    {
+        get => _projectName;
+        set
+        {
+            var normalized = string.IsNullOrWhiteSpace(value) ? "Untitled Project" : value.Trim();
+            if (string.Equals(_projectName, normalized, StringComparison.Ordinal))
+                return;
+
+            _projectName = normalized;
+            RefreshLiveTitleBlockMarkups();
+            OnPropertyChanged();
+        }
+    }
     
     public string UnitSystemName
     {
@@ -786,6 +803,10 @@ public class MainViewModel : INotifyPropertyChanged
             SelectedSheet,
             Markups,
             removeMissingInstances: SelectedSheet.Markups.Any(IsLiveScheduleMarkup));
+        SynchronizeLiveTitleBlockInstancesFromMarkups(
+            SelectedSheet,
+            Markups,
+            removeMissingInstances: SelectedSheet.Markups.Any(IsLiveTitleBlockMarkup));
         SelectedSheet.Markups = Markups.ToList();
         SelectedSheet.NamedViews = NamedViews.ToList();
         SelectedSheet.PdfUnderlay = PdfUnderlay;
@@ -838,6 +859,7 @@ public class MainViewModel : INotifyPropertyChanged
 
         Sheets.Add(sheet);
         SelectSheet(sheet);
+        RefreshLiveTitleBlockMarkups();
         RefreshProjectBrowserItems();
         RefreshMarkupReviewContext();
 
@@ -867,6 +889,8 @@ public class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(Sheets));
         if (ReferenceEquals(SelectedSheet, sheet))
             OnPropertyChanged(nameof(SelectedSheet));
+
+        RefreshLiveTitleBlockMarkups();
 
         ActionLogService.Instance.Log(LogCategory.View, "Sheet renamed",
             $"Sheet: {sheet.DisplayName}");
@@ -902,6 +926,7 @@ public class MainViewModel : INotifyPropertyChanged
             SelectedSheet = replacement;
         }
 
+        RefreshLiveTitleBlockMarkups();
         RefreshMarkupReviewContext();
     RefreshProjectBrowserItems();
         OnPropertyChanged(nameof(Sheets));
@@ -925,6 +950,7 @@ public class MainViewModel : INotifyPropertyChanged
             return false;
 
         Sheets.Move(index, targetIndex);
+        RefreshLiveTitleBlockMarkups();
         RefreshProjectBrowserItems();
         RefreshMarkupReviewContext();
         OnPropertyChanged(nameof(Sheets));
@@ -1222,6 +1248,22 @@ public class MainViewModel : INotifyPropertyChanged
         };
     }
 
+    public TitleBlockBorderGeometry GenerateLiveTitleBlockGeometry(LiveTitleBlockInstance instance, DrawingSheet sheet)
+    {
+        ArgumentNullException.ThrowIfNull(instance);
+        ArgumentNullException.ThrowIfNull(sheet);
+
+        NormalizeLiveTitleBlockInstance(instance);
+        var sheetIndex = Math.Max(1, Sheets.IndexOf(sheet) + 1);
+        var resolvedTemplate = _titleBlockService.BuildResolvedTemplate(
+            instance.Template,
+            ProjectName,
+            sheet,
+            sheetIndex,
+            Math.Max(1, Sheets.Count));
+        return _titleBlockService.GenerateBorderGeometry(resolvedTemplate);
+    }
+
     public void AddLiveScheduleInstance(DrawingSheet sheet, LiveScheduleInstance instance)
     {
         ArgumentNullException.ThrowIfNull(sheet);
@@ -1250,6 +1292,64 @@ public class MainViewModel : INotifyPropertyChanged
         PersistActiveSheetState();
         RefreshMarkupReviewContext();
         return true;
+    }
+
+    public void AddLiveTitleBlockInstance(DrawingSheet sheet, LiveTitleBlockInstance instance)
+    {
+        ArgumentNullException.ThrowIfNull(sheet);
+        ArgumentNullException.ThrowIfNull(instance);
+
+        NormalizeLiveTitleBlockInstance(instance);
+        if (sheet.LiveTitleBlocks.Any(existing => string.Equals(existing.Id, instance.Id, StringComparison.Ordinal)))
+            return;
+
+        sheet.LiveTitleBlocks.Add(instance);
+        RenderLiveTitleBlockMarkupsForSheet(sheet, updateActiveCollections: ReferenceEquals(sheet, SelectedSheet), synchronizeFromExistingMarkups: false);
+        PersistActiveSheetState();
+        RefreshMarkupReviewContext();
+    }
+
+    public bool RemoveLiveTitleBlockInstance(DrawingSheet sheet, string instanceId)
+    {
+        ArgumentNullException.ThrowIfNull(sheet);
+
+        var instance = sheet.LiveTitleBlocks.FirstOrDefault(existing => string.Equals(existing.Id, instanceId, StringComparison.Ordinal));
+        if (instance == null)
+            return false;
+
+        sheet.LiveTitleBlocks.Remove(instance);
+        RenderLiveTitleBlockMarkupsForSheet(sheet, updateActiveCollections: ReferenceEquals(sheet, SelectedSheet), synchronizeFromExistingMarkups: false);
+        PersistActiveSheetState();
+        RefreshMarkupReviewContext();
+        return true;
+    }
+
+    public bool UpdateLiveTitleBlockFieldValue(string instanceId, string fieldLabel, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(instanceId) ||
+            string.IsNullOrWhiteSpace(fieldLabel) ||
+            TitleBlockService.IsLiveBoundFieldLabel(fieldLabel))
+        {
+            return false;
+        }
+
+        foreach (var sheet in Sheets)
+        {
+            var instance = sheet.LiveTitleBlocks.FirstOrDefault(existing => string.Equals(existing.Id, instanceId, StringComparison.Ordinal));
+            if (instance == null)
+                continue;
+
+            NormalizeLiveTitleBlockInstance(instance);
+            if (!TitleBlockService.TrySetFieldValue(instance.Template, fieldLabel, value))
+                return false;
+
+            RenderLiveTitleBlockMarkupsForSheet(sheet, updateActiveCollections: ReferenceEquals(sheet, SelectedSheet), synchronizeFromExistingMarkups: false);
+            PersistActiveSheetState();
+            RefreshMarkupReviewContext();
+            return true;
+        }
+
+        return false;
     }
 
     public void AddComponent(ComponentType type)
@@ -1425,6 +1525,7 @@ public class MainViewModel : INotifyPropertyChanged
             $"Components: {Components.Count}, Layers: {Layers.Count}, Sheets: {Sheets.Count}, ActiveSheet: {activeSheet?.DisplayName ?? "(none)"}");
         return new ProjectModel
         {
+            Name = ProjectName,
             Components = Components.ToList(),
             Circuits = Circuits.ToList(),
             ProjectParameters = ProjectParameters.ToList(),
@@ -1496,6 +1597,10 @@ public class MainViewModel : INotifyPropertyChanged
         RefreshProjectBrowserItems();
         RefreshMarkupReviewContext();
 
+        ProjectName = string.IsNullOrWhiteSpace(project.Name)
+            ? "Untitled Project"
+            : project.Name;
+
         UnitSystemName = project.UnitSystem;
         GridSize = project.GridSize;
         ShowGrid = project.ShowGrid;
@@ -1503,6 +1608,7 @@ public class MainViewModel : INotifyPropertyChanged
 
         RebuildPanelSchedules();
         ApplyProjectParameterBindings();
+        RefreshLiveTitleBlockMarkups();
 
         UndoRedo.Clear();
         ClearComponentSelection();
@@ -1536,6 +1642,37 @@ public class MainViewModel : INotifyPropertyChanged
                     removeMissingInstances: sheet.Markups.Any(IsLiveScheduleMarkup));
 
             RenderLiveScheduleMarkupsForSheet(
+                sheet,
+                updateActiveCollections: ReferenceEquals(sheet, SelectedSheet),
+                synchronizeFromExistingMarkups: false);
+            refreshedAny = true;
+        }
+
+        if (!refreshedAny)
+            return;
+
+        PersistActiveSheetState();
+        RefreshMarkupReviewContext();
+    }
+
+    public void RefreshLiveTitleBlockMarkups()
+    {
+        var refreshedAny = false;
+        foreach (var sheet in Sheets)
+        {
+            var currentMarkups = ReferenceEquals(sheet, SelectedSheet)
+                ? Markups.ToList()
+                : sheet.Markups.ToList();
+            if (sheet.LiveTitleBlocks.Count == 0 && !currentMarkups.Any(IsLiveTitleBlockMarkup))
+                continue;
+
+            if (ReferenceEquals(sheet, SelectedSheet))
+                SynchronizeLiveTitleBlockInstancesFromMarkups(
+                    sheet,
+                    currentMarkups,
+                    removeMissingInstances: sheet.Markups.Any(IsLiveTitleBlockMarkup));
+
+            RenderLiveTitleBlockMarkupsForSheet(
                 sheet,
                 updateActiveCollections: ReferenceEquals(sheet, SelectedSheet),
                 synchronizeFromExistingMarkups: false);
@@ -1668,6 +1805,79 @@ public class MainViewModel : INotifyPropertyChanged
         RebuildPanelSchedules();
         RefreshComponentParameterTagMarkups(BuildProjectParameterLookup());
         RefreshLiveScheduleMarkups();
+        RefreshLiveTitleBlockMarkups();
+    }
+
+    private void RenderLiveTitleBlockMarkupsForSheet(
+        DrawingSheet sheet,
+        bool updateActiveCollections,
+        bool synchronizeFromExistingMarkups)
+    {
+        var currentMarkups = updateActiveCollections
+            ? Markups.ToList()
+            : sheet.Markups.ToList();
+
+        if (synchronizeFromExistingMarkups)
+            SynchronizeLiveTitleBlockInstancesFromMarkups(
+                sheet,
+                currentMarkups,
+                removeMissingInstances: sheet.Markups.Any(IsLiveTitleBlockMarkup));
+
+        if (sheet.LiveTitleBlocks.Count == 0 && !currentMarkups.Any(IsLiveTitleBlockMarkup))
+            return;
+
+        var renderedMarkups = BuildRenderedMarkupsWithLiveTitleBlocks(sheet, currentMarkups);
+        ApplyRenderedMarkupsToSheet(sheet, renderedMarkups, updateActiveCollections);
+    }
+
+    private IReadOnlyList<MarkupRecord> BuildRenderedMarkupsWithLiveTitleBlocks(
+        DrawingSheet sheet,
+        IReadOnlyList<MarkupRecord> currentMarkups)
+    {
+        var renderedByInstanceId = sheet.LiveTitleBlocks
+            .ToDictionary(instance => instance.Id, instance => CreateLiveTitleBlockMarkups(sheet, instance), StringComparer.Ordinal);
+        var emittedInstanceIds = new HashSet<string>(StringComparer.Ordinal);
+        var finalMarkups = new List<MarkupRecord>(currentMarkups.Count);
+
+        foreach (var markup in currentMarkups)
+        {
+            if (!TryGetLiveTitleBlockInstanceId(markup, out var instanceId))
+            {
+                finalMarkups.Add(markup);
+                continue;
+            }
+
+            if (!renderedByInstanceId.TryGetValue(instanceId, out var renderedMarkups))
+                continue;
+
+            if (!emittedInstanceIds.Add(instanceId))
+                continue;
+
+            finalMarkups.AddRange(renderedMarkups);
+        }
+
+        foreach (var instance in sheet.LiveTitleBlocks)
+        {
+            if (emittedInstanceIds.Add(instance.Id) &&
+                renderedByInstanceId.TryGetValue(instance.Id, out var renderedMarkups))
+            {
+                finalMarkups.AddRange(renderedMarkups);
+            }
+        }
+
+        return finalMarkups;
+    }
+
+    private IReadOnlyList<MarkupRecord> CreateLiveTitleBlockMarkups(DrawingSheet sheet, LiveTitleBlockInstance instance)
+    {
+        NormalizeLiveTitleBlockInstance(instance);
+        var geometry = GenerateLiveTitleBlockGeometry(instance, sheet);
+        return _drawingAnnotationMarkupService.CreateTitleBlockMarkups(
+            geometry,
+            instance.Origin,
+            instance.LayerId,
+            groupId: instance.GroupId,
+            liveTitleBlockInstanceId: instance.Id);
     }
 
     private void RenderLiveScheduleMarkupsForSheet(
@@ -1758,7 +1968,7 @@ public class MainViewModel : INotifyPropertyChanged
         if (markupTool is null)
             return;
 
-        var liveScheduleSelection = CaptureLiveScheduleSelection(markupTool.SelectedMarkup);
+        var managedSelection = CaptureManagedStructuredSelection(markupTool.SelectedMarkup);
 
         Markups.Clear();
         ShadowTree.Clear();
@@ -1768,10 +1978,10 @@ public class MainViewModel : INotifyPropertyChanged
             ShadowTree.AddOrUpdate(markup);
         }
 
-        if (liveScheduleSelection is not { } selection)
+        if (managedSelection is not { } selection)
             return;
 
-        var nextSelection = FindMatchingLiveScheduleMarkup(renderedMarkups, selection);
+        var nextSelection = FindMatchingManagedStructuredMarkup(renderedMarkups, selection);
         markupTool.SelectedMarkup = nextSelection;
     }
 
@@ -1804,6 +2014,39 @@ public class MainViewModel : INotifyPropertyChanged
                 instance.GroupId = groupId;
 
             if (TryGetLiveScheduleOrigin(instanceMarkups, out var origin))
+                instance.Origin = origin;
+        }
+    }
+
+    private static void SynchronizeLiveTitleBlockInstancesFromMarkups(
+        DrawingSheet sheet,
+        IEnumerable<MarkupRecord> markups,
+        bool removeMissingInstances)
+    {
+        var markupsByInstanceId = markups
+            .Select(markup => new { Markup = markup, HasInstance = TryGetLiveTitleBlockInstanceId(markup, out var instanceId), InstanceId = instanceId })
+            .Where(entry => entry.HasInstance)
+            .GroupBy(entry => entry.InstanceId, entry => entry.Markup, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
+
+        for (int index = sheet.LiveTitleBlocks.Count - 1; index >= 0; index--)
+        {
+            var instance = sheet.LiveTitleBlocks[index];
+            if (!markupsByInstanceId.TryGetValue(instance.Id, out var instanceMarkups) || instanceMarkups.Count == 0)
+            {
+                if (removeMissingInstances)
+                    sheet.LiveTitleBlocks.RemoveAt(index);
+
+                continue;
+            }
+
+            var groupId = instanceMarkups
+                .Select(GetAnnotationGroupId)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+            if (!string.IsNullOrWhiteSpace(groupId))
+                instance.GroupId = groupId;
+
+            if (TryGetLiveTitleBlockOrigin(instanceMarkups, out var origin))
                 instance.Origin = origin;
         }
     }
@@ -1851,12 +2094,46 @@ public class MainViewModel : INotifyPropertyChanged
             : null;
     }
 
+    private static bool TryGetLiveTitleBlockOrigin(
+        IEnumerable<MarkupRecord> markups,
+        out Point origin)
+    {
+        var outerBorder = markups.FirstOrDefault(markup =>
+            markup.Type == MarkupType.Rectangle &&
+            string.Equals(markup.Metadata.Subject, "Sheet Border", StringComparison.Ordinal) &&
+            string.Equals(markup.Metadata.Label, "Outer Border", StringComparison.Ordinal));
+        if (outerBorder != null)
+        {
+            origin = new Point(outerBorder.BoundingRect.X, outerBorder.BoundingRect.Y);
+            return true;
+        }
+
+        origin = default;
+        return false;
+    }
+
     private static bool IsLiveScheduleMarkup(MarkupRecord markup)
         => TryGetLiveScheduleInstanceId(markup, out _);
+
+    private static bool IsLiveTitleBlockMarkup(MarkupRecord markup)
+        => TryGetLiveTitleBlockInstanceId(markup, out _);
 
     private static bool TryGetLiveScheduleInstanceId(MarkupRecord markup, out string instanceId)
     {
         if (markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.LiveScheduleInstanceIdField, out var value) &&
+            !string.IsNullOrWhiteSpace(value))
+        {
+            instanceId = value;
+            return true;
+        }
+
+        instanceId = string.Empty;
+        return false;
+    }
+
+    private static bool TryGetLiveTitleBlockInstanceId(MarkupRecord markup, out string instanceId)
+    {
+        if (markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.LiveTitleBlockInstanceIdField, out var value) &&
             !string.IsNullOrWhiteSpace(value))
         {
             instanceId = value;
@@ -1876,12 +2153,23 @@ public class MainViewModel : INotifyPropertyChanged
             instance.GroupId = Guid.NewGuid().ToString("N");
     }
 
-    private static LiveScheduleSelectionKey? CaptureLiveScheduleSelection(MarkupRecord? markup)
+    private static void NormalizeLiveTitleBlockInstance(LiveTitleBlockInstance instance)
     {
-        if (markup == null || !TryGetLiveScheduleInstanceId(markup, out var instanceId))
+        if (string.IsNullOrWhiteSpace(instance.LayerId))
+            instance.LayerId = DrawingAnnotationMarkupService.DefaultLayerId;
+
+        if (string.IsNullOrWhiteSpace(instance.GroupId))
+            instance.GroupId = Guid.NewGuid().ToString("N");
+
+        instance.Template ??= new TitleBlockTemplate();
+    }
+
+    private static ManagedStructuredSelectionKey? CaptureManagedStructuredSelection(MarkupRecord? markup)
+    {
+        if (markup == null || !TryGetManagedStructuredInstanceId(markup, out var instanceId))
             return null;
 
-        return new LiveScheduleSelectionKey(
+        return new ManagedStructuredSelectionKey(
             instanceId,
             markup.Type,
             markup.Metadata.Subject ?? string.Empty,
@@ -1891,12 +2179,12 @@ public class MainViewModel : INotifyPropertyChanged
             GetMarkupCustomFieldInt(markup, DrawingAnnotationMarkupService.AnnotationColumnIndexField));
     }
 
-    private static MarkupRecord? FindMatchingLiveScheduleMarkup(
+    private static MarkupRecord? FindMatchingManagedStructuredMarkup(
         IEnumerable<MarkupRecord> markups,
-        LiveScheduleSelectionKey selection)
+        ManagedStructuredSelectionKey selection)
     {
         return markups.FirstOrDefault(markup =>
-            TryGetLiveScheduleInstanceId(markup, out var instanceId) &&
+            TryGetManagedStructuredInstanceId(markup, out var instanceId) &&
             string.Equals(instanceId, selection.InstanceId, StringComparison.Ordinal) &&
             markup.Type == selection.Type &&
             string.Equals(markup.Metadata.Subject ?? string.Empty, selection.Subject, StringComparison.Ordinal) &&
@@ -1905,9 +2193,12 @@ public class MainViewModel : INotifyPropertyChanged
             GetMarkupCustomFieldInt(markup, DrawingAnnotationMarkupService.AnnotationRowIndexField) == selection.RowIndex &&
             GetMarkupCustomFieldInt(markup, DrawingAnnotationMarkupService.AnnotationColumnIndexField) == selection.ColumnIndex)
             ?? markups.FirstOrDefault(markup =>
-                TryGetLiveScheduleInstanceId(markup, out var instanceId) &&
+                TryGetManagedStructuredInstanceId(markup, out var instanceId) &&
                 string.Equals(instanceId, selection.InstanceId, StringComparison.Ordinal));
     }
+
+    private static bool TryGetManagedStructuredInstanceId(MarkupRecord markup, out string instanceId)
+        => TryGetLiveScheduleInstanceId(markup, out instanceId) || TryGetLiveTitleBlockInstanceId(markup, out instanceId);
 
     private static string? GetMarkupCustomField(MarkupRecord markup, string key)
     {
@@ -1924,7 +2215,7 @@ public class MainViewModel : INotifyPropertyChanged
             : null;
     }
 
-    private readonly record struct LiveScheduleSelectionKey(
+    private readonly record struct ManagedStructuredSelectionKey(
         string InstanceId,
         MarkupType Type,
         string Subject,
