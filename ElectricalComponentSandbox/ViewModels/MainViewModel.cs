@@ -206,7 +206,7 @@ public class MainViewModel : INotifyPropertyChanged
         }
 
         RecalculateProjectParameterValues(throwOnError: true);
-        ApplyProjectParameterBindings();
+        ApplyProjectParameterBindings(BuildProjectParameterValueLookup());
         OnPropertyChanged(nameof(ProjectParameters));
         return parameter;
     }
@@ -225,7 +225,7 @@ public class MainViewModel : INotifyPropertyChanged
             component.Parameters.ClearBindingReference(parameterId);
 
         RecalculateProjectParameterValues(throwOnError: false);
-        ApplyProjectParameterBindings();
+        ApplyProjectParameterBindings(BuildProjectParameterValueLookup());
 
         OnPropertyChanged(nameof(ProjectParameters));
         return true;
@@ -258,24 +258,19 @@ public class MainViewModel : INotifyPropertyChanged
     public void ApplyProjectParameterBindings()
     {
         RecalculateProjectParameterValues(throwOnError: false);
-        var parameterLookup = ProjectParameters
-            .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Id))
-            .GroupBy(parameter => parameter.Id, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.Last().Value, StringComparer.Ordinal);
-
-        foreach (var component in Components)
-            ApplyProjectParameterBindings(component, parameterLookup);
+        ApplyProjectParameterBindings(BuildProjectParameterValueLookup());
     }
 
     public void ApplyProjectParameterBindings(ElectricalComponent component)
     {
         RecalculateProjectParameterValues(throwOnError: false);
-        var parameterLookup = ProjectParameters
-            .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Id))
-            .GroupBy(parameter => parameter.Id, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.Last().Value, StringComparer.Ordinal);
+        ApplyProjectParameterBindings(component, BuildProjectParameterValueLookup());
+    }
 
-        ApplyProjectParameterBindings(component, parameterLookup);
+    private void ApplyProjectParameterBindings(IReadOnlyDictionary<string, double> parameterLookup)
+    {
+        foreach (var component in Components)
+            ApplyProjectParameterBindings(component, parameterLookup);
     }
 
     private static void ApplyProjectParameterBindings(ElectricalComponent component, IReadOnlyDictionary<string, double> parameterLookup)
@@ -316,6 +311,14 @@ public class MainViewModel : INotifyPropertyChanged
                 Formula = parameter.Formula
             })
             .ToList();
+    }
+
+    private Dictionary<string, double> BuildProjectParameterValueLookup()
+    {
+        return ProjectParameters
+            .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Id))
+            .GroupBy(parameter => parameter.Id, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Last().Value, StringComparer.Ordinal);
     }
 
     private ProjectParameterDraftPreview BuildProjectParameterPreview(string name, double value, string? parameterId, string? formula, bool throwOnError)

@@ -248,6 +248,7 @@ public partial class MainWindow
     private IEnumerable<ProjectParameterEditorItem> BuildProjectParameterEditorItems()
     {
         var searchText = ProjectParameterSearchTextBox?.Text?.Trim() ?? string.Empty;
+        var usageLookup = ProjectParameterScheduleSupport.BuildUsageMap(_viewModel.Components);
 
         return _viewModel.ProjectParameters
             .Where(parameter => string.IsNullOrWhiteSpace(searchText) ||
@@ -255,7 +256,11 @@ public partial class MainWindow
             .OrderBy(parameter => parameter.Name, StringComparer.OrdinalIgnoreCase)
             .Select(parameter =>
             {
-                var (bindingCount, componentCount) = GetProjectParameterUsage(parameter.Id);
+                var usage = usageLookup.TryGetValue(parameter.Id, out var summary)
+                    ? summary
+                    : ProjectParameterUsageSummary.Empty;
+                var bindingCount = usage.BindingCount;
+                var componentCount = usage.ComponentCount;
                 var componentSummary = componentCount == 1 ? "1 comp" : $"{componentCount} comps";
                 var bindingSummary = bindingCount == 1 ? "1 binding" : $"{bindingCount} bindings";
                 return new ProjectParameterEditorItem

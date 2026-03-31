@@ -175,6 +175,7 @@ public class ScheduleTableService
         IReadOnlyList<ProjectParameterDefinition> parameters,
         IReadOnlyList<ElectricalComponent> components)
     {
+        var usageLookup = ProjectParameterScheduleSupport.BuildUsageMap(components);
         var table = new ScheduleTable
         {
             Title = "PROJECT PARAMETERS",
@@ -191,7 +192,9 @@ public class ScheduleTableService
 
         foreach (var parameter in parameters.OrderBy(parameter => parameter.Name, StringComparer.OrdinalIgnoreCase))
         {
-            var usage = ProjectParameterScheduleSupport.GetUsage(parameter, components);
+            var usage = usageLookup.TryGetValue(parameter.Id, out var summary)
+                ? summary
+                : ProjectParameterUsageSummary.Empty;
             table.Rows.Add(new[]
             {
                 parameter.Name,
