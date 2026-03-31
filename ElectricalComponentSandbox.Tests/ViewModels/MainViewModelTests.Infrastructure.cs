@@ -748,4 +748,44 @@ public partial class MainViewModelTests
         Assert.Contains(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent == "Floor Plan");
         Assert.Contains(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent == "A101");
     }
+
+    [Fact]
+    public void AddAndRemoveSheetRevision_RefreshesLiveTitleBlockRevisionRows()
+    {
+        var vm = new MainViewModel
+        {
+            ProjectName = "Tower Renovation"
+        }; 
+        var sheet = Assert.IsType<DrawingSheet>(vm.SelectedSheet);
+        var instance = new LiveTitleBlockInstance
+        {
+            Origin = new Point(72, 72),
+            Template = new TitleBlockService().GetDefaultTemplate(PaperSizeType.ANSI_B)
+        };
+
+        vm.AddLiveTitleBlockInstance(sheet, instance);
+        var revision = vm.AddSheetRevision(sheet, "Issued for review", "Paul", revisionNumber: "A", revisionDate: "2026-03-31");
+
+        Assert.Contains(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent.Contains("Issued for review", StringComparison.Ordinal));
+
+        var removed = vm.RemoveSheetRevision(sheet, revision.Id);
+
+        Assert.True(removed);
+        Assert.DoesNotContain(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent.Contains("Issued for review", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void SetSheetStatus_TracksApprovalMetadata()
+    {
+        var vm = new MainViewModel();
+        var sheet = Assert.IsType<DrawingSheet>(vm.SelectedSheet);
+
+        var changed = vm.SetSheetStatus(sheet, DrawingSheetStatus.Approved, "Reviewer");
+
+        Assert.True(changed);
+        Assert.Equal(DrawingSheetStatus.Approved, sheet.Status);
+        Assert.Equal("Reviewer", sheet.ModifiedBy);
+        Assert.Equal("Reviewer", sheet.ApprovedBy);
+        Assert.NotNull(sheet.ApprovedUtc);
+    }
 }

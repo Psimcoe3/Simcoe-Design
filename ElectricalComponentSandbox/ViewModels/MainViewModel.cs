@@ -43,6 +43,7 @@ public class MainViewModel : INotifyPropertyChanged
     private DimensionStyleDefinition? _activeDimensionStyle;
     private readonly ScheduleTableService _scheduleTableService = new();
     private readonly TitleBlockService _titleBlockService = new();
+    private readonly RevisionHistoryService _revisionHistoryService = new();
     private readonly DrawingAnnotationMarkupService _drawingAnnotationMarkupService = new();
 
     public ObservableCollection<ElectricalComponent> Components { get; } = new();
@@ -849,6 +850,23 @@ public class MainViewModel : INotifyPropertyChanged
         return sheet;
     }
 
+    private static void TouchSheet(DrawingSheet sheet, string? actor, bool initializeCreatedMetadata = false)
+    {
+        var resolvedActor = string.IsNullOrWhiteSpace(actor) ? Environment.UserName : actor.Trim();
+        var utcNow = DateTime.UtcNow;
+
+        if (initializeCreatedMetadata)
+        {
+            if (sheet.CreatedUtc == default)
+                sheet.CreatedUtc = utcNow;
+            if (string.IsNullOrWhiteSpace(sheet.CreatedBy))
+                sheet.CreatedBy = resolvedActor;
+        }
+
+        sheet.ModifiedUtc = utcNow;
+        sheet.ModifiedBy = resolvedActor;
+    }
+
     public DrawingSheet AddSheet(string? name = null)
     {
         PersistActiveSheetState();
@@ -856,6 +874,8 @@ public class MainViewModel : INotifyPropertyChanged
         var sheet = DrawingSheet.CreateDefault(Sheets.Count + 1);
         if (!string.IsNullOrWhiteSpace(name))
             sheet.Name = name.Trim();
+
+        TouchSheet(sheet, Environment.UserName, initializeCreatedMetadata: true);
 
         Sheets.Add(sheet);
         SelectSheet(sheet);
@@ -883,6 +903,7 @@ public class MainViewModel : INotifyPropertyChanged
 
         sheet.Number = normalizedNumber;
         sheet.Name = normalizedName;
+        TouchSheet(sheet, Environment.UserName);
         RefreshProjectBrowserItems();
         UpdateSheetMarkupReviewContext(sheet);
         MarkupTool?.RefreshReviewContext();
@@ -1261,7 +1282,73 @@ public class MainViewModel : INotifyPropertyChanged
             sheet,
             sheetIndex,
             Math.Max(1, Sheets.Count));
-        return _titleBlockService.GenerateBorderGeometry(resolvedTemplate);
+        return _titleBlockService.GenerateBorderGeometry(resolvedTemplate, sheet.RevisionEntries);
+    }
+
+    public RevisionEntry AddSheetRevision(
+        DrawingSheet sheet,
+        string description,
+        string? author = null,
+        string? revisionNumber = null,
+        string? revisionDate = null)
+    {
+        ArgumentNullException.ThrowIfNull(sheet);
+
+        var entry = _revisionHistoryService.CreateRevisionEntry(sheet, description, author, revisionNumber, revisionDate);
+        _revisionHistoryService.AddRevision(sheet, entry);
+        TouchSheet(sheet, entry.Author);
+        RenderLiveTitleBlockMarkupsForSheet(sheet, updateActiveCollections: ReferenceEquals(sheet, SelectedSheet), synchronizeFromExistingMarkups: false);
+        PersistActiveSheetState();
+        RefreshMarkupReviewContext();
+        return entry;
+    }
+
+    public string GetNextSheetRevisionNumber(DrawingSheet sheet)
+    {
+        ArgumentNullException.ThrowIfNull(sheet);
+        return _revisionHistoryService.GetNextRevisionNumber(sheet.RevisionEntries);
+    }
+
+    public bool RemoveSheetRevision(DrawingSheet sheet, string revisionId)
+    {
+        ArgumentNullException.ThrowIfNull(sheet);
+
+        if (!_revisionHistoryService.RemoveRevision(sheet, revisionId))
+            return false;
+
+        TouchSheet(sheet, Environment.UserName);
+        RenderLiveTitleBlockMarkupsForSheet(sheet, updateActiveCollections: ReferenceEquals(sheet, SelectedSheet), synchronizeFromExistingMarkups: false);
+        PersistActiveSheetState();
+        RefreshMarkupReviewContext();
+        return true;
+    }
+
+    public bool SetSheetStatus(DrawingSheet sheet, DrawingSheetStatus status, string? actor = null)
+    {
+        ArgumentNullException.ThrowIfNull(sheet);
+
+        if (sheet.Status == status)
+            return false;
+
+        var resolvedActor = string.IsNullOrWhiteSpace(actor) ? Environment.UserName : actor.Trim();
+        sheet.Status = status;
+        TouchSheet(sheet, resolvedActor);
+        if (status == DrawingSheetStatus.Approved)
+        {
+            sheet.ApprovedBy = resolvedActor;
+            sheet.ApprovedUtc = DateTime.UtcNow;
+        }
+        else
+        {
+            sheet.ApprovedBy = null;
+            sheet.ApprovedUtc = null;
+        }
+
+        RefreshProjectBrowserItems();
+        OnPropertyChanged(nameof(Sheets));
+        if (ReferenceEquals(SelectedSheet, sheet))
+            OnPropertyChanged(nameof(SelectedSheet));
+        return true;
     }
 
     public void AddLiveScheduleInstance(DrawingSheet sheet, LiveScheduleInstance instance)

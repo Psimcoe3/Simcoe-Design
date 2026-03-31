@@ -103,4 +103,26 @@ public class TitleBlockServiceTests
         Assert.Equal("2 OF 5", resolved.SheetNumber);
         Assert.Equal("Simcoe Electric", resolved.CompanyName);
     }
+
+    [Fact]
+    public void GenerateBorderGeometry_WithRevisionEntries_PopulatesRevisionRows()
+    {
+        var service = new TitleBlockService();
+        var template = service.GetDefaultTemplate(PaperSizeType.ANSI_B);
+        var revisions = new[]
+        {
+            new RevisionEntry
+            {
+                RevisionNumber = "B",
+                Date = "2026-03-31",
+                Description = "Issued for coordination",
+                Author = "Paul"
+            }
+        };
+
+        var geometry = service.GenerateBorderGeometry(template, revisions);
+
+        Assert.Contains(geometry.TitleBlockCells, cell => cell.Label == "REV B");
+        Assert.Contains(geometry.TitleBlockCells, cell => cell.Value.Contains("Issued for coordination", StringComparison.Ordinal));
+    }
 }

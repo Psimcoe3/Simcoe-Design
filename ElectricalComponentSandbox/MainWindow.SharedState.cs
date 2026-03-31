@@ -127,6 +127,7 @@ public partial class MainWindow
         _interactionQualityRestoreTimer.Tick += InteractionQualityRestoreTimer_Tick;
         _viewModel = viewModel;
         DataContext = _viewModel;
+        UpdateWindowTitle();
         InitializeDimensionDisplayDefaults();
         _revitIntrospectionOptions = RevitIntrospectionOptions.FromEnvironment();
         _revitIntrospectionService = RevitGeometryMeasurementIntrospectionService.CreateDefault(_revitIntrospectionOptions);
@@ -159,6 +160,29 @@ public partial class MainWindow
                 $"Components: {_viewModel.Components.Count}, Layers: {_viewModel.Layers.Count}, Units: {_viewModel.UnitSystemName}, Grid: {_viewModel.GridSize}");
             ActionLogService.Instance.Log(LogCategory.Application, "MainWindow closed");
         };
+    }
+
+    private void UpdateWindowTitle()
+    {
+        var projectName = string.IsNullOrWhiteSpace(_viewModel.ProjectName)
+            ? "Untitled Project"
+            : _viewModel.ProjectName.Trim();
+        var hasExplicitProjectName = !string.Equals(projectName, "Untitled Project", StringComparison.Ordinal);
+        var fileName = string.IsNullOrWhiteSpace(_currentFilePath)
+            ? null
+            : System.IO.Path.GetFileName(_currentFilePath);
+
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            Title = hasExplicitProjectName
+                ? $"Electrical Component Sandbox - {projectName}"
+                : "Electrical Component Sandbox";
+            return;
+        }
+
+        Title = hasExplicitProjectName
+            ? $"Electrical Component Sandbox - {projectName} ({fileName})"
+            : $"Electrical Component Sandbox - {fileName}";
     }
 
     private static string GetStratusXmlDirectory()

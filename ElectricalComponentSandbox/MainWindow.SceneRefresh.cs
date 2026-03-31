@@ -68,7 +68,11 @@ public partial class MainWindow
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainViewModel.SelectedComponent) ||
+        if (e.PropertyName == nameof(MainViewModel.ProjectName))
+        {
+            UpdateWindowTitle();
+        }
+        else if (e.PropertyName == nameof(MainViewModel.SelectedComponent) ||
             e.PropertyName == nameof(MainViewModel.SelectedComponentIds))
         {
             QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);

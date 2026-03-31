@@ -26,7 +26,7 @@ public partial class MainWindow
             _viewModel.ProjectName = "Untitled Project";
             _viewModel.UndoRedo.Clear();
             _currentFilePath = null;
-            Title = "Electrical Component Sandbox";
+            UpdateWindowTitle();
             
             // Re-initialize default layer
             var defaultLayer = Layer.CreateDefault();
@@ -63,7 +63,7 @@ public partial class MainWindow
                     ClearMarkupSelection();
                     _viewModel.LoadFromProject(project);
                     _currentFilePath = dialog.FileName;
-                    Title = $"Electrical Component Sandbox - {System.IO.Path.GetFileName(dialog.FileName)}";
+                    UpdateWindowTitle();
                     SyncSheetBrowserSelection();
                     RebuildNamedViewMenuItems();
                     ActionLogService.Instance.Log(LogCategory.FileOperation, "Project opened", $"File: {dialog.FileName}");
@@ -105,7 +105,7 @@ public partial class MainWindow
         {
             await SaveProjectAsync(dialog.FileName);
             _currentFilePath = dialog.FileName;
-            Title = $"Electrical Component Sandbox - {System.IO.Path.GetFileName(dialog.FileName)}";
+            UpdateWindowTitle();
         }
     }
     

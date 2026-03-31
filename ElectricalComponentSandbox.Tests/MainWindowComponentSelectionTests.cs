@@ -1107,6 +1107,32 @@ public class MainWindowComponentSelectionTests
     }
 
     [Fact]
+    public void UpdateMobileTopBarForTesting_ProjectNameEditor_BindsTwoWay()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.ProjectName = "Tower Renovation";
+            window.EnableMobileViewForTesting();
+            window.SetMobilePaneForTesting("canvas");
+            window.UpdateMobileTopBarForTesting();
+
+            var projectNameTextBox = FindRequired<TextBox>(window, "MobileProjectNameTextBox");
+            var binding = projectNameTextBox.GetBindingExpression(TextBox.TextProperty);
+
+            Assert.NotNull(binding);
+            binding!.UpdateTarget();
+            Assert.Equal("Tower Renovation", projectNameTextBox.Text);
+
+            projectNameTextBox.Text = "Campus Upgrade";
+            binding.UpdateSource();
+
+            Assert.Equal("Campus Upgrade", viewModel.ProjectName);
+            Assert.Equal("Electrical Component Sandbox - Campus Upgrade", window.Title);
+            return 0;
+        });
+    }
+
+    [Fact]
     public void UpdateMobileTopBarForTesting_WithComponentSelection_ShowsActionMenuAndDuplicateWorks()
     {
         RunWithSelectedComponentsWindow((window, viewModel, selected) =>

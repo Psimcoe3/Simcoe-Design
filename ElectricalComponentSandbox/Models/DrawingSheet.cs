@@ -10,6 +10,14 @@ using ElectricalComponentSandbox.Markup.Models;
 /// Components remain project-global for now; sheet-scoped state covers the
 /// underlay, markups, saved views, and page setup.
 /// </summary>
+public enum DrawingSheetStatus
+{
+    Draft,
+    InReview,
+    Approved,
+    Archived
+}
+
 public class DrawingSheet : INotifyPropertyChanged
 {
     private string _number = "S001";
@@ -39,6 +47,20 @@ public class DrawingSheet : INotifyPropertyChanged
         }
     }
 
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+
+    public string CreatedBy { get; set; } = Environment.UserName;
+
+    public DateTime ModifiedUtc { get; set; } = DateTime.UtcNow;
+
+    public string ModifiedBy { get; set; } = Environment.UserName;
+
+    public DrawingSheetStatus Status { get; set; } = DrawingSheetStatus.Draft;
+
+    public DateTime? ApprovedUtc { get; set; }
+
+    public string? ApprovedBy { get; set; }
+
     public PdfUnderlay? PdfUnderlay { get; set; }
 
     public List<MarkupRecord> Markups { get; set; } = new();
@@ -46,6 +68,8 @@ public class DrawingSheet : INotifyPropertyChanged
     public List<LiveScheduleInstance> LiveSchedules { get; set; } = new();
 
     public List<LiveTitleBlockInstance> LiveTitleBlocks { get; set; } = new();
+
+    public List<RevisionEntry> RevisionEntries { get; set; } = new();
 
     public List<NamedView> NamedViews { get; set; } = new();
 

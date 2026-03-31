@@ -87,6 +87,62 @@ public class MainWindowReferenceTests
     }
 
     [Fact]
+    public void ProjectCommandSurface_ProjectNameTextBox_BindsTwoWay()
+    {
+        RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel
+            {
+                ProjectName = "Tower Renovation"
+            };
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var projectNameTextBox = FindRequired<TextBox>(window, "ProjectNameTextBox");
+                var binding = projectNameTextBox.GetBindingExpression(TextBox.TextProperty);
+
+                Assert.NotNull(binding);
+                binding!.UpdateTarget();
+
+                Assert.Equal("Tower Renovation", projectNameTextBox.Text);
+
+                projectNameTextBox.Text = "Campus Upgrade";
+                binding.UpdateSource();
+
+                Assert.Equal("Campus Upgrade", viewModel.ProjectName);
+                return 0;
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void ProjectName_UpdatesWindowTitle()
+    {
+        RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var window = new MainWindow(viewModel);
+            try
+            {
+                Assert.Equal("Electrical Component Sandbox", window.Title);
+
+                viewModel.ProjectName = "Tower Renovation";
+
+                Assert.Equal("Electrical Component Sandbox - Tower Renovation", window.Title);
+                return 0;
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
     public void PropertiesPanel_AssignSelectedReference_FillsReferenceUrlText()
     {
         RunOnSta(() =>

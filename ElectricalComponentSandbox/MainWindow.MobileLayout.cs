@@ -241,6 +241,21 @@ public partial class MainWindow
         MobileTopBarHeaderGrid.Height = isIOS ? 52 : 56;
         MobileSectionTitleText.FontSize = isIOS ? 17 : 18;
         MobileSectionTitleText.FontWeight = isIOS ? FontWeights.SemiBold : FontWeights.Medium;
+        if (MobileProjectNameBar != null)
+        {
+            MobileProjectNameBar.Background = altSurface;
+            MobileProjectNameBar.BorderBrush = border;
+        }
+
+        if (MobileProjectNameLabelText != null)
+        {
+            MobileProjectNameLabelText.FontSize = isIOS ? 11 : 12;
+        }
+
+        if (MobileProjectNameTextBox != null)
+        {
+            MobileProjectNameTextBox.FontSize = isIOS ? 13 : 14;
+        }
 
         MobileUndoButton.Foreground = primary;
         MobileRedoButton.Foreground = primary;

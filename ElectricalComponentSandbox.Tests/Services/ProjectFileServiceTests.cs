@@ -320,6 +320,42 @@ public class ProjectFileServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAndLoad_SheetRevisionEntriesAndMetadata_RoundTrips()
+    {
+        var sheet = DrawingSheet.CreateDefault(1);
+        sheet.Status = DrawingSheetStatus.Approved;
+        sheet.CreatedBy = "Paul";
+        sheet.ModifiedBy = "Reviewer";
+        sheet.ApprovedBy = "Reviewer";
+        sheet.ApprovedUtc = new DateTime(2026, 3, 31, 12, 0, 0, DateTimeKind.Utc);
+        sheet.RevisionEntries.Add(new RevisionEntry
+        {
+            RevisionNumber = "A",
+            Date = "2026-03-31",
+            Description = "Initial issue",
+            Author = "Paul"
+        });
+
+        var project = new ProjectModel
+        {
+            Sheets = [sheet]
+        };
+        var filePath = Path.Combine(_tempDir, "sheet-revisions.ecproj");
+
+        await _service.SaveProjectAsync(project, filePath);
+        var loaded = await _service.LoadProjectAsync(filePath);
+
+        Assert.NotNull(loaded);
+        Assert.Single(loaded.Sheets);
+        Assert.Equal(DrawingSheetStatus.Approved, loaded.Sheets[0].Status);
+        Assert.Equal("Paul", loaded.Sheets[0].CreatedBy);
+        Assert.Equal("Reviewer", loaded.Sheets[0].ApprovedBy);
+        Assert.Single(loaded.Sheets[0].RevisionEntries);
+        Assert.Equal("A", loaded.Sheets[0].RevisionEntries[0].RevisionNumber);
+        Assert.Equal("Initial issue", loaded.Sheets[0].RevisionEntries[0].Description);
+    }
+
+    [Fact]
     public async Task SaveAndLoad_ProjectParametersAndBindings_RoundTrip()
     {
         var parameter = new ProjectParameterDefinition { Name = "Shared Width", Value = 4.25 };

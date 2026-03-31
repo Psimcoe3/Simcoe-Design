@@ -183,6 +183,14 @@ public class TitleBlockService
     /// including outer/inner borders, zone marks, title block rectangle, and cells.
     /// </summary>
     public TitleBlockBorderGeometry GenerateBorderGeometry(TitleBlockTemplate template)
+        => GenerateBorderGeometry(template, revisionEntries: null);
+
+    /// <summary>
+    /// Generates the complete border geometry for a given title block template,
+    /// including outer/inner borders, zone marks, title block rectangle, and cells.
+    /// Optional revision entries are rendered into the revision block rows.
+    /// </summary>
+    public TitleBlockBorderGeometry GenerateBorderGeometry(TitleBlockTemplate template, IReadOnlyList<RevisionEntry>? revisionEntries)
     {
         var (paperWidth, paperHeight) = GetStandardPaperSize(template.PaperSize);
         double margin = template.BorderMargin;
@@ -204,7 +212,7 @@ public class TitleBlockService
             template.TitleBlockHeight);
 
         var zoneMarks = GenerateZoneMarks(innerBorder);
-        var cells = GenerateTitleBlockCells(titleBlockRect, template);
+        var cells = GenerateTitleBlockCells(titleBlockRect, template, revisionEntries);
 
         return new TitleBlockBorderGeometry
         {
@@ -283,7 +291,10 @@ public class TitleBlockService
     }
 
     public static bool IsLiveBoundFieldLabel(string? label)
-        => !string.IsNullOrWhiteSpace(label) && LiveBoundFieldLabels.Contains(label.Trim());
+    {
+        var normalizedLabel = NormalizeFieldLabel(label);
+        return LiveBoundFieldLabels.Contains(normalizedLabel) || normalizedLabel.StartsWith("REV ", StringComparison.Ordinal);
+    }
 
     public static bool TrySetFieldValue(TitleBlockTemplate template, string? label, string? value)
     {
@@ -416,7 +427,7 @@ public class TitleBlockService
     /// a company/project header row, metadata fields, and a revision history section.
     /// </summary>
     private static List<TitleBlockCell> GenerateTitleBlockCells(
-        Rect titleBlockRect, TitleBlockTemplate template)
+        Rect titleBlockRect, TitleBlockTemplate template, IReadOnlyList<RevisionEntry>? revisionEntries)
     {
         var cells = new List<TitleBlockCell>();
 
@@ -565,12 +576,18 @@ public class TitleBlockService
             Height = revHeaderHeight
         });
 
+        var displayedRevisions = revisionEntries?
+            .Where(entry => entry != null)
+            .Take(Math.Max(1, template.RevisionHistoryRows))
+            .ToList() ?? new List<RevisionEntry>();
+
         for (int i = 0; i < template.RevisionHistoryRows; i++)
         {
+            var revision = i < displayedRevisions.Count ? displayedRevisions[i] : null;
             cells.Add(new TitleBlockCell
             {
-                Label = $"REV {i + 1}",
-                Value = string.Empty,
+                Label = revision == null ? $"REV {i + 1}" : $"REV {revision.RevisionNumber}",
+                Value = revision?.BuildDisplayText() ?? string.Empty,
                 X = revisionBlockX,
                 Y = tbY + revHeaderHeight + i * revRowHeight,
                 Width = revisionBlockWidth,
