@@ -246,6 +246,50 @@ public class ProjectFileServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAndLoad_LiveSchedulesAndCircuits_RoundTrips()
+    {
+        var sheet = DrawingSheet.CreateDefault(1);
+        sheet.LiveSchedules.Add(new LiveScheduleInstance
+        {
+            Kind = LiveScheduleKind.CircuitSummary,
+            Origin = new Point(120, 140),
+            GroupId = "group-1"
+        });
+
+        var project = new ProjectModel
+        {
+            Sheets = [sheet],
+            Circuits =
+            [
+                new Circuit
+                {
+                    CircuitNumber = "1",
+                    Description = "Lighting",
+                    PanelId = "panel-1",
+                    Phase = "A",
+                    Voltage = 120,
+                    ConnectedLoadVA = 1800,
+                    WireLengthFeet = 75,
+                    Breaker = new CircuitBreaker { TripAmps = 20, Poles = 1 },
+                    Wire = new WireSpec { Size = "12", Material = ConductorMaterial.Copper }
+                }
+            ]
+        };
+        var filePath = Path.Combine(_tempDir, "live-schedules.ecproj");
+
+        await _service.SaveProjectAsync(project, filePath);
+        var loaded = await _service.LoadProjectAsync(filePath);
+
+        Assert.NotNull(loaded);
+        Assert.Single(loaded.Circuits);
+        Assert.Single(loaded.Sheets);
+        Assert.Single(loaded.Sheets[0].LiveSchedules);
+        Assert.Equal(LiveScheduleKind.CircuitSummary, loaded.Sheets[0].LiveSchedules[0].Kind);
+        Assert.Equal(new Point(120, 140), loaded.Sheets[0].LiveSchedules[0].Origin);
+        Assert.Equal("Lighting", loaded.Circuits[0].Description);
+    }
+
+    [Fact]
     public async Task SaveAndLoad_ProjectParametersAndBindings_RoundTrip()
     {
         var parameter = new ProjectParameterDefinition { Name = "Shared Width", Value = 4.25 };

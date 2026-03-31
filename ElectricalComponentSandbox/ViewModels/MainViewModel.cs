@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
+using System.Windows;
 using System.Windows.Media.Media3D;
 using ElectricalComponentSandbox.Markup.Models;
 using ElectricalComponentSandbox.Models;
@@ -39,6 +40,8 @@ public class MainViewModel : INotifyPropertyChanged
     private bool _isPolarActive = false;
     private double _polarIncrementDeg = 45.0;
     private DimensionStyleDefinition? _activeDimensionStyle;
+    private readonly ScheduleTableService _scheduleTableService = new();
+    private readonly DrawingAnnotationMarkupService _drawingAnnotationMarkupService = new();
 
     public ObservableCollection<ElectricalComponent> Components { get; } = new();
     public ObservableCollection<ElectricalComponent> LibraryComponents { get; } = new();
@@ -296,6 +299,7 @@ public class MainViewModel : INotifyPropertyChanged
         var parameterLookup = BuildProjectParameterLookup();
         ApplyProjectParameterBindings(component, parameterLookup);
         RefreshComponentParameterTagMarkups(parameterLookup);
+        RefreshLiveScheduleMarkups();
     }
 
     private void ApplyProjectParameterBindings(IReadOnlyDictionary<string, ProjectParameterDefinition> parameterLookup)
@@ -304,6 +308,7 @@ public class MainViewModel : INotifyPropertyChanged
             ApplyProjectParameterBindings(component, parameterLookup);
 
         RefreshComponentParameterTagMarkups(parameterLookup);
+        RefreshLiveScheduleMarkups();
     }
 
     private static void ApplyProjectParameterBindings(ElectricalComponent component, IReadOnlyDictionary<string, ProjectParameterDefinition> parameterLookup)
@@ -724,6 +729,7 @@ public class MainViewModel : INotifyPropertyChanged
             status => TryApplySelectedMarkupStatus(status, Environment.UserName),
             status => ApplyFilteredMarkupStatus(status, Environment.UserName));
         LayerManager = new LayerManagerViewModel(Layers);
+        UndoRedo.Changed += (_, _) => HandleUndoRedoChanged();
     }
     
     private void InitializeLibrary()
@@ -776,6 +782,10 @@ public class MainViewModel : INotifyPropertyChanged
         if (SelectedSheet == null)
             return;
 
+        SynchronizeLiveScheduleInstancesFromMarkups(
+            SelectedSheet,
+            Markups,
+            removeMissingInstances: SelectedSheet.Markups.Any(IsLiveScheduleMarkup));
         SelectedSheet.Markups = Markups.ToList();
         SelectedSheet.NamedViews = NamedViews.ToList();
         SelectedSheet.PdfUnderlay = PdfUnderlay;
@@ -1200,6 +1210,48 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public ScheduleTable GenerateLiveScheduleTable(LiveScheduleKind kind)
+    {
+        return kind switch
+        {
+            LiveScheduleKind.Equipment => _scheduleTableService.GenerateEquipmentSchedule(Components.ToList(), ProjectParameters.ToList()),
+            LiveScheduleKind.Conduit => _scheduleTableService.GenerateConduitSchedule(Components.ToList(), ProjectParameters.ToList()),
+            LiveScheduleKind.CircuitSummary => _scheduleTableService.GenerateCircuitSummary(Circuits.ToList()),
+            LiveScheduleKind.ProjectParameter => _scheduleTableService.GenerateProjectParameterSchedule(ProjectParameters.ToList(), Components.ToList()),
+            _ => throw new InvalidOperationException($"Unsupported live schedule kind '{kind}'.")
+        };
+    }
+
+    public void AddLiveScheduleInstance(DrawingSheet sheet, LiveScheduleInstance instance)
+    {
+        ArgumentNullException.ThrowIfNull(sheet);
+        ArgumentNullException.ThrowIfNull(instance);
+
+        NormalizeLiveScheduleInstance(instance);
+        if (sheet.LiveSchedules.Any(existing => string.Equals(existing.Id, instance.Id, StringComparison.Ordinal)))
+            return;
+
+        sheet.LiveSchedules.Add(instance);
+        RenderLiveScheduleMarkupsForSheet(sheet, updateActiveCollections: ReferenceEquals(sheet, SelectedSheet), synchronizeFromExistingMarkups: false);
+        PersistActiveSheetState();
+        RefreshMarkupReviewContext();
+    }
+
+    public bool RemoveLiveScheduleInstance(DrawingSheet sheet, string instanceId)
+    {
+        ArgumentNullException.ThrowIfNull(sheet);
+
+        var instance = sheet.LiveSchedules.FirstOrDefault(existing => string.Equals(existing.Id, instanceId, StringComparison.Ordinal));
+        if (instance == null)
+            return false;
+
+        sheet.LiveSchedules.Remove(instance);
+        RenderLiveScheduleMarkupsForSheet(sheet, updateActiveCollections: ReferenceEquals(sheet, SelectedSheet), synchronizeFromExistingMarkups: false);
+        PersistActiveSheetState();
+        RefreshMarkupReviewContext();
+        return true;
+    }
+
     public void AddComponent(ComponentType type)
     {
         ActionLogService.Instance.Log(LogCategory.Component, "Adding component", $"Type: {type}");
@@ -1374,6 +1426,7 @@ public class MainViewModel : INotifyPropertyChanged
         return new ProjectModel
         {
             Components = Components.ToList(),
+            Circuits = Circuits.ToList(),
             ProjectParameters = ProjectParameters.ToList(),
             Layers = Layers.ToList(),
             Sheets = Sheets.ToList(),
@@ -1399,6 +1452,10 @@ public class MainViewModel : INotifyPropertyChanged
         Components.Clear();
         foreach (var comp in project.Components)
             Components.Add(comp);
+
+        Circuits.Clear();
+        foreach (var circuit in project.Circuits)
+            Circuits.Add(circuit);
 
         ProjectParameters.Clear();
         foreach (var parameter in project.ProjectParameters)
@@ -1444,6 +1501,7 @@ public class MainViewModel : INotifyPropertyChanged
         ShowGrid = project.ShowGrid;
         SnapToGrid = project.SnapToGrid;
 
+        RebuildPanelSchedules();
         ApplyProjectParameterBindings();
 
         UndoRedo.Clear();
@@ -1459,6 +1517,37 @@ public class MainViewModel : INotifyPropertyChanged
 
     public void RefreshComponentParameterTagMarkups()
         => RefreshComponentParameterTagMarkups(BuildProjectParameterLookup());
+
+    public void RefreshLiveScheduleMarkups()
+    {
+        var refreshedAny = false;
+        foreach (var sheet in Sheets)
+        {
+            var currentMarkups = ReferenceEquals(sheet, SelectedSheet)
+                ? Markups.ToList()
+                : sheet.Markups.ToList();
+            if (sheet.LiveSchedules.Count == 0 && !currentMarkups.Any(IsLiveScheduleMarkup))
+                continue;
+
+            if (ReferenceEquals(sheet, SelectedSheet))
+                SynchronizeLiveScheduleInstancesFromMarkups(
+                    sheet,
+                    currentMarkups,
+                    removeMissingInstances: sheet.Markups.Any(IsLiveScheduleMarkup));
+
+            RenderLiveScheduleMarkupsForSheet(
+                sheet,
+                updateActiveCollections: ReferenceEquals(sheet, SelectedSheet),
+                synchronizeFromExistingMarkups: false);
+            refreshedAny = true;
+        }
+
+        if (!refreshedAny)
+            return;
+
+        PersistActiveSheetState();
+        RefreshMarkupReviewContext();
+    }
 
     private void RefreshComponentParameterTagMarkups(IReadOnlyDictionary<string, ProjectParameterDefinition> parameterLookup)
     {
@@ -1573,6 +1662,276 @@ public class MainViewModel : INotifyPropertyChanged
             ? NamedViews.ToList()
             : sheet.NamedViews;
     }
+
+    private void HandleUndoRedoChanged()
+    {
+        RebuildPanelSchedules();
+        RefreshComponentParameterTagMarkups(BuildProjectParameterLookup());
+        RefreshLiveScheduleMarkups();
+    }
+
+    private void RenderLiveScheduleMarkupsForSheet(
+        DrawingSheet sheet,
+        bool updateActiveCollections,
+        bool synchronizeFromExistingMarkups)
+    {
+        var currentMarkups = updateActiveCollections
+            ? Markups.ToList()
+            : sheet.Markups.ToList();
+
+        if (synchronizeFromExistingMarkups)
+            SynchronizeLiveScheduleInstancesFromMarkups(
+                sheet,
+                currentMarkups,
+                removeMissingInstances: sheet.Markups.Any(IsLiveScheduleMarkup));
+
+        if (sheet.LiveSchedules.Count == 0 && !currentMarkups.Any(IsLiveScheduleMarkup))
+            return;
+
+        var renderedMarkups = BuildRenderedMarkupsWithLiveSchedules(sheet, currentMarkups);
+        ApplyRenderedMarkupsToSheet(sheet, renderedMarkups, updateActiveCollections);
+    }
+
+    private IReadOnlyList<MarkupRecord> BuildRenderedMarkupsWithLiveSchedules(
+        DrawingSheet sheet,
+        IReadOnlyList<MarkupRecord> currentMarkups)
+    {
+        var renderedByInstanceId = sheet.LiveSchedules
+            .ToDictionary(instance => instance.Id, CreateLiveScheduleMarkups, StringComparer.Ordinal);
+        var emittedInstanceIds = new HashSet<string>(StringComparer.Ordinal);
+        var finalMarkups = new List<MarkupRecord>(currentMarkups.Count);
+
+        foreach (var markup in currentMarkups)
+        {
+            if (!TryGetLiveScheduleInstanceId(markup, out var instanceId))
+            {
+                finalMarkups.Add(markup);
+                continue;
+            }
+
+            if (!renderedByInstanceId.TryGetValue(instanceId, out var renderedMarkups))
+                continue;
+
+            if (!emittedInstanceIds.Add(instanceId))
+                continue;
+
+            finalMarkups.AddRange(renderedMarkups);
+        }
+
+        foreach (var instance in sheet.LiveSchedules)
+        {
+            if (emittedInstanceIds.Add(instance.Id) &&
+                renderedByInstanceId.TryGetValue(instance.Id, out var renderedMarkups))
+            {
+                finalMarkups.AddRange(renderedMarkups);
+            }
+        }
+
+        return finalMarkups;
+    }
+
+    private IReadOnlyList<MarkupRecord> CreateLiveScheduleMarkups(LiveScheduleInstance instance)
+    {
+        NormalizeLiveScheduleInstance(instance);
+        var table = GenerateLiveScheduleTable(instance.Kind);
+        return _drawingAnnotationMarkupService.CreateScheduleTableMarkups(
+            table,
+            instance.Origin,
+            instance.LayerId,
+            instance.GroupId,
+            instance.Id);
+    }
+
+    private void ApplyRenderedMarkupsToSheet(
+        DrawingSheet sheet,
+        IReadOnlyList<MarkupRecord> renderedMarkups,
+        bool updateActiveCollections)
+    {
+        if (!updateActiveCollections)
+        {
+            sheet.Markups = renderedMarkups.ToList();
+            UpdateSheetMarkupReviewContext(sheet);
+            return;
+        }
+
+        var markupTool = MarkupTool;
+        if (markupTool is null)
+            return;
+
+        var liveScheduleSelection = CaptureLiveScheduleSelection(markupTool.SelectedMarkup);
+
+        Markups.Clear();
+        ShadowTree.Clear();
+        foreach (var markup in renderedMarkups)
+        {
+            Markups.Add(markup);
+            ShadowTree.AddOrUpdate(markup);
+        }
+
+        if (liveScheduleSelection is not { } selection)
+            return;
+
+        var nextSelection = FindMatchingLiveScheduleMarkup(renderedMarkups, selection);
+        markupTool.SelectedMarkup = nextSelection;
+    }
+
+    private static void SynchronizeLiveScheduleInstancesFromMarkups(
+        DrawingSheet sheet,
+        IEnumerable<MarkupRecord> markups,
+        bool removeMissingInstances)
+    {
+        var markupsByInstanceId = markups
+            .Select(markup => new { Markup = markup, HasInstance = TryGetLiveScheduleInstanceId(markup, out var instanceId), InstanceId = instanceId })
+            .Where(entry => entry.HasInstance)
+            .GroupBy(entry => entry.InstanceId, entry => entry.Markup, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
+
+        for (int index = sheet.LiveSchedules.Count - 1; index >= 0; index--)
+        {
+            var instance = sheet.LiveSchedules[index];
+            if (!markupsByInstanceId.TryGetValue(instance.Id, out var instanceMarkups) || instanceMarkups.Count == 0)
+            {
+                if (removeMissingInstances)
+                    sheet.LiveSchedules.RemoveAt(index);
+
+                continue;
+            }
+
+            var groupId = instanceMarkups
+                .Select(GetAnnotationGroupId)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+            if (!string.IsNullOrWhiteSpace(groupId))
+                instance.GroupId = groupId;
+
+            if (TryGetLiveScheduleOrigin(instanceMarkups, out var origin))
+                instance.Origin = origin;
+        }
+    }
+
+    private static bool TryGetLiveScheduleOrigin(
+        IEnumerable<MarkupRecord> markups,
+        out Point origin)
+    {
+        var border = markups.FirstOrDefault(markup =>
+            markup.Type == MarkupType.Rectangle &&
+            string.Equals(markup.Metadata.Subject, "Table Border", StringComparison.Ordinal));
+        if (border != null)
+        {
+            origin = new Point(border.BoundingRect.X, border.BoundingRect.Y);
+            return true;
+        }
+
+        var bounds = Rect.Empty;
+        foreach (var markup in markups)
+        {
+            var markupBounds = markup.BoundingRect;
+            if (markupBounds == Rect.Empty)
+            {
+                markup.UpdateBoundingRect();
+                markupBounds = markup.BoundingRect;
+            }
+
+            bounds = bounds == Rect.Empty ? markupBounds : Rect.Union(bounds, markupBounds);
+        }
+
+        if (bounds == Rect.Empty)
+        {
+            origin = default;
+            return false;
+        }
+
+        origin = new Point(bounds.X, bounds.Y);
+        return true;
+    }
+
+    private static string? GetAnnotationGroupId(MarkupRecord markup)
+    {
+        return markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.AnnotationGroupIdField, out var groupId)
+            ? groupId
+            : null;
+    }
+
+    private static bool IsLiveScheduleMarkup(MarkupRecord markup)
+        => TryGetLiveScheduleInstanceId(markup, out _);
+
+    private static bool TryGetLiveScheduleInstanceId(MarkupRecord markup, out string instanceId)
+    {
+        if (markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.LiveScheduleInstanceIdField, out var value) &&
+            !string.IsNullOrWhiteSpace(value))
+        {
+            instanceId = value;
+            return true;
+        }
+
+        instanceId = string.Empty;
+        return false;
+    }
+
+    private static void NormalizeLiveScheduleInstance(LiveScheduleInstance instance)
+    {
+        if (string.IsNullOrWhiteSpace(instance.LayerId))
+            instance.LayerId = DrawingAnnotationMarkupService.DefaultLayerId;
+
+        if (string.IsNullOrWhiteSpace(instance.GroupId))
+            instance.GroupId = Guid.NewGuid().ToString("N");
+    }
+
+    private static LiveScheduleSelectionKey? CaptureLiveScheduleSelection(MarkupRecord? markup)
+    {
+        if (markup == null || !TryGetLiveScheduleInstanceId(markup, out var instanceId))
+            return null;
+
+        return new LiveScheduleSelectionKey(
+            instanceId,
+            markup.Type,
+            markup.Metadata.Subject ?? string.Empty,
+            GetMarkupCustomField(markup, DrawingAnnotationMarkupService.AnnotationTextRoleField) ?? string.Empty,
+            GetMarkupCustomField(markup, DrawingAnnotationMarkupService.AnnotationTextKeyField) ?? string.Empty,
+            GetMarkupCustomFieldInt(markup, DrawingAnnotationMarkupService.AnnotationRowIndexField),
+            GetMarkupCustomFieldInt(markup, DrawingAnnotationMarkupService.AnnotationColumnIndexField));
+    }
+
+    private static MarkupRecord? FindMatchingLiveScheduleMarkup(
+        IEnumerable<MarkupRecord> markups,
+        LiveScheduleSelectionKey selection)
+    {
+        return markups.FirstOrDefault(markup =>
+            TryGetLiveScheduleInstanceId(markup, out var instanceId) &&
+            string.Equals(instanceId, selection.InstanceId, StringComparison.Ordinal) &&
+            markup.Type == selection.Type &&
+            string.Equals(markup.Metadata.Subject ?? string.Empty, selection.Subject, StringComparison.Ordinal) &&
+            string.Equals(GetMarkupCustomField(markup, DrawingAnnotationMarkupService.AnnotationTextRoleField) ?? string.Empty, selection.TextRole, StringComparison.Ordinal) &&
+            string.Equals(GetMarkupCustomField(markup, DrawingAnnotationMarkupService.AnnotationTextKeyField) ?? string.Empty, selection.TextKey, StringComparison.Ordinal) &&
+            GetMarkupCustomFieldInt(markup, DrawingAnnotationMarkupService.AnnotationRowIndexField) == selection.RowIndex &&
+            GetMarkupCustomFieldInt(markup, DrawingAnnotationMarkupService.AnnotationColumnIndexField) == selection.ColumnIndex)
+            ?? markups.FirstOrDefault(markup =>
+                TryGetLiveScheduleInstanceId(markup, out var instanceId) &&
+                string.Equals(instanceId, selection.InstanceId, StringComparison.Ordinal));
+    }
+
+    private static string? GetMarkupCustomField(MarkupRecord markup, string key)
+    {
+        return markup.Metadata.CustomFields.TryGetValue(key, out var value)
+            ? value
+            : null;
+    }
+
+    private static int? GetMarkupCustomFieldInt(MarkupRecord markup, string key)
+    {
+        return markup.Metadata.CustomFields.TryGetValue(key, out var value) &&
+               int.TryParse(value, out var parsed)
+            ? parsed
+            : null;
+    }
+
+    private readonly record struct LiveScheduleSelectionKey(
+        string InstanceId,
+        MarkupType Type,
+        string Subject,
+        string TextRole,
+        string TextKey,
+        int? RowIndex,
+        int? ColumnIndex);
 
     private void RefreshMarkupReviewContext()
     {

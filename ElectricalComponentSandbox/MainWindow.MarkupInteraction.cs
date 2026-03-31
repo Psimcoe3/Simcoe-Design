@@ -2048,6 +2048,12 @@ public partial class MainWindow
         if (string.Equals(annotationKind, DrawingAnnotationMarkupService.ComponentParameterTagAnnotationKind, StringComparison.Ordinal))
             return false;
 
+        if (string.Equals(annotationKind, DrawingAnnotationMarkupService.ScheduleTableAnnotationKind, StringComparison.Ordinal) &&
+            markup.Metadata.CustomFields.ContainsKey(DrawingAnnotationMarkupService.LiveScheduleInstanceIdField))
+        {
+            return false;
+        }
+
         return textRole is DrawingAnnotationMarkupService.TextRoleTitle or
             DrawingAnnotationMarkupService.TextRoleCell or
             DrawingAnnotationMarkupService.TextRoleFieldValue;

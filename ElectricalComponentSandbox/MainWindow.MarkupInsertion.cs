@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Windows;
 using ElectricalComponentSandbox.Markup.Models;
+using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.Services;
 using ElectricalComponentSandbox.ViewModels;
 
@@ -68,4 +69,24 @@ internal sealed class ViewModelMarkupAddAction : IUndoableAction
     public void Execute() => _viewModel.AddMarkup(_markup);
 
     public void Undo() => _viewModel.RemoveMarkup(_markup.Id);
+}
+
+internal sealed class ViewModelLiveScheduleAddAction : IUndoableAction
+{
+    private readonly MainViewModel _viewModel;
+    private readonly DrawingSheet _sheet;
+    private readonly LiveScheduleInstance _instance;
+
+    public ViewModelLiveScheduleAddAction(MainViewModel viewModel, DrawingSheet sheet, LiveScheduleInstance instance)
+    {
+        _viewModel = viewModel;
+        _sheet = sheet;
+        _instance = instance;
+    }
+
+    public string Description => $"Insert {_instance.DisplayName}";
+
+    public void Execute() => _viewModel.AddLiveScheduleInstance(_sheet, _instance);
+
+    public void Undo() => _viewModel.RemoveLiveScheduleInstance(_sheet, _instance.Id);
 }

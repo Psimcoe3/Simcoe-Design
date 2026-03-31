@@ -43,6 +43,8 @@ public class DrawingSheet : INotifyPropertyChanged
 
     public List<MarkupRecord> Markups { get; set; } = new();
 
+    public List<LiveScheduleInstance> LiveSchedules { get; set; } = new();
+
     public List<NamedView> NamedViews { get; set; } = new();
 
     public PlotLayout? PlotLayout { get; set; }

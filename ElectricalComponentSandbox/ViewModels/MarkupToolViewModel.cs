@@ -414,7 +414,8 @@ public class MarkupToolViewModel : INotifyPropertyChanged
     public bool HasTextEditableSelection =>
         _selectedMarkup?.Type == MarkupType.Text &&
         HasStructuredSelection &&
-        !string.Equals(SelectedMarkupAnnotationKind, DrawingAnnotationMarkupService.ComponentParameterTagAnnotationKind, StringComparison.Ordinal);
+        !string.Equals(SelectedMarkupAnnotationKind, DrawingAnnotationMarkupService.ComponentParameterTagAnnotationKind, StringComparison.Ordinal) &&
+        !_selectedMarkup.Metadata.CustomFields.ContainsKey(DrawingAnnotationMarkupService.LiveScheduleInstanceIdField);
 
     public string SelectedMarkupTextEditSummary
     {
@@ -425,6 +426,9 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
             if (string.Equals(SelectedMarkupAnnotationKind, DrawingAnnotationMarkupService.ComponentParameterTagAnnotationKind, StringComparison.Ordinal))
                 return "Component parameter tags stay bound to live component data and are not edited directly";
+
+            if (_selectedMarkup.Metadata.CustomFields.ContainsKey(DrawingAnnotationMarkupService.LiveScheduleInstanceIdField))
+                return "Live schedules regenerate from project data and are not edited directly";
 
             return HasTextEditableSelection
                 ? "Direct text edit available for structured schedule, legend, and title-block text"

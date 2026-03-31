@@ -12,6 +12,7 @@ public class ProjectModel
     public string Version { get; set; } = "1.0";
 
     public List<ElectricalComponent> Components { get; set; } = new();
+    public List<Circuit> Circuits { get; set; } = new();
     public List<ProjectParameterDefinition> ProjectParameters { get; set; } = new();
     public List<Layer> Layers { get; set; } = new();
 

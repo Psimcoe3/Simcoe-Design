@@ -2,6 +2,7 @@ using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.Markup.Models;
 using ElectricalComponentSandbox.Services;
 using ElectricalComponentSandbox.ViewModels;
+using System.Linq;
 using System.Windows;
 
 namespace ElectricalComponentSandbox.Tests.ViewModels;
@@ -472,5 +473,153 @@ public partial class MainViewModelTests
         Assert.Equal("Sheet 2 View", vm.ProjectBrowserItems[1].Children[0].DisplayName);
         Assert.False(vm.ProjectBrowserItems[0].IsSelected);
         Assert.True(vm.ProjectBrowserItems[1].IsSelected);
+    }
+
+    [Fact]
+    public void AddLiveScheduleInstance_RendersManagedScheduleAndPersistsToProjectModel()
+    {
+        var vm = new MainViewModel();
+        vm.Components.Add(new BoxComponent { Name = "BOX-A" });
+        var sheet = Assert.IsType<DrawingSheet>(vm.SelectedSheet);
+        var instance = new LiveScheduleInstance
+        {
+            Kind = LiveScheduleKind.Equipment,
+            Origin = new Point(120, 150)
+        };
+
+        vm.AddLiveScheduleInstance(sheet, instance);
+
+        Assert.Single(sheet.LiveSchedules);
+        Assert.Contains(vm.Markups, markup =>
+            markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.LiveScheduleInstanceIdField, out var instanceId) &&
+            string.Equals(instanceId, instance.Id, StringComparison.Ordinal));
+
+        var project = vm.ToProjectModel();
+
+        Assert.Single(project.Sheets);
+        Assert.Single(project.Sheets[0].LiveSchedules);
+        Assert.Equal(instance.Id, project.Sheets[0].LiveSchedules[0].Id);
+    }
+
+    [Fact]
+    public void RefreshLiveScheduleMarkups_UpdatesManagedScheduleTextWhenComponentChanges()
+    {
+        var vm = new MainViewModel();
+        var component = new BoxComponent { Name = "BOX-A" };
+        vm.Components.Add(component);
+        var sheet = Assert.IsType<DrawingSheet>(vm.SelectedSheet);
+        var instance = new LiveScheduleInstance
+        {
+            Kind = LiveScheduleKind.Equipment,
+            Origin = new Point(90, 110)
+        };
+
+        vm.AddLiveScheduleInstance(sheet, instance);
+        component.Name = "BOX-B";
+
+        vm.RefreshLiveScheduleMarkups();
+
+        Assert.DoesNotContain(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent == "BOX-A");
+        Assert.Contains(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent == "BOX-B");
+    }
+
+    [Fact]
+    public void RefreshLiveScheduleMarkups_PreservesMovedScheduleOrigin()
+    {
+        var vm = new MainViewModel();
+        vm.Components.Add(new BoxComponent { Name = "BOX-A" });
+        var sheet = Assert.IsType<DrawingSheet>(vm.SelectedSheet);
+        var instance = new LiveScheduleInstance
+        {
+            Kind = LiveScheduleKind.Equipment,
+            Origin = new Point(60, 75)
+        };
+        var interactionService = new MarkupInteractionService();
+
+        vm.AddLiveScheduleInstance(sheet, instance);
+
+        var managedMarkups = vm.Markups.Where(markup =>
+            markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.LiveScheduleInstanceIdField, out var instanceId) &&
+            string.Equals(instanceId, instance.Id, StringComparison.Ordinal)).ToList();
+        foreach (var markup in managedMarkups)
+            interactionService.Translate(markup, new Vector(25, 35));
+
+        vm.RefreshLiveScheduleMarkups();
+
+        var border = Assert.Single(vm.Markups.Where(markup =>
+            markup.Type == MarkupType.Rectangle &&
+            string.Equals(markup.Metadata.Subject, "Table Border", StringComparison.Ordinal) &&
+            markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.LiveScheduleInstanceIdField, out var instanceId) &&
+            string.Equals(instanceId, instance.Id, StringComparison.Ordinal)));
+
+        Assert.Equal(new Point(85, 110), sheet.LiveSchedules[0].Origin);
+        Assert.Equal(85, border.BoundingRect.X, 6);
+        Assert.Equal(110, border.BoundingRect.Y, 6);
+    }
+
+    [Fact]
+    public void RefreshLiveScheduleMarkups_RemovesDeletedLiveScheduleInstances()
+    {
+        var vm = new MainViewModel();
+        vm.Components.Add(new BoxComponent { Name = "BOX-A" });
+        var sheet = Assert.IsType<DrawingSheet>(vm.SelectedSheet);
+        var instance = new LiveScheduleInstance
+        {
+            Kind = LiveScheduleKind.Equipment,
+            Origin = new Point(30, 45)
+        };
+
+        vm.AddLiveScheduleInstance(sheet, instance);
+
+        var managedMarkups = vm.Markups.Where(markup =>
+            markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.LiveScheduleInstanceIdField, out var instanceId) &&
+            string.Equals(instanceId, instance.Id, StringComparison.Ordinal)).ToList();
+        foreach (var markup in managedMarkups)
+            vm.Markups.Remove(markup);
+
+        vm.RefreshLiveScheduleMarkups();
+
+        Assert.Empty(sheet.LiveSchedules);
+        Assert.DoesNotContain(vm.Markups, markup =>
+            markup.Metadata.CustomFields.ContainsKey(DrawingAnnotationMarkupService.LiveScheduleInstanceIdField));
+    }
+
+    [Fact]
+    public void LoadFromProject_RendersLiveSchedulesUsingPersistedCircuitData()
+    {
+        var sheet = DrawingSheet.CreateDefault(1);
+        sheet.LiveSchedules.Add(new LiveScheduleInstance
+        {
+            Kind = LiveScheduleKind.CircuitSummary,
+            Origin = new Point(140, 160)
+        });
+        var project = new ProjectModel
+        {
+            Sheets = [sheet],
+            ActiveSheetId = sheet.Id,
+            Circuits =
+            [
+                new Circuit
+                {
+                    CircuitNumber = "1",
+                    Description = "Lighting",
+                    PanelId = "panel-1",
+                    Phase = "A",
+                    Voltage = 120,
+                    ConnectedLoadVA = 1800,
+                    WireLengthFeet = 75,
+                    Breaker = new CircuitBreaker { TripAmps = 20, Poles = 1 },
+                    Wire = new WireSpec { Size = "12", Material = ConductorMaterial.Copper }
+                }
+            ]
+        };
+
+        var vm = new MainViewModel();
+
+        vm.LoadFromProject(project);
+
+        Assert.Single(vm.Circuits);
+        Assert.Single(vm.SelectedSheet!.LiveSchedules);
+        Assert.Contains(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent == "Lighting");
     }
 }

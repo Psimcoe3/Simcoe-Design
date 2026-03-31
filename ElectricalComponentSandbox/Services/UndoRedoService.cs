@@ -7,6 +7,8 @@ public class UndoRedoService
 {
     private readonly Stack<IUndoableAction> _undoStack = new();
     private readonly Stack<IUndoableAction> _redoStack = new();
+
+    public event EventHandler? Changed;
     
     public bool CanUndo => _undoStack.Count > 0;
     public bool CanRedo => _redoStack.Count > 0;
@@ -16,6 +18,7 @@ public class UndoRedoService
         action.Execute();
         _undoStack.Push(action);
         _redoStack.Clear();
+        Changed?.Invoke(this, EventArgs.Empty);
     }
     
     public void Undo()
@@ -24,6 +27,7 @@ public class UndoRedoService
         var action = _undoStack.Pop();
         action.Undo();
         _redoStack.Push(action);
+        Changed?.Invoke(this, EventArgs.Empty);
     }
     
     public void Redo()
@@ -32,6 +36,7 @@ public class UndoRedoService
         var action = _redoStack.Pop();
         action.Execute();
         _undoStack.Push(action);
+        Changed?.Invoke(this, EventArgs.Empty);
     }
     
     public void Clear()

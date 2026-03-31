@@ -46,6 +46,35 @@ public class DrawingAnnotationMarkupServiceTests
     }
 
     [Fact]
+    public void CreateScheduleTableMarkups_WithLiveScheduleMetadata_StampsManagedInstanceId()
+    {
+        var table = new ScheduleTable
+        {
+            Title = "TEST SCHEDULE",
+            Columns =
+            {
+                new ScheduleColumn { Header = "NAME", Width = 80 }
+            },
+            Rows =
+            {
+                new[] { "PANEL-A" }
+            }
+        };
+
+        var markups = _sut.CreateScheduleTableMarkups(
+            table,
+            new Point(40, 60),
+            groupId: "group-1",
+            liveScheduleInstanceId: "schedule-1");
+
+        Assert.All(markups, markup =>
+        {
+            Assert.Equal("group-1", markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField]);
+            Assert.Equal("schedule-1", markup.Metadata.CustomFields[DrawingAnnotationMarkupService.LiveScheduleInstanceIdField]);
+        });
+    }
+
+    [Fact]
     public void CreateSymbolLegendMarkups_WithKnownSymbol_AddsSymbolGeometry()
     {
         var library = new ElectricalSymbolLibrary();

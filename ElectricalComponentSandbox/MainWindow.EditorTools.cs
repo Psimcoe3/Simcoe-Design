@@ -276,26 +276,15 @@ public partial class MainWindow
             $"Select schedule type:\n\n{list}", "1");
         if (!int.TryParse(input, out int idx) || idx < 1 || idx > types.Length) return;
 
-        var service = new ScheduleTableService();
-        ScheduleTable table;
-
-        switch (idx)
+        var scheduleKind = idx switch
         {
-            case 1:
-                table = service.GenerateEquipmentSchedule(_viewModel.Components.ToList(), _viewModel.ProjectParameters.ToList());
-                break;
-            case 2:
-                table = service.GenerateConduitSchedule(_viewModel.Components.ToList(), _viewModel.ProjectParameters.ToList());
-                break;
-            case 3:
-                table = service.GenerateCircuitSummary(_viewModel.Circuits.ToList());
-                break;
-            case 4:
-                table = service.GenerateProjectParameterSchedule(_viewModel.ProjectParameters.ToList(), _viewModel.Components.ToList());
-                break;
-            default:
-                return;
-        }
+            1 => LiveScheduleKind.Equipment,
+            2 => LiveScheduleKind.Conduit,
+            3 => LiveScheduleKind.CircuitSummary,
+            4 => LiveScheduleKind.ProjectParameter,
+            _ => throw new InvalidOperationException($"Unsupported schedule index '{idx}'.")
+        };
+        var table = _viewModel.GenerateLiveScheduleTable(scheduleKind);
 
         if (table.Rows.Count == 0)
         {
@@ -313,12 +302,22 @@ public partial class MainWindow
             return;
         }
 
-        var markups = _drawingAnnotationMarkupService.CreateScheduleTableMarkups(table, origin);
-        InsertGeneratedMarkups(
-            markups,
-            $"Insert {table.Title}",
-            "Schedule table inserted",
-            $"Type: {types[idx - 1]}, Rows: {table.Rows.Count}");
+        if (_viewModel.SelectedSheet == null)
+            return;
+
+        var schedule = new LiveScheduleInstance
+        {
+            Kind = scheduleKind,
+            Origin = origin
+        };
+
+        _viewModel.UndoRedo.Execute(new ViewModelLiveScheduleAddAction(_viewModel, _viewModel.SelectedSheet, schedule));
+        _viewModel.MarkupTool.SelectedMarkup = _viewModel.Markups.LastOrDefault(markup =>
+            markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.LiveScheduleInstanceIdField, out var instanceId) &&
+            string.Equals(instanceId, schedule.Id, StringComparison.Ordinal));
+        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+        ActionLogService.Instance.Log(LogCategory.Edit, "Live schedule inserted",
+            $"Type: {types[idx - 1]}, Rows: {table.Rows.Count}, Sheet: {_viewModel.SelectedSheet.DisplayName}");
     }
 
     private void ExportScheduleDxf_Click(object sender, RoutedEventArgs e)

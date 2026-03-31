@@ -410,6 +410,32 @@ public partial class MainViewModelTests
     }
 
     [Fact]
+    public void MarkupTool_SelectedLiveScheduleMarkup_ReportsManagedTextAsReadOnly()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            TextContent = "PANEL-A"
+        };
+        markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationKindField] = DrawingAnnotationMarkupService.ScheduleTableAnnotationKind;
+        markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationTextRoleField] = DrawingAnnotationMarkupService.TextRoleCell;
+        markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationTextKeyField] = "NAME";
+        markup.Metadata.CustomFields[DrawingAnnotationMarkupService.LiveScheduleInstanceIdField] = "schedule-1";
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasStructuredSelection);
+        Assert.False(vm.MarkupTool.HasTextEditableSelection);
+        Assert.False(vm.MarkupTool.HasTextShortcutHint);
+        Assert.False(vm.MarkupTool.HasSelectedMarkupTextDetails);
+        Assert.Equal("Live schedules regenerate from project data and are not edited directly", vm.MarkupTool.SelectedMarkupTextEditSummary);
+        Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupTextShortcutHint);
+        Assert.Equal(string.Empty, vm.MarkupTool.SelectedMarkupTextDetails);
+    }
+
+    [Fact]
     public void MarkupTool_RefreshSelectedMarkupPresentation_UpdatesTextDetailsAfterEdit()
     {
         var vm = new MainViewModel();

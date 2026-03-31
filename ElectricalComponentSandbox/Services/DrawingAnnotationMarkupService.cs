@@ -24,6 +24,7 @@ public sealed class DrawingAnnotationMarkupService
     public const string SymbolLegendAnnotationKind = "SymbolLegend";
     public const string TitleBlockAnnotationKind = "TitleBlock";
     public const string ComponentParameterTagAnnotationKind = "ComponentParameterTag";
+    public const string LiveScheduleInstanceIdField = "LiveScheduleInstanceId";
     public const string TextRoleTitle = "Title";
     public const string TextRoleHeader = "Header";
     public const string TextRoleCell = "Cell";
@@ -40,19 +41,25 @@ public sealed class DrawingAnnotationMarkupService
     public IReadOnlyList<MarkupRecord> CreateScheduleTableMarkups(
         ScheduleTable table,
         Point origin,
-        string layerId = DefaultLayerId)
+        string layerId = DefaultLayerId,
+        string? groupId = null,
+        string? liveScheduleInstanceId = null)
     {
-        return CreateScheduleTableMarkups(table, origin, layerId, ScheduleTableAnnotationKind);
+        return CreateScheduleTableMarkups(table, origin, layerId, ScheduleTableAnnotationKind, groupId, liveScheduleInstanceId);
     }
 
     private IReadOnlyList<MarkupRecord> CreateScheduleTableMarkups(
         ScheduleTable table,
         Point origin,
         string layerId,
-        string annotationKind)
+        string annotationKind,
+        string? groupId,
+        string? liveScheduleInstanceId)
     {
         var markups = new List<MarkupRecord>();
-        var groupId = Guid.NewGuid().ToString("N");
+        var resolvedGroupId = string.IsNullOrWhiteSpace(groupId)
+            ? Guid.NewGuid().ToString("N")
+            : groupId;
 
         var totalRect = new Rect(origin.X, origin.Y, table.TotalWidth, table.TotalHeight);
         var titleRect = new Rect(origin.X, origin.Y, table.TotalWidth, table.TitleHeight);
@@ -62,7 +69,7 @@ public sealed class DrawingAnnotationMarkupService
         markups.Add(CreateRectangleMarkup(
             totalRect,
             layerId,
-            groupId,
+            resolvedGroupId,
             strokeColor: "#FF111827",
             strokeWidth: 1.4,
             fillColor: null,
@@ -72,7 +79,7 @@ public sealed class DrawingAnnotationMarkupService
         markups.Add(CreateRectangleMarkup(
             titleRect,
             layerId,
-            groupId,
+            resolvedGroupId,
             strokeColor: "#FF1F2937",
             strokeWidth: 1.0,
             fillColor: "#FFF3F4F6",
@@ -82,7 +89,7 @@ public sealed class DrawingAnnotationMarkupService
         markups.Add(CreateRectangleMarkup(
             headerRect,
             layerId,
-            groupId,
+            resolvedGroupId,
             strokeColor: "#FF374151",
             strokeWidth: 1.0,
             fillColor: "#FFE5E7EB",
@@ -93,7 +100,7 @@ public sealed class DrawingAnnotationMarkupService
             table.Title,
             new Point(origin.X + table.TotalWidth / 2.0, origin.Y + table.TitleHeight * 0.68),
             layerId,
-            groupId,
+            resolvedGroupId,
             fontSize: 12.0,
             strokeColor: "#FF111827",
             subject: "Table Title",
@@ -116,7 +123,7 @@ public sealed class DrawingAnnotationMarkupService
                 column.Header,
                 headerAnchor,
                 layerId,
-                groupId,
+                resolvedGroupId,
                 fontSize: 9.0,
                 strokeColor: "#FF111827",
                 subject: "Table Header",
@@ -133,7 +140,7 @@ public sealed class DrawingAnnotationMarkupService
                     new Point(currentX, headerRect.Y),
                     new Point(currentX, totalRect.Bottom),
                     layerId,
-                    groupId,
+                    resolvedGroupId,
                     strokeColor: "#FF6B7280",
                     strokeWidth: 0.9,
                     subject: "Table Divider",
@@ -145,7 +152,7 @@ public sealed class DrawingAnnotationMarkupService
             new Point(origin.X, headerRect.Bottom),
             new Point(totalRect.Right, headerRect.Bottom),
             layerId,
-            groupId,
+            resolvedGroupId,
             strokeColor: "#FF374151",
             strokeWidth: 1.0,
             subject: "Table Divider",
@@ -160,7 +167,7 @@ public sealed class DrawingAnnotationMarkupService
                 new Point(origin.X, rowBottom),
                 new Point(totalRect.Right, rowBottom),
                 layerId,
-                groupId,
+                resolvedGroupId,
                 strokeColor: "#FFD1D5DB",
                 strokeWidth: 0.7,
                 subject: "Table Divider",
@@ -179,7 +186,7 @@ public sealed class DrawingAnnotationMarkupService
                         value,
                         GetCellTextAnchor(cellRect, column.Alignment, fontSize: 8.6),
                         layerId,
-                        groupId,
+                        resolvedGroupId,
                         fontSize: 8.6,
                         strokeColor: "#FF111827",
                         subject: "Table Cell",
@@ -191,6 +198,12 @@ public sealed class DrawingAnnotationMarkupService
 
                 currentX += column.Width;
             }
+        }
+
+        if (!string.IsNullOrWhiteSpace(liveScheduleInstanceId))
+        {
+            foreach (var markup in markups)
+                markup.Metadata.CustomFields[LiveScheduleInstanceIdField] = liveScheduleInstanceId;
         }
 
         return markups;
@@ -247,7 +260,7 @@ public sealed class DrawingAnnotationMarkupService
             });
         }
 
-        var markups = CreateScheduleTableMarkups(table, origin, layerId, SymbolLegendAnnotationKind).ToList();
+        var markups = CreateScheduleTableMarkups(table, origin, layerId, SymbolLegendAnnotationKind, groupId: null, liveScheduleInstanceId: null).ToList();
         var groupId = markups
             .Select(m => GetCustomField(m, AnnotationGroupIdField))
             .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
