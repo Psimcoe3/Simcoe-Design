@@ -65,6 +65,41 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void HitTestResizeHandle_PrefersClosestEdgeHandleWithinTolerance()
+    {
+        var handle = _sut.HitTestResizeHandle(
+            new Point(4, 0),
+            new Rect(0, 0, 8, 10),
+            tolerance: 5);
+
+        Assert.Equal(MarkupResizeHandle.Top, handle);
+    }
+
+    [Fact]
+    public void BuildResizedBounds_TopHandle_ResizesHeightOnly()
+    {
+        var resized = _sut.BuildResizedBounds(
+            new Rect(10, 20, 30, 40),
+            new Point(25, 8),
+            MarkupResizeHandle.Top,
+            minimumSize: 6);
+
+        Assert.Equal(new Rect(10, 8, 30, 52), resized);
+    }
+
+    [Fact]
+    public void BuildResizedBounds_LeftHandle_ClampsWidthAndKeepsVerticalBounds()
+    {
+        var resized = _sut.BuildResizedBounds(
+            new Rect(10, 20, 30, 40),
+            new Point(38, 35),
+            MarkupResizeHandle.Left,
+            minimumSize: 6);
+
+        Assert.Equal(new Rect(34, 20, 6, 40), resized);
+    }
+
+    [Fact]
     public void BuildResizedBounds_BottomRightHandle_ClampsToMinimumSize()
     {
         var resized = _sut.BuildResizedBounds(

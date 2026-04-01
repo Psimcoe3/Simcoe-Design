@@ -31,6 +31,27 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_TopResizeDrag_MarksActiveResizeGripHot()
+    {
+        var hotGripPoints = RunWithSelectedMarkupWindow(
+            CreateGroupedRectangle(new Rect(0, 0, 10, 10), null),
+            (window, _, _) =>
+            {
+                var renderer = new OverlayRecordingRenderer();
+
+                var began = window.BeginSelectedMarkupResizeDragForTesting(new Point(5, 0));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+
+                Assert.True(began);
+                return renderer.HotGripPoints.ToList();
+            });
+
+        var hotGrip = Assert.Single(hotGripPoints);
+        Assert.Equal(5, hotGrip.X, 6);
+        Assert.Equal(0, hotGrip.Y, 6);
+    }
+
+    [Fact]
     public void DrawSelectedMarkupOverlayForTesting_LineStyleVertexDrag_RendersGeometryReadout()
     {
         var outcome = RunWithSelectedMarkupWindow(

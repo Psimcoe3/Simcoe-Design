@@ -299,17 +299,24 @@ public sealed class MarkupInteractionService
         if (bounds == Rect.Empty)
             return MarkupResizeHandle.None;
 
+        var bestHandle = MarkupResizeHandle.None;
+        var bestDistance = double.MaxValue;
+
         foreach (var handle in Enum.GetValues<MarkupResizeHandle>())
         {
             if (handle == MarkupResizeHandle.None)
                 continue;
 
             var handlePoint = GetResizeHandlePoint(bounds, handle);
-            if ((handlePoint - point).Length <= tolerance)
-                return handle;
+            var distance = (handlePoint - point).Length;
+            if (distance <= tolerance && distance < bestDistance)
+            {
+                bestHandle = handle;
+                bestDistance = distance;
+            }
         }
 
-        return MarkupResizeHandle.None;
+        return bestHandle;
     }
 
     public Point GetResizeHandlePoint(Rect bounds, MarkupResizeHandle handle)
@@ -317,9 +324,13 @@ public sealed class MarkupInteractionService
         return handle switch
         {
             MarkupResizeHandle.TopLeft => bounds.TopLeft,
+            MarkupResizeHandle.Top => new Point(bounds.X + bounds.Width / 2.0, bounds.Y),
             MarkupResizeHandle.TopRight => bounds.TopRight,
+            MarkupResizeHandle.Right => new Point(bounds.Right, bounds.Y + bounds.Height / 2.0),
             MarkupResizeHandle.BottomLeft => bounds.BottomLeft,
             MarkupResizeHandle.BottomRight => bounds.BottomRight,
+            MarkupResizeHandle.Bottom => new Point(bounds.X + bounds.Width / 2.0, bounds.Bottom),
+            MarkupResizeHandle.Left => new Point(bounds.X, bounds.Y + bounds.Height / 2.0),
             _ => new Point(bounds.X + bounds.Width / 2.0, bounds.Y + bounds.Height / 2.0)
         };
     }
@@ -328,6 +339,30 @@ public sealed class MarkupInteractionService
     {
         if (originalBounds == Rect.Empty || handle == MarkupResizeHandle.None)
             return originalBounds;
+
+        if (handle is MarkupResizeHandle.Top or MarkupResizeHandle.Bottom)
+        {
+            var edgeMinY = handle == MarkupResizeHandle.Top
+                ? Math.Min(dragPoint.Y, originalBounds.Bottom - minimumSize)
+                : originalBounds.Top;
+            var edgeMaxY = handle == MarkupResizeHandle.Bottom
+                ? Math.Max(dragPoint.Y, originalBounds.Top + minimumSize)
+                : originalBounds.Bottom;
+
+            return new Rect(new Point(originalBounds.Left, edgeMinY), new Point(originalBounds.Right, edgeMaxY));
+        }
+
+        if (handle is MarkupResizeHandle.Left or MarkupResizeHandle.Right)
+        {
+            var edgeMinX = handle == MarkupResizeHandle.Left
+                ? Math.Min(dragPoint.X, originalBounds.Right - minimumSize)
+                : originalBounds.Left;
+            var edgeMaxX = handle == MarkupResizeHandle.Right
+                ? Math.Max(dragPoint.X, originalBounds.Left + minimumSize)
+                : originalBounds.Right;
+
+            return new Rect(new Point(edgeMinX, originalBounds.Top), new Point(edgeMaxX, originalBounds.Bottom));
+        }
 
         var fixedCorner = handle switch
         {
@@ -994,9 +1029,13 @@ public enum MarkupResizeHandle
 {
     None,
     TopLeft,
+    Top,
     TopRight,
+    Right,
+    Bottom,
     BottomLeft,
-    BottomRight
+    BottomRight,
+    Left
 }
 
 public enum MarkupArcAngleHandle
