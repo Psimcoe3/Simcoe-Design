@@ -362,6 +362,10 @@ public partial class MainWindowMarkupInteractionTests
                 viewModel.Undo();
                 var undoneState = (markup.Vertices[2], markup.ArcSweepDeg);
                 return (began, editedState, undoneState);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
             });
 
         Assert.True(outcome.began);
@@ -447,6 +451,43 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(new Point(0, 10), outcome.undoneState.Item1);
         Assert.Equal(10, outcome.undoneState.Item2, 6);
         Assert.Equal(90, outcome.undoneState.Item3, 6);
+    }
+
+    [Fact]
+    public void DirectArcAngleDragForTesting_ArcEndHandle_UsesGridSnapAndSupportsUndo()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Arc,
+                Vertices = { new Point(0, 0) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90
+            },
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
+                window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(11, 29));
+                window.FinishMarkupArcAngleDragForTesting();
+                var editedState = (markup.ArcStartDeg, markup.ArcSweepDeg);
+
+                viewModel.Undo();
+                var undoneState = (markup.ArcStartDeg, markup.ArcSweepDeg);
+                return (began, editedState, undoneState);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = true;
+                viewModel.GridSize = 1.0;
+                viewModel.IsPolarActive = false;
+            });
+
+        Assert.True(outcome.began);
+        Assert.Equal(0, outcome.editedState.Item1, 6);
+        Assert.Equal(45, outcome.editedState.Item2, 6);
+        Assert.Equal(0, outcome.undoneState.Item1, 6);
+        Assert.Equal(90, outcome.undoneState.Item2, 6);
     }
 
     [Fact]
@@ -546,6 +587,10 @@ public partial class MainWindowMarkupInteractionTests
                 viewModel.Undo();
                 var undoneState = (markup.Vertices[1], markup.ArcSweepDeg);
                 return (began, editedState, undoneState);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
             });
 
         Assert.True(outcome.began);

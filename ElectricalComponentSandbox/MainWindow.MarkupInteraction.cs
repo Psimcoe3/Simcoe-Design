@@ -1614,7 +1614,8 @@ public partial class MainWindow
         }
 
         var snapIncrementDeg = GetMarkupAngleSnapIncrement();
-        _markupInteractionService.SetArcAngleFromPoint(_arcAngleDraggedMarkup, _activeMarkupArcAngleHandle, canvasPoint, snapIncrementDeg);
+        var dragPoint = snapIncrementDeg > 0 ? canvasPoint : ApplyDrawingSnap(canvasPoint);
+        _markupInteractionService.SetArcAngleFromPoint(_arcAngleDraggedMarkup, _activeMarkupArcAngleHandle, dragPoint, snapIncrementDeg);
         _lastMousePosition = canvasPoint;
         SkiaBackground.RequestRedraw();
     }

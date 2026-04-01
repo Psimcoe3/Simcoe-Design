@@ -197,6 +197,37 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_ArcEndAngleDrag_UsesGridSnapInReadout()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Arc,
+                Vertices = { new Point(0, 0) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90
+            },
+            (window, _, _) =>
+            {
+                var renderer = new OverlayRecordingRenderer();
+                window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
+                window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(11, 29));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                window.FinishMarkupArcAngleDragForTesting();
+                return renderer.LastTextBoxText;
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = true;
+                viewModel.GridSize = 1.0;
+                viewModel.IsPolarActive = false;
+            });
+
+        Assert.Equal("Start 0 deg  End 45 deg  Sweep 45 deg", outcome);
+    }
+
+    [Fact]
     public void DrawSelectedMarkupOverlayForTesting_ArcLengthAngleDrag_RendersArcLengthReadout()
     {
         var outcome = RunWithSelectedMarkupWindow(
@@ -217,6 +248,10 @@ public partial class MainWindowMarkupInteractionTests
                 window.DrawSelectedMarkupOverlayForTesting(renderer);
                 window.FinishMarkupArcAngleDragForTesting();
                 return renderer.LastTextBoxText;
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
             });
 
         Assert.Equal("Arc Length 31.42  Sweep 180 deg  Radius 10", outcome);
