@@ -62,9 +62,21 @@ public sealed class ProjectBrowserSheetItemViewModel : ProjectBrowserItemViewMod
         : base(sheet.DisplayName)
     {
         Sheet = sheet;
+        StatusBadgeText = GetStatusBadgeText(sheet.Status);
     }
 
     public DrawingSheet Sheet { get; }
+
+    public string StatusBadgeText { get; }
+
+    private static string GetStatusBadgeText(DrawingSheetStatus status)
+    {
+        return status switch
+        {
+            DrawingSheetStatus.InReview => "In Review",
+            _ => status.ToString()
+        };
+    }
 }
 
 public sealed class ProjectBrowserNamedViewItemViewModel : ProjectBrowserItemViewModel

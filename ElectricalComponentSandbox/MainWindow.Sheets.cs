@@ -141,6 +141,14 @@ public partial class MainWindow
             .ToArray();
     }
 
+    internal string GetProjectBrowserSheetStatusBadgeForTesting(string sheetDisplayName)
+    {
+        return _viewModel.ProjectBrowserItems
+            .OfType<ProjectBrowserSheetItemViewModel>()
+            .FirstOrDefault(item => string.Equals(item.Sheet.DisplayName, sheetDisplayName, StringComparison.Ordinal))
+            ?.StatusBadgeText ?? string.Empty;
+    }
+
     internal bool SelectProjectBrowserNamedViewForTesting(string sheetDisplayName, string namedViewName)
     {
         var item = _viewModel.ProjectBrowserItems

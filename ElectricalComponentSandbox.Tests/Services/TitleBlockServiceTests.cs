@@ -80,6 +80,7 @@ public class TitleBlockServiceTests
         Assert.Contains(geometry.TitleBlockCells, c => c.Label == "COMPANY");
         Assert.Contains(geometry.TitleBlockCells, c => c.Label == "PROJECT");
         Assert.Contains(geometry.TitleBlockCells, c => c.Label == "DRAWING NO");
+        Assert.Contains(geometry.TitleBlockCells, c => c.Label == "STATUS");
         Assert.Contains(geometry.TitleBlockCells, c => c.Label == "REVISIONS");
     }
 
@@ -92,7 +93,10 @@ public class TitleBlockServiceTests
         var sheet = new DrawingSheet
         {
             Number = "E201",
-            Name = "Lighting Plan"
+            Name = "Lighting Plan",
+            Status = DrawingSheetStatus.Approved,
+            ApprovedBy = "Reviewer",
+            ApprovedUtc = new DateTime(2026, 3, 31, 12, 0, 0, DateTimeKind.Utc)
         };
 
         var resolved = service.BuildResolvedTemplate(template, "Tower Renovation", sheet, 2, 5);
@@ -101,6 +105,9 @@ public class TitleBlockServiceTests
         Assert.Equal("Lighting Plan", resolved.Description);
         Assert.Equal("E201", resolved.DrawingNumber);
         Assert.Equal("2 OF 5", resolved.SheetNumber);
+        Assert.Equal("APPROVED", resolved.Status);
+        Assert.Equal("Reviewer", resolved.ApprovedBy);
+        Assert.Equal("2026-03-31", resolved.ApprovedDate);
         Assert.Equal("Simcoe Electric", resolved.CompanyName);
     }
 

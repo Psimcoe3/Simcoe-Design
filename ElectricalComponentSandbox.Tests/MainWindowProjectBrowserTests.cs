@@ -69,6 +69,30 @@ public class MainWindowProjectBrowserTests
     }
 
     [Fact]
+    public void ProjectBrowser_SheetStatusBadgeReflectsApprovalState()
+    {
+        RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var sheet = viewModel.SelectedSheet!;
+            viewModel.SetSheetStatus(sheet, DrawingSheetStatus.Approved, "Reviewer");
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var badge = window.GetProjectBrowserSheetStatusBadgeForTesting(sheet.DisplayName);
+
+                Assert.Equal("Approved", badge);
+                return 0;
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
     public void SheetRevisionEditor_SaveAddsAndUpdatesRevisionInline()
     {
         RunOnSta(() =>

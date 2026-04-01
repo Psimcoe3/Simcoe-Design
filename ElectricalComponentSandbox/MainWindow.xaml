@@ -46,7 +46,21 @@
             <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}"/>
         </Style>
         <HierarchicalDataTemplate DataType="{x:Type viewModels:ProjectBrowserSheetItemViewModel}" ItemsSource="{Binding Children}">
-            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" Margin="0"/>
+                <Border Margin="6,0,0,0"
+                        Padding="4,1"
+                        Background="{StaticResource ShellSurfaceBrush}"
+                        BorderBrush="{StaticResource ShellBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="4">
+                    <TextBlock Text="{Binding StatusBadgeText}"
+                               Margin="0"
+                               FontSize="10"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource ShellMutedTextBrush}"/>
+                </Border>
+            </StackPanel>
         </HierarchicalDataTemplate>
         <DataTemplate DataType="{x:Type viewModels:ProjectBrowserNamedViewItemViewModel}">
             <TextBlock Text="{Binding DisplayName}" Margin="2,0,0,0"/>

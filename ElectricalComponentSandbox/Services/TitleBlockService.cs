@@ -124,6 +124,15 @@ public class TitleBlockTemplate
     /// <summary>Sheet number (e.g., "1 of 5").</summary>
     public string SheetNumber { get; set; } = string.Empty;
 
+    /// <summary>Sheet lifecycle status displayed in the title block.</summary>
+    public string Status { get; set; } = string.Empty;
+
+    /// <summary>Name of the person who approved the sheet.</summary>
+    public string ApprovedBy { get; set; } = string.Empty;
+
+    /// <summary>Date when the sheet was approved.</summary>
+    public string ApprovedDate { get; set; } = string.Empty;
+
     /// <summary>Name of the person who created the drawing.</summary>
     public string DrawnBy { get; set; } = string.Empty;
 
@@ -154,7 +163,10 @@ public class TitleBlockService
         "PROJECT",
         "DESCRIPTION",
         "DRAWING NO",
-        "SHEET"
+        "SHEET",
+        "STATUS",
+        "APPROVED BY",
+        "APPROVED DATE"
     };
 
     /// <summary>
@@ -241,6 +253,9 @@ public class TitleBlockService
             ProjectName = "PROJECT NAME",
             DrawingNumber = "DWG-001",
             SheetNumber = "1 OF 1",
+            Status = "DRAFT",
+            ApprovedBy = string.Empty,
+            ApprovedDate = string.Empty,
             DrawnBy = string.Empty,
             CheckedBy = string.Empty,
             Date = DateTime.Now.ToString("yyyy-MM-dd"),
@@ -264,6 +279,9 @@ public class TitleBlockService
             ProjectName = template.ProjectName,
             DrawingNumber = template.DrawingNumber,
             SheetNumber = template.SheetNumber,
+            Status = template.Status,
+            ApprovedBy = template.ApprovedBy,
+            ApprovedDate = template.ApprovedDate,
             DrawnBy = template.DrawnBy,
             CheckedBy = template.CheckedBy,
             Date = template.Date,
@@ -287,6 +305,9 @@ public class TitleBlockService
         resolved.Description = sheet.Name;
         resolved.DrawingNumber = sheet.Number;
         resolved.SheetNumber = $"{Math.Max(1, sheetIndex)} OF {Math.Max(1, sheetCount)}";
+        resolved.Status = FormatSheetStatusValue(sheet.Status);
+        resolved.ApprovedBy = sheet.ApprovedBy?.Trim() ?? string.Empty;
+        resolved.ApprovedDate = sheet.ApprovedUtc?.ToString("yyyy-MM-dd") ?? string.Empty;
         return resolved;
     }
 
@@ -315,6 +336,15 @@ public class TitleBlockService
                 return true;
             case "SHEET":
                 template.SheetNumber = nextValue;
+                return true;
+            case "STATUS":
+                template.Status = nextValue;
+                return true;
+            case "APPROVED BY":
+                template.ApprovedBy = nextValue;
+                return true;
+            case "APPROVED DATE":
+                template.ApprovedDate = nextValue;
                 return true;
             case "DRAWN BY":
                 template.DrawnBy = nextValue;
@@ -346,6 +376,9 @@ public class TitleBlockService
             "PROJECT" => template.ProjectName,
             "DRAWING NO" => template.DrawingNumber,
             "SHEET" => template.SheetNumber,
+            "STATUS" => template.Status,
+            "APPROVED BY" => template.ApprovedBy,
+            "APPROVED DATE" => template.ApprovedDate,
             "DRAWN BY" => template.DrawnBy,
             "CHECKED BY" => template.CheckedBy,
             "DATE" => template.Date,
@@ -357,6 +390,15 @@ public class TitleBlockService
 
     private static string NormalizeFieldLabel(string? label)
         => string.IsNullOrWhiteSpace(label) ? string.Empty : label.Trim().ToUpperInvariant();
+
+    private static string FormatSheetStatusValue(DrawingSheetStatus status)
+    {
+        return status switch
+        {
+            DrawingSheetStatus.InReview => "IN REVIEW",
+            _ => status.ToString().ToUpperInvariant()
+        };
+    }
 
     /// <summary>
     /// Generates zone tick marks along the inner border perimeter.
@@ -447,9 +489,9 @@ public class TitleBlockService
 
         // --- Right-side info block ---
         // Row heights within the info block
-        double companyRowHeight = tbHeight * 0.30;
-        double descriptionRowHeight = tbHeight * 0.30;
-        double metadataRowHeight = tbHeight * 0.40;
+        double companyRowHeight = tbHeight * 0.22;
+        double descriptionRowHeight = tbHeight * 0.22;
+        double metadataRowHeight = tbHeight - companyRowHeight - descriptionRowHeight;
 
         double currentY = tbY;
 
@@ -491,9 +533,9 @@ public class TitleBlockService
 
         currentY += descriptionRowHeight;
 
-        // Row 3: Metadata fields in a grid (2 rows x 4 columns)
+        // Row 3: Metadata fields in a grid (3 rows x 4 columns)
         double metaCellWidth = infoBlockWidth / 4.0;
-        double metaCellHeight = metadataRowHeight / 2.0;
+        double metaCellHeight = metadataRowHeight / 3.0;
 
         // Top metadata row: DRAWING NO, SHEET, SCALE, DATE
         cells.Add(new TitleBlockCell
@@ -538,13 +580,13 @@ public class TitleBlockService
 
         currentY += metaCellHeight;
 
-        // Bottom metadata row: DRAWN BY, CHECKED BY (each spanning 2 columns)
+        // Middle metadata row: STATUS, APPROVED DATE
         double doubleMetaCellWidth = metaCellWidth * 2.0;
 
         cells.Add(new TitleBlockCell
         {
-            Label = "DRAWN BY",
-            Value = template.DrawnBy,
+            Label = "STATUS",
+            Value = template.Status,
             X = infoBlockX,
             Y = currentY,
             Width = doubleMetaCellWidth,
@@ -553,9 +595,42 @@ public class TitleBlockService
 
         cells.Add(new TitleBlockCell
         {
+            Label = "APPROVED DATE",
+            Value = template.ApprovedDate,
+            X = infoBlockX + doubleMetaCellWidth,
+            Y = currentY,
+            Width = doubleMetaCellWidth,
+            Height = metaCellHeight
+        });
+
+        currentY += metaCellHeight;
+
+        // Bottom metadata row: DRAWN BY, CHECKED BY, APPROVED BY
+        cells.Add(new TitleBlockCell
+        {
+            Label = "DRAWN BY",
+            Value = template.DrawnBy,
+            X = infoBlockX,
+            Y = currentY,
+            Width = metaCellWidth,
+            Height = metaCellHeight
+        });
+
+        cells.Add(new TitleBlockCell
+        {
             Label = "CHECKED BY",
             Value = template.CheckedBy,
-            X = infoBlockX + doubleMetaCellWidth,
+            X = infoBlockX + metaCellWidth,
+            Y = currentY,
+            Width = metaCellWidth,
+            Height = metaCellHeight
+        });
+
+        cells.Add(new TitleBlockCell
+        {
+            Label = "APPROVED BY",
+            Value = template.ApprovedBy,
+            X = infoBlockX + 2 * metaCellWidth,
             Y = currentY,
             Width = doubleMetaCellWidth,
             Height = metaCellHeight
