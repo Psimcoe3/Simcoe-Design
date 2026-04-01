@@ -17,6 +17,14 @@ public partial class MainWindow
     private readonly ShadowGeometryTree _canvasInteractionShadowTree = new();
     private CanvasInteractionController? _canvasInteractionController;
 
+    internal SnapService.SnapResult? UpdateCanvasHoverSnapForTesting(Point canvasPoint)
+    {
+        SyncCanvasInteractionContextFromViewport();
+        var snapGeometry = GetActiveSnapGeometry();
+        _canvasInteractionController?.OnMouseMove(canvasPoint, snapGeometry.Endpoints, snapGeometry.Segments);
+        return _canvasInteractionController?.LastSnap;
+    }
+
     private void InitializeCanvasInteractionController()
     {
         _canvasInteractionController = new CanvasInteractionController(
@@ -713,7 +721,8 @@ public partial class MainWindow
         }
 
         SyncCanvasInteractionContextFromViewport();
-        _canvasInteractionController?.OnMouseMove(e.GetPosition(PlanScrollViewer), _snapEndpointsCache, _snapSegmentsCache);
+        var snapGeometry = GetActiveSnapGeometry();
+        _canvasInteractionController?.OnMouseMove(e.GetPosition(PlanScrollViewer), snapGeometry.Endpoints, snapGeometry.Segments);
         e.Handled = _canvasInteractionController?.IsRubberBanding == true;
     }
 
@@ -958,13 +967,59 @@ public partial class MainWindow
         }
     }
 
-    private Point ApplyDrawingSnap(Point canvasPos)
+    private (IEnumerable<Point> Endpoints, IEnumerable<(Point A, Point B)> Segments) GetActiveSnapGeometry()
     {
-        var endpoints = _drawingCanvasPoints.Count == 0
+        IEnumerable<Point> endpoints = _drawingCanvasPoints.Count == 0
             ? _snapEndpointsCache
             : _snapEndpointsCache.Concat(_drawingCanvasPoints);
+        IEnumerable<(Point A, Point B)> segments = _snapSegmentsCache;
 
-        var snapResult = _viewModel.SnapService.FindSnapPoint(canvasPos, endpoints, _snapSegmentsCache);
+        if (TryGetPendingMarkupVertexInsertionSnapGeometry(out var markupEndpoints, out var markupSegments))
+        {
+            endpoints = endpoints.Concat(markupEndpoints);
+            segments = segments.Concat(markupSegments);
+        }
+
+        return (endpoints, segments);
+    }
+
+    private bool TryGetPendingMarkupVertexInsertionSnapGeometry(
+        out IReadOnlyList<Point> endpoints,
+        out IReadOnlyList<(Point A, Point B)> segments)
+    {
+        endpoints = Array.Empty<Point>();
+        segments = Array.Empty<(Point A, Point B)>();
+
+        if (!_isPendingMarkupVertexInsertion ||
+            _viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup)
+        {
+            return false;
+        }
+
+        var selectionSet = _markupInteractionService.GetSelectionSet(selectedMarkup, _viewModel.Markups);
+        if (selectionSet.Count != 1 || !_markupInteractionService.CanInsertVertices(selectedMarkup))
+            return false;
+
+        var markupVertices = _markupInteractionService.GetVertexHandlePoints(selectedMarkup);
+        if (markupVertices.Count == 0)
+            return false;
+
+        var markupSegments = new List<(Point A, Point B)>();
+        for (int i = 0; i < selectedMarkup.Vertices.Count - 1; i++)
+            markupSegments.Add((selectedMarkup.Vertices[i], selectedMarkup.Vertices[i + 1]));
+
+        if (selectedMarkup.Type == MarkupType.Polygon && selectedMarkup.Vertices.Count >= 3)
+            markupSegments.Add((selectedMarkup.Vertices[^1], selectedMarkup.Vertices[0]));
+
+        endpoints = markupVertices;
+        segments = markupSegments;
+        return true;
+    }
+
+    private Point ApplyDrawingSnap(Point canvasPos)
+    {
+        var snapGeometry = GetActiveSnapGeometry();
+        var snapResult = _viewModel.SnapService.FindSnapPoint(canvasPos, snapGeometry.Endpoints, snapGeometry.Segments);
         if (snapResult.Snapped)
             return snapResult.SnappedPoint;
 

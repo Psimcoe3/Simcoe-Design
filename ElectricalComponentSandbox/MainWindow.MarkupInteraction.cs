@@ -156,10 +156,12 @@ public partial class MainWindow
         if (selectionSet.Count != 1 || !_markupInteractionService.CanInsertVertices(selectedMarkup))
             return false;
 
-        if (_markupInteractionService.HitTestVertexHandle(canvasPoint, selectedMarkup, GetMarkupHitTolerance()) >= 0)
+        var snappedPoint = ApplyDrawingSnap(canvasPoint);
+
+        if (_markupInteractionService.HitTestVertexHandle(snappedPoint, selectedMarkup, GetMarkupHitTolerance()) >= 0)
             return false;
 
-        if (!_markupInteractionService.TryFindInsertionPoint(canvasPoint, selectedMarkup, GetMarkupHitTolerance(), out var insertIndex, out var projectedPoint))
+        if (!_markupInteractionService.TryFindInsertionPoint(snappedPoint, selectedMarkup, GetMarkupHitTolerance(), out var insertIndex, out var projectedPoint))
             return false;
 
         var before = _markupInteractionService.Capture(selectedMarkup);

@@ -59,6 +59,10 @@ public partial class MainWindowMarkupInteractionTests
                 var began = window.BeginSelectedMarkupVertexInsertionForTesting();
                 var inserted = window.HandlePendingMarkupVertexInsertionClickForTesting(new Point(15, 0));
                 return (began, inserted, window.IsPendingMarkupVertexInsertionForTesting, markup.Vertices.Count, window.ActiveMarkupVertexIndexForTesting, markup.Vertices[1]);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
             });
 
         Assert.True(outcome.began);
@@ -67,6 +71,91 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(3, outcome.Count);
         Assert.Equal(1, outcome.ActiveMarkupVertexIndexForTesting);
         Assert.Equal(new Point(15, 0), outcome.Item6);
+    }
+
+    [Fact]
+    public void HandlePendingMarkupVertexInsertionClickForTesting_WithGridSnap_InsertsSnappedVertexAndClearsPendingMode()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(30, 0) }
+            },
+            (window, _, markup) =>
+            {
+                var began = window.BeginSelectedMarkupVertexInsertionForTesting();
+                var inserted = window.HandlePendingMarkupVertexInsertionClickForTesting(new Point(13, 6));
+                return (began, inserted, window.IsPendingMarkupVertexInsertionForTesting, markup.Vertices.Count, window.ActiveMarkupVertexIndexForTesting, markup.Vertices[1]);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = true;
+                viewModel.GridSize = 1.0;
+            });
+
+        Assert.True(outcome.began);
+        Assert.True(outcome.inserted);
+        Assert.False(outcome.Item3);
+        Assert.Equal(3, outcome.Count);
+        Assert.Equal(1, outcome.ActiveMarkupVertexIndexForTesting);
+        Assert.Equal(new Point(15, 0), outcome.Item6);
+    }
+
+    [Fact]
+    public void HandlePendingMarkupVertexInsertionClickForTesting_NearExistingVertexSnap_DoesNotInsertAndKeepsPendingMode()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(30, 0) }
+            },
+            (window, _, markup) =>
+            {
+                var began = window.BeginSelectedMarkupVertexInsertionForTesting();
+                var inserted = window.HandlePendingMarkupVertexInsertionClickForTesting(new Point(28, 1));
+                return (began, inserted, window.IsPendingMarkupVertexInsertionForTesting, markup.Vertices.Count, window.ActiveMarkupVertexIndexForTesting, markup.Vertices[1]);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.True(outcome.began);
+        Assert.False(outcome.inserted);
+        Assert.True(outcome.Item3);
+        Assert.Equal(2, outcome.Count);
+        Assert.Equal(-1, outcome.ActiveMarkupVertexIndexForTesting);
+        Assert.Equal(new Point(30, 0), outcome.Item6);
+    }
+
+    [Fact]
+    public void UpdateCanvasHoverSnapForTesting_WithPendingVertexInsertion_SnapsToSelectedMarkupEndpoint()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(30, 0) }
+            },
+            (window, _, _) =>
+            {
+                var began = window.BeginSelectedMarkupVertexInsertionForTesting();
+                var snap = window.UpdateCanvasHoverSnapForTesting(new Point(28, 1));
+                return (began, snap, window.IsPendingMarkupVertexInsertionForTesting);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.True(outcome.began);
+        Assert.True(outcome.Item3);
+        Assert.NotNull(outcome.snap);
+        Assert.True(outcome.snap!.Snapped);
+        Assert.Equal(SnapService.SnapType.Endpoint, outcome.snap.Type);
+        Assert.Equal(new Point(30, 0), outcome.snap.SnappedPoint);
     }
 
     [Fact]
