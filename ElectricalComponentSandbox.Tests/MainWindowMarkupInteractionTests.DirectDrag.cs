@@ -134,6 +134,36 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void DirectVertexDragForTesting_PathMarkup_SnapsToSiblingVertexAndSupportsUndo()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(30, 0), new Point(30, 30) }
+            },
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupVertexDragForTesting(new Point(30, 0));
+                window.UpdateDraggedMarkupVertexPreviewForTesting(new Point(28, 28));
+                window.FinishMarkupVertexDragForTesting();
+                var editedVertex = markup.Vertices[1];
+
+                viewModel.Undo();
+                var undoneVertex = markup.Vertices[1];
+                return (began, editedVertex, undoneVertex);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.True(outcome.began);
+        Assert.Equal(new Point(30, 30), outcome.editedVertex);
+        Assert.Equal(new Point(30, 0), outcome.undoneVertex);
+    }
+
+    [Fact]
     public void DirectRadiusDragForTesting_Circle_UsesGridSnapAndSupportsUndo()
     {
         var outcome = RunWithSelectedMarkupWindow(

@@ -1635,7 +1635,8 @@ public partial class MainWindow
         }
         else
         {
-            _markupInteractionService.MoveVertex(_vertexDraggedMarkup, _activeMarkupVertexIndex, canvasPoint);
+            var snappedPoint = ApplyDrawingSnap(canvasPoint);
+            _markupInteractionService.MoveVertex(_vertexDraggedMarkup, _activeMarkupVertexIndex, snappedPoint);
         }
 
         _lastMousePosition = canvasPoint;

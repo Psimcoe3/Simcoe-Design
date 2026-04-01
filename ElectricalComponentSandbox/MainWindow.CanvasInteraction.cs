@@ -980,6 +980,9 @@ public partial class MainWindow
             segments = segments.Concat(markupSegments);
         }
 
+        if (TryGetActiveMarkupVertexDragSnapEndpoints(out var dragEndpoints))
+            endpoints = endpoints.Concat(dragEndpoints);
+
         return (endpoints, segments);
     }
 
@@ -1013,6 +1016,29 @@ public partial class MainWindow
 
         endpoints = markupVertices;
         segments = markupSegments;
+        return true;
+    }
+
+    private bool TryGetActiveMarkupVertexDragSnapEndpoints(out IReadOnlyList<Point> endpoints)
+    {
+        endpoints = Array.Empty<Point>();
+
+        if (!_isDraggingMarkupVertex ||
+            _activeMarkupVertexIndex < 0 ||
+            _vertexDraggedMarkup is not { } draggedMarkup ||
+            !_markupInteractionService.CanInsertVertices(draggedMarkup))
+        {
+            return false;
+        }
+
+        var siblingVertices = draggedMarkup.Vertices
+            .Where((_, index) => index != _activeMarkupVertexIndex)
+            .ToList();
+
+        if (siblingVertices.Count == 0)
+            return false;
+
+        endpoints = siblingVertices;
         return true;
     }
 
