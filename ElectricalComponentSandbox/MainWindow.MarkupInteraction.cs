@@ -60,10 +60,21 @@ public partial class MainWindow
         => UpdateDraggedMarkupRadiusPreview(canvasPoint);
     internal void UpdateMarkupResizePreviewForTesting(Point canvasPoint)
         => UpdateMarkupResizePreview(canvasPoint);
+    internal bool BeginSelectedMarkupSelectionDragForTesting(Point canvasPoint)
+    {
+        if (_viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup)
+            return false;
+
+        StartMarkupSelectionDrag(selectedMarkup, canvasPoint);
+        return true;
+    }
     internal bool BeginSelectedMarkupVertexDragForTesting(Point canvasPoint)
         => TryStartMarkupVertexDrag(canvasPoint);
+    internal void UpdateDraggedMarkupPreviewForTesting(Point canvasPoint)
+        => UpdateDraggedMarkupPreview(canvasPoint);
     internal void UpdateDraggedMarkupVertexPreviewForTesting(Point canvasPoint)
         => UpdateDraggedMarkupVertexPreview(canvasPoint);
+    internal void FinishMarkupSelectionDragForTesting() => FinishMarkupSelectionDrag();
     internal void FinishMarkupResizeDragForTesting() => FinishMarkupResizeDrag();
     internal void FinishMarkupArcAngleDragForTesting() => FinishMarkupArcAngleDrag();
     internal void FinishMarkupRadiusDragForTesting() => FinishMarkupRadiusDrag();
@@ -1517,6 +1528,12 @@ public partial class MainWindow
         if (hit?.Kind != ShadowGeometryTree.ShadowNodeKind.Markup || hit.Source is not MarkupRecord markup)
             return false;
 
+        StartMarkupSelectionDrag(markup, canvasPoint);
+        return true;
+    }
+
+    private void StartMarkupSelectionDrag(MarkupRecord markup, Point canvasPoint)
+    {
         SelectMarkupOnCanvas(markup);
 
         _isDraggingMarkup = true;
@@ -1534,7 +1551,6 @@ public partial class MainWindow
 
         PlanCanvas.CaptureMouse();
         SkiaBackground.RequestRedraw();
-        return true;
     }
 
     private void UpdateMarkupResizePreview(Point canvasPoint)
@@ -1649,7 +1665,8 @@ public partial class MainWindow
             return;
 
         BeginFastInteractionMode();
-        var delta = canvasPoint - _lastMousePosition;
+        var snappedPoint = ApplyDrawingSnap(canvasPoint);
+        var delta = snappedPoint - _lastMousePosition;
         if (_mobileSelectionCandidate &&
             (Math.Abs(canvasPoint.X - _dragStartCanvasPosition.X) > 4 || Math.Abs(canvasPoint.Y - _dragStartCanvasPosition.Y) > 4))
         {
@@ -1662,7 +1679,7 @@ public partial class MainWindow
         foreach (var markup in _draggedMarkups)
             _markupInteractionService.Translate(markup, new Vector(delta.X, delta.Y));
 
-        _lastMousePosition = canvasPoint;
+        _lastMousePosition = snappedPoint;
         SkiaBackground.RequestRedraw();
     }
 

@@ -164,6 +164,39 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void DirectSelectionDragForTesting_Polyline_UsesGridSnapAndSupportsUndo()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(10, 0) }
+            },
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupSelectionDragForTesting(new Point(5, 0));
+                window.UpdateDraggedMarkupPreviewForTesting(new Point(11, 11));
+                window.FinishMarkupSelectionDragForTesting();
+                var editedState = (markup.Vertices[0], markup.Vertices[1]);
+
+                viewModel.Undo();
+                var undoneState = (markup.Vertices[0], markup.Vertices[1]);
+                return (began, editedState, undoneState);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = true;
+                viewModel.GridSize = 1.0;
+            });
+
+        Assert.True(outcome.began);
+        Assert.Equal(new Point(15, 20), outcome.editedState.Item1);
+        Assert.Equal(new Point(25, 20), outcome.editedState.Item2);
+        Assert.Equal(new Point(0, 0), outcome.undoneState.Item1);
+        Assert.Equal(new Point(10, 0), outcome.undoneState.Item2);
+    }
+
+    [Fact]
     public void DirectRadiusDragForTesting_Circle_UsesGridSnapAndSupportsUndo()
     {
         var outcome = RunWithSelectedMarkupWindow(
