@@ -61,4 +61,27 @@ public class RevisionHistoryServiceTests
         Assert.Equal("2", sheet.RevisionEntries[0].RevisionNumber);
         Assert.Equal("1", sheet.RevisionEntries[1].RevisionNumber);
     }
+
+    [Fact]
+    public void UpdateRevision_UpdatesMatchingEntry()
+    {
+        var service = new RevisionHistoryService();
+        var sheet = DrawingSheet.CreateDefault(1);
+        var revision = new RevisionEntry
+        {
+            RevisionNumber = "A",
+            Date = "2026-03-31",
+            Description = "Initial issue",
+            Author = "Paul"
+        };
+        service.AddRevision(sheet, revision);
+
+        var changed = service.UpdateRevision(sheet, revision.Id, "B", "2026-04-01", "Issued for permit", "Reviewer");
+
+        Assert.True(changed);
+        Assert.Equal("B", revision.RevisionNumber);
+        Assert.Equal("2026-04-01", revision.Date);
+        Assert.Equal("Issued for permit", revision.Description);
+        Assert.Equal("Reviewer", revision.Author);
+    }
 }

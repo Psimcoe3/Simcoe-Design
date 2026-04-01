@@ -58,6 +58,28 @@ public sealed class RevisionHistoryService
         return true;
     }
 
+    public bool UpdateRevision(
+        DrawingSheet sheet,
+        string revisionId,
+        string revisionNumber,
+        string revisionDate,
+        string description,
+        string? author = null)
+    {
+        ArgumentNullException.ThrowIfNull(sheet);
+
+        var revision = sheet.RevisionEntries.FirstOrDefault(existing => string.Equals(existing.Id, revisionId, StringComparison.Ordinal));
+        if (revision == null)
+            return false;
+
+        revision.RevisionNumber = revisionNumber;
+        revision.Date = revisionDate;
+        revision.Description = description;
+        revision.Author = string.IsNullOrWhiteSpace(author) ? Environment.UserName : author.Trim();
+        NormalizeRevisionEntry(revision);
+        return true;
+    }
+
     public string GetNextRevisionNumber(IEnumerable<RevisionEntry>? revisions)
     {
         var revisionNumbers = revisions?

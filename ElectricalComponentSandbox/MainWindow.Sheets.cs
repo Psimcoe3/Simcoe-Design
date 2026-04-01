@@ -9,6 +9,57 @@ namespace ElectricalComponentSandbox;
 public partial class MainWindow
 {
     private bool _isUpdatingSheetRevisionPanel;
+    private string? _selectedSheetRevisionId;
+    private string? _sheetRevisionValidationMessage;
+
+    internal void BeginNewSheetRevisionDraftForTesting()
+        => BeginNewSheetRevisionDraft();
+
+    internal void SetSheetRevisionDraftForTesting(string revisionNumber, string revisionDate, string description, string author)
+    {
+        if (SheetRevisionNumberTextBox != null)
+            SheetRevisionNumberTextBox.Text = revisionNumber;
+        if (SheetRevisionDateTextBox != null)
+            SheetRevisionDateTextBox.Text = revisionDate;
+        if (SheetRevisionDescriptionTextBox != null)
+            SheetRevisionDescriptionTextBox.Text = description;
+        if (SheetRevisionAuthorTextBox != null)
+            SheetRevisionAuthorTextBox.Text = author;
+    }
+
+    internal bool SelectSheetRevisionForTesting(string revisionNumber)
+    {
+        if (SheetRevisionListBox == null)
+            return false;
+
+        var match = SheetRevisionListBox.Items
+            .OfType<RevisionEntry>()
+            .FirstOrDefault(candidate => string.Equals(candidate.RevisionNumber, revisionNumber, StringComparison.OrdinalIgnoreCase));
+        if (match == null)
+            return false;
+
+        SheetRevisionListBox.SelectedItem = match;
+        return true;
+    }
+
+    internal bool SaveSheetRevisionEditorForTesting()
+        => SaveSheetRevisionEditor() != null;
+
+    internal bool DeleteSelectedSheetRevisionForTesting()
+        => DeleteSelectedSheetRevision(confirmDelete: false, showFeedbackIfNone: false);
+
+    internal (string SaveCaption, bool SaveEnabled, bool DeleteEnabled, string RevisionNumber, string RevisionDate, string Description, string Author, string ValidationText) GetSheetRevisionEditorStateForTesting()
+    {
+        return (
+            SaveSheetRevisionButton?.Content?.ToString() ?? string.Empty,
+            SaveSheetRevisionButton?.IsEnabled == true,
+            RemoveSheetRevisionButton?.IsEnabled == true,
+            SheetRevisionNumberTextBox?.Text ?? string.Empty,
+            SheetRevisionDateTextBox?.Text ?? string.Empty,
+            SheetRevisionDescriptionTextBox?.Text ?? string.Empty,
+            SheetRevisionAuthorTextBox?.Text ?? string.Empty,
+            SheetRevisionValidationTextBlock?.Text ?? string.Empty);
+    }
 
     private void InitializeSheetBrowser()
     {
@@ -233,69 +284,33 @@ public partial class MainWindow
 
     private void AddSheetRevision_Click(object sender, RoutedEventArgs e)
     {
-        if (_viewModel is not { } viewModel)
-            return;
+        BeginNewSheetRevisionDraft();
+    }
 
-        var sheet = GetSelectedBrowserSheet() ?? viewModel.SelectedSheet;
-        if (sheet == null)
-            return;
-
-        var revisionNumber = PromptInput("Add Revision", "Enter a revision number:", viewModel.GetNextSheetRevisionNumber(sheet));
-        if (revisionNumber == null)
-            return;
-
-        var revisionDate = PromptInput("Add Revision", "Enter a revision date:", DateTime.Now.ToString("yyyy-MM-dd"));
-        if (revisionDate == null)
-            return;
-
-        var description = PromptInput("Add Revision", "Enter a revision description:", string.Empty);
-        if (description == null)
-            return;
-
-        if (string.IsNullOrWhiteSpace(description))
+    private void SaveSheetRevision_Click(object sender, RoutedEventArgs e)
+    {
+        try
         {
-            MessageBox.Show("A revision description is required.", "Add Revision", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
+            SaveSheetRevisionEditor();
         }
-
-        var author = PromptInput("Add Revision", "Enter an author:", Environment.UserName);
-        if (author == null)
-            return;
-
-        var revision = viewModel.AddSheetRevision(sheet, description, author, revisionNumber, revisionDate);
-        UpdateSheetRevisionPanel();
-        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
-        UpdateStatusBar();
-        ActionLogService.Instance.Log(LogCategory.Edit, "Sheet revision added",
-            $"Sheet: {sheet.DisplayName}, Revision: {revision.RevisionNumber}, Description: {revision.Description}");
+        catch (Exception ex)
+        {
+            ActionLogService.Instance.LogError(LogCategory.Edit, "Failed to save sheet revision", ex);
+            MessageBox.Show($"Unable to save the sheet revision: {ex.Message}", "Sheet Revision", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private void RemoveSheetRevision_Click(object sender, RoutedEventArgs e)
     {
-        if (_viewModel is not { } viewModel)
-            return;
-
-        var sheet = GetSelectedBrowserSheet() ?? viewModel.SelectedSheet;
-        if (sheet == null ||
-            SheetRevisionListBox.SelectedItem is not RevisionEntry revision)
+        try
         {
-            return;
+            DeleteSelectedSheetRevision(confirmDelete: true, showFeedbackIfNone: true);
         }
-
-        if (MessageBox.Show($"Remove revision {revision.RevisionNumber} from {sheet.DisplayName}?", "Remove Revision",
-                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        catch (Exception ex)
         {
-            return;
+            ActionLogService.Instance.LogError(LogCategory.Edit, "Failed to delete sheet revision", ex);
+            MessageBox.Show($"Unable to delete the sheet revision: {ex.Message}", "Sheet Revision", MessageBoxButton.OK, MessageBoxImage.Error);
         }
-
-        if (!viewModel.RemoveSheetRevision(sheet, revision.Id))
-            return;
-
-        UpdateSheetRevisionPanel();
-        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
-        UpdateStatusBar();
-        ActionLogService.Instance.Log(LogCategory.Edit, "Sheet revision removed",
-            $"Sheet: {sheet.DisplayName}, Revision: {revision.RevisionNumber}");
     }
 
     private void SheetStatusComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -323,7 +338,27 @@ public partial class MainWindow
 
     private void SheetRevisionListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_isUpdatingSheetRevisionPanel)
+            return;
+
+        if (SheetRevisionListBox?.SelectedItem is RevisionEntry revision)
+        {
+            LoadSheetRevisionEditorSelection(revision.Id);
+        }
+        else if (!HasSheetRevisionDraft())
+        {
+            LoadNewSheetRevisionDraft();
+        }
+
         UpdateSheetRevisionCommandState();
+    }
+
+    private void SheetRevisionEditor_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_isUpdatingSheetRevisionPanel)
+            return;
+
+        RefreshSheetRevisionEditorDraftFeedback();
     }
 
     private void UpdateSheetRevisionPanel()
@@ -331,12 +366,22 @@ public partial class MainWindow
         if (_viewModel is not { } viewModel ||
             SheetRevisionSummaryTextBlock == null ||
             SheetStatusComboBox == null ||
-            SheetRevisionListBox == null)
+            SheetRevisionListBox == null ||
+            SheetRevisionNumberTextBox == null ||
+            SheetRevisionDateTextBox == null ||
+            SheetRevisionDescriptionTextBox == null ||
+            SheetRevisionAuthorTextBox == null)
         {
             return;
         }
 
         var sheet = GetSelectedBrowserSheet() ?? viewModel.SelectedSheet;
+        var preserveDraft = _selectedSheetRevisionId == null && HasSheetRevisionDraft();
+        RevisionEntry? selectedRevision = null;
+        if (!string.IsNullOrWhiteSpace(_selectedSheetRevisionId))
+        {
+            selectedRevision = sheet?.RevisionEntries.FirstOrDefault(candidate => string.Equals(candidate.Id, _selectedSheetRevisionId, StringComparison.Ordinal));
+        }
 
         _isUpdatingSheetRevisionPanel = true;
         try
@@ -346,6 +391,7 @@ public partial class MainWindow
                 SheetRevisionSummaryTextBlock.Text = "Select a sheet to manage revisions and approval state.";
                 SheetStatusComboBox.SelectedIndex = -1;
                 SheetRevisionListBox.ItemsSource = null;
+                ClearSheetRevisionEditorControls();
                 return;
             }
 
@@ -355,15 +401,37 @@ public partial class MainWindow
                 .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), sheet.Status.ToString(), StringComparison.Ordinal));
             SheetRevisionListBox.ItemsSource = null;
             SheetRevisionListBox.ItemsSource = sheet.RevisionEntries;
+            SheetRevisionListBox.SelectedItem = selectedRevision;
 
-            if (sheet.RevisionEntries.Count > 0)
-                SheetRevisionListBox.SelectedIndex = 0;
-            else
-                SheetRevisionListBox.SelectedIndex = -1;
+            if (selectedRevision == null && !preserveDraft)
+                SheetRevisionListBox.SelectedIndex = sheet.RevisionEntries.Count > 0 ? 0 : -1;
         }
         finally
         {
             _isUpdatingSheetRevisionPanel = false;
+        }
+
+        if (sheet == null)
+        {
+            UpdateSheetRevisionCommandState();
+            return;
+        }
+
+        if (selectedRevision != null)
+        {
+            LoadSheetRevisionEditorSelection(selectedRevision.Id);
+        }
+        else if (SheetRevisionListBox.SelectedItem is RevisionEntry selectedFromList)
+        {
+            LoadSheetRevisionEditorSelection(selectedFromList.Id);
+        }
+        else if (!preserveDraft)
+        {
+            LoadNewSheetRevisionDraft();
+        }
+        else
+        {
+            RefreshSheetRevisionEditorDraftFeedback();
         }
 
         UpdateSheetRevisionCommandState();
@@ -373,18 +441,222 @@ public partial class MainWindow
     {
         if (SheetStatusComboBox == null ||
             AddSheetRevisionButton == null ||
+            SaveSheetRevisionButton == null ||
             RemoveSheetRevisionButton == null ||
-            SheetRevisionListBox == null)
+            SheetRevisionListBox == null ||
+            SheetRevisionNumberTextBox == null ||
+            SheetRevisionDateTextBox == null ||
+            SheetRevisionDescriptionTextBox == null)
         {
             return;
         }
 
         var sheet = _viewModel == null ? null : GetSelectedBrowserSheet() ?? _viewModel.SelectedSheet;
         var hasSheet = sheet != null;
+        var hasSelection = !string.IsNullOrWhiteSpace(_selectedSheetRevisionId);
+        var hasDraft = HasSheetRevisionDraft();
 
         SheetStatusComboBox.IsEnabled = hasSheet;
         AddSheetRevisionButton.IsEnabled = hasSheet;
-        RemoveSheetRevisionButton.IsEnabled = hasSheet && SheetRevisionListBox.SelectedItem is RevisionEntry;
+        SaveSheetRevisionButton.Content = hasSelection ? "Save Changes" : "Add Revision";
+        SaveSheetRevisionButton.IsEnabled = hasSheet && hasDraft && string.IsNullOrWhiteSpace(_sheetRevisionValidationMessage);
+        RemoveSheetRevisionButton.IsEnabled = hasSheet && hasSelection && SheetRevisionListBox.SelectedItem is RevisionEntry;
+    }
+
+    private void BeginNewSheetRevisionDraft()
+    {
+        _selectedSheetRevisionId = null;
+        if (SheetRevisionListBox != null)
+        {
+            _isUpdatingSheetRevisionPanel = true;
+            SheetRevisionListBox.SelectedItem = null;
+            _isUpdatingSheetRevisionPanel = false;
+        }
+
+        LoadNewSheetRevisionDraft();
+    }
+
+    private bool HasSheetRevisionDraft()
+    {
+        return !string.IsNullOrWhiteSpace(SheetRevisionNumberTextBox?.Text) ||
+               !string.IsNullOrWhiteSpace(SheetRevisionDateTextBox?.Text) ||
+               !string.IsNullOrWhiteSpace(SheetRevisionDescriptionTextBox?.Text) ||
+               !string.IsNullOrWhiteSpace(SheetRevisionAuthorTextBox?.Text);
+    }
+
+    private void LoadSheetRevisionEditorSelection(string revisionId)
+    {
+        if (_viewModel is not { } viewModel)
+            return;
+
+        var sheet = GetSelectedBrowserSheet() ?? viewModel.SelectedSheet;
+        var revision = sheet?.RevisionEntries.FirstOrDefault(candidate => string.Equals(candidate.Id, revisionId, StringComparison.Ordinal));
+        if (revision == null)
+        {
+            LoadNewSheetRevisionDraft();
+            return;
+        }
+
+        _selectedSheetRevisionId = revision.Id;
+        _isUpdatingSheetRevisionPanel = true;
+        SheetRevisionNumberTextBox!.Text = revision.RevisionNumber;
+        SheetRevisionDateTextBox!.Text = revision.Date;
+        SheetRevisionDescriptionTextBox!.Text = revision.Description;
+        SheetRevisionAuthorTextBox!.Text = revision.Author;
+        _isUpdatingSheetRevisionPanel = false;
+        RefreshSheetRevisionEditorDraftFeedback();
+    }
+
+    private void LoadNewSheetRevisionDraft()
+    {
+        if (_viewModel is not { } viewModel)
+            return;
+
+        var sheet = GetSelectedBrowserSheet() ?? viewModel.SelectedSheet;
+        _selectedSheetRevisionId = null;
+        _isUpdatingSheetRevisionPanel = true;
+        SheetRevisionNumberTextBox!.Text = sheet == null ? string.Empty : viewModel.GetNextSheetRevisionNumber(sheet);
+        SheetRevisionDateTextBox!.Text = DateTime.Now.ToString("yyyy-MM-dd");
+        SheetRevisionDescriptionTextBox!.Text = string.Empty;
+        SheetRevisionAuthorTextBox!.Text = Environment.UserName;
+        _isUpdatingSheetRevisionPanel = false;
+        RefreshSheetRevisionEditorDraftFeedback();
+    }
+
+    private void ClearSheetRevisionEditorControls()
+    {
+        _selectedSheetRevisionId = null;
+        SheetRevisionNumberTextBox!.Text = string.Empty;
+        SheetRevisionDateTextBox!.Text = string.Empty;
+        SheetRevisionDescriptionTextBox!.Text = string.Empty;
+        SheetRevisionAuthorTextBox!.Text = string.Empty;
+        _sheetRevisionValidationMessage = null;
+        if (SheetRevisionValidationTextBlock != null)
+        {
+            SheetRevisionValidationTextBlock.Text = string.Empty;
+            SheetRevisionValidationTextBlock.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void RefreshSheetRevisionEditorDraftFeedback()
+    {
+        if (_viewModel is not { } viewModel ||
+            SheetRevisionNumberTextBox == null ||
+            SheetRevisionDateTextBox == null ||
+            SheetRevisionDescriptionTextBox == null ||
+            SheetRevisionValidationTextBlock == null)
+        {
+            return;
+        }
+
+        var sheet = GetSelectedBrowserSheet() ?? viewModel.SelectedSheet;
+        var revisionNumber = SheetRevisionNumberTextBox.Text.Trim();
+        var revisionDate = SheetRevisionDateTextBox.Text.Trim();
+        var description = SheetRevisionDescriptionTextBox.Text.Trim();
+        string? validationMessage = null;
+
+        if (!string.IsNullOrWhiteSpace(_selectedSheetRevisionId) || HasSheetRevisionDraft())
+        {
+            if (string.IsNullOrWhiteSpace(revisionNumber))
+                validationMessage = "Revision number is required.";
+            else if (string.IsNullOrWhiteSpace(revisionDate))
+                validationMessage = "Revision date is required.";
+            else if (string.IsNullOrWhiteSpace(description))
+                validationMessage = "Revision description is required.";
+            else if (sheet != null && sheet.RevisionEntries.Any(candidate =>
+                         !string.Equals(candidate.Id, _selectedSheetRevisionId, StringComparison.Ordinal) &&
+                         string.Equals(candidate.RevisionNumber, revisionNumber, StringComparison.OrdinalIgnoreCase)))
+                validationMessage = "Revision number must be unique within the selected sheet.";
+        }
+
+        _sheetRevisionValidationMessage = validationMessage;
+        SheetRevisionValidationTextBlock.Text = validationMessage ?? string.Empty;
+        SheetRevisionValidationTextBlock.Visibility = string.IsNullOrWhiteSpace(validationMessage)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        UpdateSheetRevisionCommandState();
+    }
+
+    private RevisionEntry? SaveSheetRevisionEditor()
+    {
+        if (_viewModel is not { } viewModel ||
+            SheetRevisionNumberTextBox == null ||
+            SheetRevisionDateTextBox == null ||
+            SheetRevisionDescriptionTextBox == null ||
+            SheetRevisionAuthorTextBox == null)
+        {
+            throw new InvalidOperationException("Sheet revision editor controls are not available.");
+        }
+
+        var sheet = GetSelectedBrowserSheet() ?? viewModel.SelectedSheet
+            ?? throw new InvalidOperationException("A sheet must be selected before saving revisions.");
+
+        RefreshSheetRevisionEditorDraftFeedback();
+        if (!string.IsNullOrWhiteSpace(_sheetRevisionValidationMessage))
+            throw new InvalidOperationException(_sheetRevisionValidationMessage);
+
+        var revisionNumber = SheetRevisionNumberTextBox.Text.Trim();
+        var revisionDate = SheetRevisionDateTextBox.Text.Trim();
+        var description = SheetRevisionDescriptionTextBox.Text.Trim();
+        var author = SheetRevisionAuthorTextBox.Text.Trim();
+
+        RevisionEntry revision;
+        if (string.IsNullOrWhiteSpace(_selectedSheetRevisionId))
+        {
+            revision = viewModel.AddSheetRevision(sheet, description, author, revisionNumber, revisionDate);
+            ActionLogService.Instance.Log(LogCategory.Edit, "Sheet revision added",
+                $"Sheet: {sheet.DisplayName}, Revision: {revision.RevisionNumber}, Description: {revision.Description}");
+        }
+        else
+        {
+            if (!viewModel.UpdateSheetRevision(sheet, _selectedSheetRevisionId, revisionNumber, revisionDate, description, author))
+                throw new InvalidOperationException("The selected revision could not be updated.");
+
+            revision = sheet.RevisionEntries.First(candidate => string.Equals(candidate.Id, _selectedSheetRevisionId, StringComparison.Ordinal));
+            ActionLogService.Instance.Log(LogCategory.Edit, "Sheet revision updated",
+                $"Sheet: {sheet.DisplayName}, Revision: {revision.RevisionNumber}, Description: {revision.Description}");
+        }
+
+        _selectedSheetRevisionId = revision.Id;
+        UpdateSheetRevisionPanel();
+        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+        UpdateStatusBar();
+        return revision;
+    }
+
+    private bool DeleteSelectedSheetRevision(bool confirmDelete, bool showFeedbackIfNone)
+    {
+        if (_viewModel is not { } viewModel)
+            return false;
+
+        var sheet = GetSelectedBrowserSheet() ?? viewModel.SelectedSheet;
+        var revision = sheet?.RevisionEntries.FirstOrDefault(candidate => string.Equals(candidate.Id, _selectedSheetRevisionId, StringComparison.Ordinal));
+        if (sheet == null || revision == null)
+        {
+            if (showFeedbackIfNone)
+            {
+                MessageBox.Show("Select a revision to remove.", "Sheet Revision", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        if (confirmDelete && MessageBox.Show($"Remove revision {revision.RevisionNumber} from {sheet.DisplayName}?", "Remove Revision",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        {
+            return false;
+        }
+
+        if (!viewModel.RemoveSheetRevision(sheet, revision.Id))
+            return false;
+
+        _selectedSheetRevisionId = null;
+        UpdateSheetRevisionPanel();
+        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+        UpdateStatusBar();
+        ActionLogService.Instance.Log(LogCategory.Edit, "Sheet revision removed",
+            $"Sheet: {sheet.DisplayName}, Revision: {revision.RevisionNumber}");
+        return true;
     }
 
     private static string BuildSheetRevisionSummary(DrawingSheet sheet)

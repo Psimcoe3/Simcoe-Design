@@ -1323,6 +1323,27 @@ public class MainViewModel : INotifyPropertyChanged
         return true;
     }
 
+    public bool UpdateSheetRevision(
+        DrawingSheet sheet,
+        string revisionId,
+        string revisionNumber,
+        string revisionDate,
+        string description,
+        string? author = null)
+    {
+        ArgumentNullException.ThrowIfNull(sheet);
+
+        if (!_revisionHistoryService.UpdateRevision(sheet, revisionId, revisionNumber, revisionDate, description, author))
+            return false;
+
+        var actor = string.IsNullOrWhiteSpace(author) ? Environment.UserName : author.Trim();
+        TouchSheet(sheet, actor);
+        RenderLiveTitleBlockMarkupsForSheet(sheet, updateActiveCollections: ReferenceEquals(sheet, SelectedSheet), synchronizeFromExistingMarkups: false);
+        PersistActiveSheetState();
+        RefreshMarkupReviewContext();
+        return true;
+    }
+
     public bool SetSheetStatus(DrawingSheet sheet, DrawingSheetStatus status, string? actor = null)
     {
         ArgumentNullException.ThrowIfNull(sheet);

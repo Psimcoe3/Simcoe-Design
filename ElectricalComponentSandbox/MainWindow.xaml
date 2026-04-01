@@ -876,15 +876,6 @@
                                 <ComboBoxItem Tag="Approved" Content="Approved"/>
                                 <ComboBoxItem Tag="Archived" Content="Archived"/>
                             </ComboBox>
-                            <WrapPanel Margin="0,0,0,6">
-                                <Button x:Name="AddSheetRevisionButton"
-                                        Content="Add Revision"
-                                        Click="AddSheetRevision_Click"
-                                        Margin="0,0,6,0"/>
-                                <Button x:Name="RemoveSheetRevisionButton"
-                                        Content="Remove Revision"
-                                        Click="RemoveSheetRevision_Click"/>
-                            </WrapPanel>
                             <TextBlock Text="Revision History"
                                        FontWeight="SemiBold"
                                        Foreground="{StaticResource ShellPrimaryTextBrush}"/>
@@ -893,6 +884,56 @@
                                      Margin="0,4,0,0"
                                      DisplayMemberPath="DisplayText"
                                      SelectionChanged="SheetRevisionListBox_SelectionChanged"/>
+                                <TextBlock Text="Revision Number"
+                                       Margin="0,8,0,0"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource ShellPrimaryTextBrush}"/>
+                                <TextBox x:Name="SheetRevisionNumberTextBox"
+                                     Margin="0,4,0,0"
+                                     TextChanged="SheetRevisionEditor_TextChanged"/>
+                                <TextBlock Text="Revision Date"
+                                       Margin="0,8,0,0"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource ShellPrimaryTextBrush}"/>
+                                <TextBox x:Name="SheetRevisionDateTextBox"
+                                     Margin="0,4,0,0"
+                                     TextChanged="SheetRevisionEditor_TextChanged"/>
+                                <TextBlock Text="Author"
+                                       Margin="0,8,0,0"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource ShellPrimaryTextBrush}"/>
+                                <TextBox x:Name="SheetRevisionAuthorTextBox"
+                                     Margin="0,4,0,0"
+                                     TextChanged="SheetRevisionEditor_TextChanged"/>
+                                <TextBlock Text="Description"
+                                       Margin="0,8,0,0"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource ShellPrimaryTextBrush}"/>
+                                <TextBox x:Name="SheetRevisionDescriptionTextBox"
+                                     Margin="0,4,0,0"
+                                     MinLines="3"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     TextChanged="SheetRevisionEditor_TextChanged"/>
+                                <TextBlock x:Name="SheetRevisionValidationTextBlock"
+                                       Margin="0,6,0,0"
+                                       Foreground="Firebrick"
+                                       Visibility="Collapsed"
+                                       TextWrapping="Wrap"/>
+                                <WrapPanel Margin="0,8,0,0">
+                                <Button x:Name="AddSheetRevisionButton"
+                                    Content="New Revision"
+                                    Click="AddSheetRevision_Click"
+                                    Margin="0,0,6,0"/>
+                                <Button x:Name="SaveSheetRevisionButton"
+                                    Content="Add Revision"
+                                    Click="SaveSheetRevision_Click"
+                                    Margin="0,0,6,0"/>
+                                <Button x:Name="RemoveSheetRevisionButton"
+                                    Content="Remove Revision"
+                                    Click="RemoveSheetRevision_Click"/>
+                                </WrapPanel>
                         </StackPanel>
                     </Border>
                           <TreeView x:Name="ProjectBrowserTreeView"

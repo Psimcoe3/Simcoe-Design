@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.ViewModels;
@@ -58,6 +59,97 @@ public class MainWindowProjectBrowserTests
                 Assert.Equal(firstSheet.Id, viewModel.SelectedSheet?.Id);
                 Assert.Equal(1.5, scale.ScaleX, 3);
                 Assert.Equal(1.5, scale.ScaleY, 3);
+                return 0;
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void SheetRevisionEditor_SaveAddsAndUpdatesRevisionInline()
+    {
+        RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.BeginNewSheetRevisionDraftForTesting();
+                window.SetSheetRevisionDraftForTesting("A", "2026-03-31", "Initial issue", "Paul");
+
+                Assert.True(window.SaveSheetRevisionEditorForTesting());
+                var revision = Assert.Single(viewModel.SelectedSheet!.RevisionEntries);
+                Assert.Equal("A", revision.RevisionNumber);
+                Assert.Equal("Initial issue", revision.Description);
+
+                Assert.True(window.SelectSheetRevisionForTesting("A"));
+                window.SetSheetRevisionDraftForTesting("A", "2026-04-01", "Issued for permit", "Reviewer");
+
+                Assert.True(window.SaveSheetRevisionEditorForTesting());
+                Assert.Single(viewModel.SelectedSheet.RevisionEntries);
+                Assert.Equal("Issued for permit", viewModel.SelectedSheet.RevisionEntries[0].Description);
+                Assert.Equal("Reviewer", viewModel.SelectedSheet.RevisionEntries[0].Author);
+
+                var state = window.GetSheetRevisionEditorStateForTesting();
+                Assert.Equal("Save Changes", state.SaveCaption);
+                Assert.True(state.DeleteEnabled);
+                return 0;
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void SheetRevisionEditor_ShowsInlineValidationForDuplicateRevisionNumber()
+    {
+        RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.AddSheetRevision(viewModel.SelectedSheet!, "Initial issue", "Paul", "A", "2026-03-31");
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.BeginNewSheetRevisionDraftForTesting();
+                window.SetSheetRevisionDraftForTesting("A", "2026-04-01", "Issued for permit", "Reviewer");
+
+                var state = window.GetSheetRevisionEditorStateForTesting();
+
+                Assert.False(state.SaveEnabled);
+                Assert.Contains("unique", state.ValidationText, StringComparison.OrdinalIgnoreCase);
+                return 0;
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void SheetRevisionEditor_DeleteRemovesSelectedRevision()
+    {
+        RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.AddSheetRevision(viewModel.SelectedSheet!, "Initial issue", "Paul", "A", "2026-03-31");
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                Assert.True(window.SelectSheetRevisionForTesting("A"));
+                Assert.True(window.DeleteSelectedSheetRevisionForTesting());
+                Assert.Empty(viewModel.SelectedSheet!.RevisionEntries);
+
+                var state = window.GetSheetRevisionEditorStateForTesting();
+                Assert.False(state.DeleteEnabled);
+                Assert.Equal("Add Revision", state.SaveCaption);
                 return 0;
             }
             finally

@@ -775,6 +775,30 @@ public partial class MainViewModelTests
     }
 
     [Fact]
+    public void UpdateSheetRevision_RefreshesLiveTitleBlockRevisionRows()
+    {
+        var vm = new MainViewModel
+        {
+            ProjectName = "Tower Renovation"
+        };
+        var sheet = Assert.IsType<DrawingSheet>(vm.SelectedSheet);
+        var instance = new LiveTitleBlockInstance
+        {
+            Origin = new Point(72, 72),
+            Template = new TitleBlockService().GetDefaultTemplate(PaperSizeType.ANSI_B)
+        };
+
+        vm.AddLiveTitleBlockInstance(sheet, instance);
+        var revision = vm.AddSheetRevision(sheet, "Issued for review", "Paul", revisionNumber: "A", revisionDate: "2026-03-31");
+
+        var updated = vm.UpdateSheetRevision(sheet, revision.Id, "A", "2026-04-01", "Issued for permit", "Reviewer");
+
+        Assert.True(updated);
+        Assert.DoesNotContain(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent.Contains("Issued for review", StringComparison.Ordinal));
+        Assert.Contains(vm.Markups, markup => markup.Type == MarkupType.Text && markup.TextContent.Contains("Issued for permit", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void SetSheetStatus_TracksApprovalMetadata()
     {
         var vm = new MainViewModel();
