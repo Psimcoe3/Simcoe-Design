@@ -203,6 +203,56 @@ public class SnapServiceTests
     }
 
     [Fact]
+    public void FindSnapPoint_NearVisibleArcCurve_SnapsToNearest()
+    {
+        var service = new SnapService
+        {
+            SnapRadius = 10,
+            SnapToEndpoints = false,
+            SnapToCenter = false,
+            SnapToQuadrant = false,
+            SnapToNearest = true
+        };
+        var cursor = new Point(48, 48);
+        var circles = new[] { new SnapCircle(new Point(40, 40), 10.0, 0.0, 90.0) };
+
+        var result = service.FindSnapPoint(
+            cursor,
+            Array.Empty<Point>(),
+            Array.Empty<(Point, Point)>(),
+            circles: circles);
+
+        Assert.True(result.Snapped);
+        Assert.Equal(SnapService.SnapType.Nearest, result.Type);
+        Assert.Equal(47.1, result.SnappedPoint.X, 1);
+        Assert.Equal(47.1, result.SnappedPoint.Y, 1);
+    }
+
+    [Fact]
+    public void FindSnapPoint_NearInvisibleArcContinuation_DoesNotSnapToNearest()
+    {
+        var service = new SnapService
+        {
+            SnapRadius = 5,
+            SnapToEndpoints = false,
+            SnapToCenter = false,
+            SnapToQuadrant = false,
+            SnapToNearest = true
+        };
+        var cursor = new Point(33, 47);
+        var circles = new[] { new SnapCircle(new Point(40, 40), 10.0, 0.0, 90.0) };
+
+        var result = service.FindSnapPoint(
+            cursor,
+            Array.Empty<Point>(),
+            Array.Empty<(Point, Point)>(),
+            circles: circles);
+
+        Assert.False(result.Snapped);
+        Assert.Equal(SnapService.SnapType.None, result.Type);
+    }
+
+    [Fact]
     public void TryGetIntersection_Parallel_ReturnsFalse()
     {
         var result = SnapService.TryGetIntersection(

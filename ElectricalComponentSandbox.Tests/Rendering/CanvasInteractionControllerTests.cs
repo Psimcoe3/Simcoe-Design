@@ -74,6 +74,33 @@ public class CanvasInteractionControllerTests
     }
 
     [Fact]
+    public void OnMouseMove_NearVisibleArcCurve_SnapsToNearest()
+    {
+        var drawCtx = new DrawingContext2D();
+        var snapService = new SnapService
+        {
+            SnapRadius = 10,
+            SnapToEndpoints = false,
+            SnapToCenter = false,
+            SnapToQuadrant = false,
+            SnapToNearest = true
+        };
+        var controller = new CanvasInteractionController(drawCtx, snapService, new ShadowGeometryTree());
+
+        controller.OnMouseMove(
+            new Point(48, 48),
+            Array.Empty<Point>(),
+            Array.Empty<(Point A, Point B)>(),
+            new[] { new SnapCircle(new Point(40, 40), 10.0, 0.0, 90.0) });
+
+        Assert.NotNull(controller.LastSnap);
+        Assert.True(controller.LastSnap!.Snapped);
+        Assert.Equal(SnapService.SnapType.Nearest, controller.LastSnap.Type);
+        Assert.Equal(47.1, controller.CursorDocPoint.X, 1);
+        Assert.Equal(47.1, controller.CursorDocPoint.Y, 1);
+    }
+
+    [Fact]
     public void OnMouseWheel_ZoomsAboutCursor_AndRaisesCursorMoved()
     {
         var drawCtx = new DrawingContext2D

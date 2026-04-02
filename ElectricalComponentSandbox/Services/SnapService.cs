@@ -143,6 +143,18 @@ public class SnapService
                 bestPriority = GetPriority(nearResult.Type);
                 result = nearResult;
             }
+
+            if (circleList.Count > 0)
+            {
+                var nearCircleResult = FindNearestOnCircles(cursor, circleList);
+                var nearCircleDist = Distance(cursor, nearCircleResult.SnappedPoint);
+                if (nearCircleResult.Snapped && IsBetterCandidate(nearCircleDist, nearCircleResult.Type, bestDist, bestPriority))
+                {
+                    bestDist = nearCircleDist;
+                    bestPriority = GetPriority(nearCircleResult.Type);
+                    result = nearCircleResult;
+                }
+            }
         }
 
         // 5. Center of circles / arcs
@@ -229,6 +241,27 @@ public class SnapService
         foreach (var (a, b) in segments)
         {
             var closest = ClosestPointOnSegment(cursor, a, b);
+            double dist = Distance(cursor, closest);
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                result = new SnapResult { SnappedPoint = closest, Type = SnapType.Nearest, Snapped = true };
+            }
+        }
+
+        return result.Snapped && bestDist <= SnapRadius ? result
+             : new SnapResult { SnappedPoint = cursor, Type = SnapType.None, Snapped = false };
+    }
+
+    /// <summary>Returns the nearest point along any circle or visible arc to the cursor.</summary>
+    public SnapResult FindNearestOnCircles(Point cursor, IEnumerable<SnapCircle> circles)
+    {
+        var result = new SnapResult { SnappedPoint = cursor, Type = SnapType.None, Snapped = false };
+        double bestDist = double.MaxValue;
+
+        foreach (var circle in circles)
+        {
+            var closest = ClosestPointOnCircle(cursor, circle);
             double dist = Distance(cursor, closest);
             if (dist < bestDist)
             {
@@ -384,6 +417,35 @@ public class SnapService
         if (lenSq < 1e-10) return a;
         double t = Math.Max(0, Math.Min(1, ((p.X - a.X) * dx + (p.Y - a.Y) * dy) / lenSq));
         return new Point(a.X + t * dx, a.Y + t * dy);
+    }
+
+    private static Point ClosestPointOnCircle(Point cursor, SnapCircle circle)
+    {
+        var offset = new Vector(cursor.X - circle.Center.X, cursor.Y - circle.Center.Y);
+        if (offset.LengthSquared < 1e-10)
+        {
+            var fallbackAngle = circle.StartAngleDeg ?? 0.0;
+            return PointOnCircle(circle.Center, circle.Radius, fallbackAngle);
+        }
+
+        var cursorAngle = Math.Atan2(offset.Y, offset.X) * 180.0 / Math.PI;
+        if (ContainsAngle(circle, cursorAngle))
+            return PointOnCircle(circle.Center, circle.Radius, cursorAngle);
+
+        if (!circle.StartAngleDeg.HasValue || !circle.SweepAngleDeg.HasValue)
+            return PointOnCircle(circle.Center, circle.Radius, cursorAngle);
+
+        var startPoint = PointOnCircle(circle.Center, circle.Radius, circle.StartAngleDeg.Value);
+        var endPoint = PointOnCircle(circle.Center, circle.Radius, circle.StartAngleDeg.Value + circle.SweepAngleDeg.Value);
+        return Distance(cursor, startPoint) <= Distance(cursor, endPoint) ? startPoint : endPoint;
+    }
+
+    private static Point PointOnCircle(Point center, double radius, double angleDeg)
+    {
+        var angleRad = angleDeg * Math.PI / 180.0;
+        return new Point(
+            center.X + Math.Cos(angleRad) * radius,
+            center.Y + Math.Sin(angleRad) * radius);
     }
 
     private static double Distance(Point a, Point b)
