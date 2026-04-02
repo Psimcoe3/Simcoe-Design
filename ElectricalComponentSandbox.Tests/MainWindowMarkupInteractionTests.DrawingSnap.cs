@@ -73,6 +73,37 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ApplySketchLineSnapForTesting_WithVisibleArcMarkup_SnapsToArcEndpoint()
+    {
+        var snapped = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Arc,
+                Vertices = { new Point(1000, 1000) },
+                Radius = 100,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90
+            });
+            viewModel.SnapToGrid = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetSketchDraftLinePointsForTesting(new[] { new Point(920, 900) });
+                return window.ApplySketchLineSnapForTesting(new Point(1002, 1098));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.Equal(new Point(1000, 1100), snapped);
+    }
+
+    [Fact]
     public void PreviewSketchLineSnapIndicatorForTesting_WithDraftAnchor_UsesPerpendicularIndicatorForComponentGeometry()
     {
         var outcome = RunOnSta(() =>
@@ -100,6 +131,39 @@ public partial class MainWindowMarkupInteractionTests
 
         Assert.True(outcome.HasSnapIndicatorForTesting);
         Assert.Equal(SnapService.SnapType.Perpendicular, outcome.SnapIndicatorTypeForTesting);
+    }
+
+    [Fact]
+    public void PreviewSketchLineSnapIndicatorForTesting_WithVisibleArcMarkup_UsesEndpointIndicator()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Arc,
+                Vertices = { new Point(1000, 1000) },
+                Radius = 100,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90
+            });
+            viewModel.SnapToGrid = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetSketchDraftLinePointsForTesting(new[] { new Point(920, 900) });
+                window.PreviewSketchLineSnapIndicatorForTesting(new Point(1002, 1098));
+                return (window.HasSnapIndicatorForTesting, window.SnapIndicatorTypeForTesting);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.HasSnapIndicatorForTesting);
+        Assert.Equal(SnapService.SnapType.Endpoint, outcome.SnapIndicatorTypeForTesting);
     }
 
     [Fact]

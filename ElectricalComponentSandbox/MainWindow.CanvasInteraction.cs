@@ -1130,14 +1130,14 @@ public partial class MainWindow
         }
     }
 
-    private (IEnumerable<Point> Endpoints, IEnumerable<(Point A, Point B)> Segments, IEnumerable<(Point Center, double Radius)> Circles) GetActiveSnapGeometry()
+    private (IEnumerable<Point> Endpoints, IEnumerable<(Point A, Point B)> Segments, IEnumerable<SnapCircle> Circles) GetActiveSnapGeometry()
     {
         IEnumerable<Point> endpoints = _drawingCanvasPoints.Count == 0
             ? _snapEndpointsCache
             : _snapEndpointsCache.Concat(_drawingCanvasPoints);
         IEnumerable<(Point A, Point B)> segments = _snapSegmentsCache;
         var visibleMarkupGeometry = GetVisibleMarkupSnapGeometry();
-        IEnumerable<(Point Center, double Radius)> circles = GetVisibleMarkupSnapCircles();
+        IEnumerable<SnapCircle> circles = GetVisibleMarkupSnapCircles();
 
         endpoints = endpoints.Concat(visibleMarkupGeometry.Endpoints);
         segments = segments.Concat(visibleMarkupGeometry.Segments);
@@ -1172,7 +1172,7 @@ public partial class MainWindow
         return (endpoints, segments);
     }
 
-    private static void AddVisibleMarkupSnapGeometry(
+    private void AddVisibleMarkupSnapGeometry(
         MarkupRecord markup,
         ICollection<Point> endpoints,
         ICollection<(Point A, Point B)> segments)
@@ -1180,10 +1180,20 @@ public partial class MainWindow
         switch (markup.Type)
         {
             case MarkupType.Circle:
-            case MarkupType.Arc:
             case MarkupType.Text:
             case MarkupType.Stamp:
                 return;
+
+            case MarkupType.Arc:
+            {
+                if (!_markupInteractionService.CanEditArcAngles(markup))
+                    return;
+
+                foreach (var handle in _markupInteractionService.GetArcAngleHandles(markup))
+                    endpoints.Add(_markupInteractionService.GetArcAngleHandlePoint(markup, handle));
+
+                return;
+            }
 
             case MarkupType.Rectangle:
             case MarkupType.Box:
@@ -1232,7 +1242,7 @@ public partial class MainWindow
             segments.Add((markup.Vertices[^1], markup.Vertices[0]));
     }
 
-    private IEnumerable<(Point Center, double Radius)> GetVisibleMarkupSnapCircles()
+    private IEnumerable<SnapCircle> GetVisibleMarkupSnapCircles()
     {
         var layerVisibilityById = BuildLayerVisibilityLookup();
         var excludedMarkupIds = GetActiveSnapMarkupExclusionIds();
@@ -1246,7 +1256,22 @@ public partial class MainWindow
                 continue;
             }
 
-            yield return (_markupInteractionService.GetRadiusPivotPoint(markup), Math.Max(markup.Radius, 0.1));
+            var center = _markupInteractionService.GetRadiusPivotPoint(markup);
+            var radius = Math.Max(markup.Radius, 0.1);
+
+            if (markup.Type == MarkupType.Circle)
+            {
+                yield return new SnapCircle(center, radius);
+                continue;
+            }
+
+            if (_markupInteractionService.CanEditArcAngles(markup))
+            {
+                yield return new SnapCircle(center, radius, markup.ArcStartDeg, markup.ArcSweepDeg);
+                continue;
+            }
+
+            yield return new SnapCircle(center, radius);
         }
     }
 

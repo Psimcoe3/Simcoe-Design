@@ -188,6 +188,68 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void UpdateCanvasHoverSnapForTesting_WithVisibleArcMarkup_SnapsToArcEndpoint()
+    {
+        var peerArc = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Vertices = { new Point(40, 40) },
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90
+        };
+
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(10, 0) }
+            },
+            (window, _, _) => window.UpdateCanvasHoverSnapForTesting(new Point(41, 49)),
+            viewModel =>
+            {
+                viewModel.Markups.Add(peerArc);
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.NotNull(outcome);
+        Assert.True(outcome!.Snapped);
+        Assert.Equal(SnapService.SnapType.Endpoint, outcome.Type);
+        Assert.Equal(new Point(40, 50), outcome.SnappedPoint);
+    }
+
+    [Fact]
+    public void UpdateCanvasHoverSnapForTesting_WithVisibleArcMarkup_DoesNotSnapToOffSweepQuadrant()
+    {
+        var peerArc = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Vertices = { new Point(40, 40) },
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90
+        };
+
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(10, 0) }
+            },
+            (window, _, _) => window.UpdateCanvasHoverSnapForTesting(new Point(29, 39)),
+            viewModel =>
+            {
+                viewModel.Markups.Add(peerArc);
+                viewModel.SnapToGrid = false;
+                viewModel.SnapService.SnapToCenter = false;
+            });
+
+        Assert.NotNull(outcome);
+        Assert.False(outcome!.Snapped);
+        Assert.Equal(SnapService.SnapType.None, outcome.Type);
+    }
+
+    [Fact]
     public void HandlePendingMarkupVertexInsertionClickForTesting_MissAndCancel_KeepThenClearPendingMode()
     {
         var outcome = RunWithSelectedMarkupWindow(

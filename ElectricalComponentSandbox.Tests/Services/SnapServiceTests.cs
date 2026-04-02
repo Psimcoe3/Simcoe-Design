@@ -74,7 +74,7 @@ public class SnapServiceTests
     {
         var service = new SnapService { SnapRadius = 15 };
         var cursor = new Point(42, 39);
-        var circles = new[] { (new Point(40, 40), 10.0) };
+        var circles = new[] { new SnapCircle(new Point(40, 40), 10.0) };
 
         var result = service.FindSnapPoint(
             cursor,
@@ -92,7 +92,7 @@ public class SnapServiceTests
     {
         var service = new SnapService { SnapRadius = 15 };
         var cursor = new Point(69, 52);
-        var circles = new[] { (new Point(50, 50), 20.0) };
+        var circles = new[] { new SnapCircle(new Point(50, 50), 20.0) };
 
         var result = service.FindSnapPoint(
             cursor,
@@ -141,7 +141,7 @@ public class SnapServiceTests
         };
         var cursor = new Point(43, 67);
         var lastPoint = new Point(0, 50);
-        var circles = new[] { (new Point(50, 50), 20.0) };
+        var circles = new[] { new SnapCircle(new Point(50, 50), 20.0) };
 
         var result = service.FindSnapPoint(
             cursor,
@@ -154,6 +154,52 @@ public class SnapServiceTests
         Assert.Equal(SnapService.SnapType.Tangent, result.Type);
         Assert.Equal(42.0, result.SnappedPoint.X, 1);
         Assert.Equal(68.3, result.SnappedPoint.Y, 1);
+    }
+
+    [Fact]
+    public void FindSnapPoint_ArcQuadrantOutsideSweep_DoesNotSnap()
+    {
+        var service = new SnapService
+        {
+            SnapRadius = 15,
+            SnapToCenter = false
+        };
+        var cursor = new Point(29, 39);
+        var circles = new[] { new SnapCircle(new Point(40, 40), 10.0, 0.0, 90.0) };
+
+        var result = service.FindSnapPoint(
+            cursor,
+            Array.Empty<Point>(),
+            Array.Empty<(Point, Point)>(),
+            circles: circles);
+
+        Assert.False(result.Snapped);
+        Assert.Equal(SnapService.SnapType.None, result.Type);
+    }
+
+    [Fact]
+    public void FindSnapPoint_ArcTangentOutsideSweep_DoesNotSnap()
+    {
+        var service = new SnapService
+        {
+            SnapRadius = 15,
+            SnapToCenter = false,
+            SnapToQuadrant = false,
+            SnapToTangent = true
+        };
+        var cursor = new Point(43, 67);
+        var lastPoint = new Point(0, 50);
+        var circles = new[] { new SnapCircle(new Point(50, 50), 20.0, 0.0, 90.0) };
+
+        var result = service.FindSnapPoint(
+            cursor,
+            Array.Empty<Point>(),
+            Array.Empty<(Point, Point)>(),
+            lastPoint: lastPoint,
+            circles: circles);
+
+        Assert.False(result.Snapped);
+        Assert.Equal(SnapService.SnapType.None, result.Type);
     }
 
     [Fact]

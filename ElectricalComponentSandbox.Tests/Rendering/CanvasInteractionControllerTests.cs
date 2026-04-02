@@ -45,13 +45,32 @@ public class CanvasInteractionControllerTests
             new Point(42, 39),
             Array.Empty<Point>(),
             Array.Empty<(Point A, Point B)>(),
-            new[] { (new Point(40, 40), 10.0) });
+            new[] { new SnapCircle(new Point(40, 40), 10.0) });
 
         Assert.Equal(1, cursorMovedCount);
         Assert.NotNull(controller.LastSnap);
         Assert.True(controller.LastSnap!.Snapped);
         Assert.Equal(SnapService.SnapType.Center, controller.LastSnap.Type);
         Assert.Equal(new Point(40, 40), controller.CursorDocPoint);
+    }
+
+    [Fact]
+    public void OnMouseMove_WithArcQuadrantOutsideSweep_DoesNotSnap()
+    {
+        var drawCtx = new DrawingContext2D();
+        var snapService = new SnapService { SnapRadius = 10, SnapToCenter = false };
+        var controller = new CanvasInteractionController(drawCtx, snapService, new ShadowGeometryTree());
+
+        controller.OnMouseMove(
+            new Point(29, 39),
+            Array.Empty<Point>(),
+            Array.Empty<(Point A, Point B)>(),
+            new[] { new SnapCircle(new Point(40, 40), 10.0, 0.0, 90.0) });
+
+        Assert.NotNull(controller.LastSnap);
+        Assert.False(controller.LastSnap!.Snapped);
+        Assert.Equal(SnapService.SnapType.None, controller.LastSnap.Type);
+        Assert.Equal(new Point(29, 39), controller.CursorDocPoint);
     }
 
     [Fact]

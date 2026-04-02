@@ -6,6 +6,8 @@ namespace ElectricalComponentSandbox.Services;
 /// Provides snap-to functionality for 2D drawing: endpoints, midpoints, intersections,
 /// nearest-on-curve, perpendicular, center, tangent, and quadrant — professional CAD OSNAP suite.
 /// </summary>
+public readonly record struct SnapCircle(Point Center, double Radius, double? StartAngleDeg = null, double? SweepAngleDeg = null);
+
 public class SnapService
 {
     // ── Snap radius (screen pixels) ──────────────────────────────────────────
@@ -67,7 +69,7 @@ public class SnapService
         IEnumerable<Point> endpoints,
         IEnumerable<(Point A, Point B)> segments,
         Point? lastPoint = null,
-        IEnumerable<(Point Center, double Radius)>? circles = null)
+        IEnumerable<SnapCircle>? circles = null)
     {
         if (!IsEnabled)
             return new SnapResult { SnappedPoint = cursor, Type = SnapType.None, Snapped = false };
@@ -76,7 +78,7 @@ public class SnapService
         double bestDist = SnapRadius;
         var bestPriority = GetPriority(result.Type);
         var segList = segments.ToList();
-        var circleList = circles?.ToList() ?? new List<(Point, double)>();
+        var circleList = circles?.ToList() ?? new List<SnapCircle>();
 
         // 1. Endpoints
         if (SnapToEndpoints)
@@ -159,8 +161,10 @@ public class SnapService
         // 6. Quadrant points
         if (SnapToQuadrant && circleList.Count > 0)
         {
-            foreach (var (center, radius) in circleList)
+            foreach (var circle in circleList)
             {
+                var center = circle.Center;
+                var radius = circle.Radius;
                 Point[] quadrants =
                 {
                     new(center.X + radius, center.Y),
@@ -168,8 +172,13 @@ public class SnapService
                     new(center.X - radius, center.Y),
                     new(center.X,          center.Y - radius)
                 };
-                foreach (var q in quadrants)
+                double[] quadrantAngles = { 0.0, 90.0, 180.0, 270.0 };
+                for (int index = 0; index < quadrants.Length; index++)
                 {
+                    if (!ContainsAngle(circle, quadrantAngles[index]))
+                        continue;
+
+                    var q = quadrants[index];
                     double dist = Distance(cursor, q);
                     if (IsBetterCandidate(dist, SnapType.Quadrant, bestDist, bestPriority))
                     {
@@ -233,13 +242,14 @@ public class SnapService
     }
 
     /// <summary>Returns the center(s) of circles whose center falls within SnapRadius of the cursor.</summary>
-    public SnapResult FindCenter(Point cursor, IEnumerable<(Point Center, double Radius)> circles)
+    public SnapResult FindCenter(Point cursor, IEnumerable<SnapCircle> circles)
     {
         var result = new SnapResult { SnappedPoint = cursor, Type = SnapType.None, Snapped = false };
         double bestDist = SnapRadius;
 
-        foreach (var (center, _) in circles)
+        foreach (var circle in circles)
         {
+            var center = circle.Center;
             double dist = Distance(cursor, center);
             if (dist < bestDist)
             {
@@ -287,13 +297,15 @@ public class SnapService
     /// Finds the tangent touch-point on a circle closest to the cursor when drawing from
     /// <paramref name="fromPoint"/>.  Returns the tangent point (not fromPoint).
     /// </summary>
-    public SnapResult FindTangent(Point cursor, Point fromPoint, IEnumerable<(Point Center, double Radius)> circles)
+    public SnapResult FindTangent(Point cursor, Point fromPoint, IEnumerable<SnapCircle> circles)
     {
         var result = new SnapResult { SnappedPoint = cursor, Type = SnapType.None, Snapped = false };
         double bestDist = SnapRadius;
 
-        foreach (var (center, radius) in circles)
+        foreach (var circle in circles)
         {
+            var center = circle.Center;
+            var radius = circle.Radius;
             double d = Distance(fromPoint, center);
             if (d < radius) continue;  // fromPoint is inside the circle
 
@@ -321,6 +333,9 @@ public class SnapService
                 // Use the point on the circle circumference closest to contactPoint
                 double ca = Math.Atan2(contactPoint.Y - center.Y, contactPoint.X - center.X);
                 var circlePoint = new Point(center.X + radius * Math.Cos(ca), center.Y + radius * Math.Sin(ca));
+
+                if (!ContainsAngle(circle, ca * 180.0 / Math.PI))
+                    continue;
 
                 double dist = Distance(cursor, circlePoint);
                 if (dist < bestDist)
@@ -375,6 +390,39 @@ public class SnapService
     {
         double dx = a.X - b.X, dy = a.Y - b.Y;
         return Math.Sqrt(dx * dx + dy * dy);
+    }
+
+    private static double NormalizeAngle(double angleDeg)
+    {
+        var normalized = angleDeg % 360.0;
+        return normalized < 0 ? normalized + 360.0 : normalized;
+    }
+
+    private static bool ContainsAngle(SnapCircle circle, double angleDeg)
+    {
+        if (!circle.StartAngleDeg.HasValue || !circle.SweepAngleDeg.HasValue)
+            return true;
+
+        const double toleranceDeg = 0.001;
+
+        var start = NormalizeAngle(circle.StartAngleDeg.Value);
+        var sweep = circle.SweepAngleDeg.Value;
+        if (Math.Abs(sweep) < toleranceDeg)
+            return false;
+
+        var end = NormalizeAngle(start + sweep);
+        var angle = NormalizeAngle(angleDeg);
+
+        if (sweep > 0)
+        {
+            return start <= end
+                ? angle >= start - toleranceDeg && angle <= end + toleranceDeg
+                : angle >= start - toleranceDeg || angle <= end + toleranceDeg;
+        }
+
+        return end <= start
+            ? angle <= start + toleranceDeg && angle >= end - toleranceDeg
+            : angle <= start + toleranceDeg || angle >= end - toleranceDeg;
     }
 
     private static bool IsBetterCandidate(double candidateDistance, SnapType candidateType, double bestDistance, int bestPriority)

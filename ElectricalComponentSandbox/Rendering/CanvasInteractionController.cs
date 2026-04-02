@@ -88,7 +88,7 @@ public sealed class CanvasInteractionController
     public void OnMouseMove(Point screenPos,
                             IEnumerable<Point> snapEndpoints,
                             IEnumerable<(Point A, Point B)> snapSegments,
-                            IEnumerable<(Point Center, double Radius)>? snapCircles = null)
+                            IEnumerable<SnapCircle>? snapCircles = null)
     {
         var docPos = _drawCtx.ScreenToDocument(screenPos);
 
