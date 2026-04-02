@@ -114,21 +114,13 @@ public class SnapService
         // 3. Intersections
         if (SnapToIntersections)
         {
-            for (int i = 0; i < segList.Count; i++)
+            var intersectionResult = FindIntersections(cursor, segList, circleList);
+            var intersectionDist = Distance(cursor, intersectionResult.SnappedPoint);
+            if (intersectionResult.Snapped && IsBetterCandidate(intersectionDist, intersectionResult.Type, bestDist, bestPriority))
             {
-                for (int j = i + 1; j < segList.Count; j++)
-                {
-                    if (TryGetIntersection(segList[i].A, segList[i].B, segList[j].A, segList[j].B, out var intersection))
-                    {
-                        double dist = Distance(cursor, intersection);
-                        if (IsBetterCandidate(dist, SnapType.Intersection, bestDist, bestPriority))
-                        {
-                            bestDist = dist;
-                            bestPriority = GetPriority(SnapType.Intersection);
-                            result = new SnapResult { SnappedPoint = intersection, Type = SnapType.Intersection, Snapped = true };
-                        }
-                    }
-                }
+                bestDist = intersectionDist;
+                bestPriority = GetPriority(intersectionResult.Type);
+                result = intersectionResult;
             }
         }
 
@@ -382,6 +374,48 @@ public class SnapService
         return result;
     }
 
+    private SnapResult FindIntersections(Point cursor, IReadOnlyList<(Point A, Point B)> segments, IReadOnlyList<SnapCircle> circles)
+    {
+        var result = new SnapResult { SnappedPoint = cursor, Type = SnapType.None, Snapped = false };
+        double bestDist = SnapRadius;
+
+        void Consider(Point candidate)
+        {
+            double dist = Distance(cursor, candidate);
+            if (dist <= bestDist)
+            {
+                bestDist = dist;
+                result = new SnapResult { SnappedPoint = candidate, Type = SnapType.Intersection, Snapped = true };
+            }
+        }
+
+        for (int i = 0; i < segments.Count; i++)
+        {
+            for (int j = i + 1; j < segments.Count; j++)
+            {
+                if (TryGetIntersection(segments[i].A, segments[i].B, segments[j].A, segments[j].B, out var intersection))
+                    Consider(intersection);
+            }
+
+            foreach (var circle in circles)
+            {
+                foreach (var intersection in GetSegmentCircleIntersections(segments[i].A, segments[i].B, circle))
+                    Consider(intersection);
+            }
+        }
+
+        for (int i = 0; i < circles.Count; i++)
+        {
+            for (int j = i + 1; j < circles.Count; j++)
+            {
+                foreach (var intersection in GetCircleIntersections(circles[i], circles[j]))
+                    Consider(intersection);
+            }
+        }
+
+        return result;
+    }
+
     // ── Line geometry helpers (static, reusable by other services) ────────────
 
     /// <summary>
@@ -417,6 +451,104 @@ public class SnapService
         if (lenSq < 1e-10) return a;
         double t = Math.Max(0, Math.Min(1, ((p.X - a.X) * dx + (p.Y - a.Y) * dy) / lenSq));
         return new Point(a.X + t * dx, a.Y + t * dy);
+    }
+
+    private static IEnumerable<Point> GetSegmentCircleIntersections(Point a, Point b, SnapCircle circle)
+    {
+        const double tolerance = 1e-10;
+        var intersections = new List<Point>(2);
+
+        double dx = b.X - a.X;
+        double dy = b.Y - a.Y;
+        double aCoeff = dx * dx + dy * dy;
+        if (aCoeff < tolerance)
+            return intersections;
+
+        double fx = a.X - circle.Center.X;
+        double fy = a.Y - circle.Center.Y;
+        double bCoeff = 2 * (fx * dx + fy * dy);
+        double cCoeff = fx * fx + fy * fy - circle.Radius * circle.Radius;
+        double discriminant = bCoeff * bCoeff - 4 * aCoeff * cCoeff;
+
+        if (discriminant < -tolerance)
+            return intersections;
+
+        if (discriminant < 0)
+            discriminant = 0;
+
+        double sqrtDiscriminant = Math.Sqrt(discriminant);
+        double denominator = 2 * aCoeff;
+        var tValues = discriminant <= tolerance
+            ? new[] { -bCoeff / denominator }
+            : new[] { (-bCoeff - sqrtDiscriminant) / denominator, (-bCoeff + sqrtDiscriminant) / denominator };
+
+        foreach (var tValue in tValues)
+        {
+            if (tValue < -tolerance || tValue > 1 + tolerance)
+                continue;
+
+            double clampedT = Math.Max(0, Math.Min(1, tValue));
+            var point = new Point(a.X + clampedT * dx, a.Y + clampedT * dy);
+            if (!IsPointOnVisibleCircle(point, circle) || ContainsPoint(intersections, point))
+                continue;
+
+            intersections.Add(point);
+        }
+
+        return intersections;
+    }
+
+    private static IEnumerable<Point> GetCircleIntersections(SnapCircle first, SnapCircle second)
+    {
+        const double tolerance = 1e-10;
+        var intersections = new List<Point>(2);
+
+        double dx = second.Center.X - first.Center.X;
+        double dy = second.Center.Y - first.Center.Y;
+        double centerDistance = Math.Sqrt(dx * dx + dy * dy);
+
+        if (centerDistance < tolerance ||
+            centerDistance > first.Radius + second.Radius + tolerance ||
+            centerDistance < Math.Abs(first.Radius - second.Radius) - tolerance)
+        {
+            return intersections;
+        }
+
+        double alongCenterLine = (first.Radius * first.Radius - second.Radius * second.Radius + centerDistance * centerDistance) / (2 * centerDistance);
+        double perpendicularSq = first.Radius * first.Radius - alongCenterLine * alongCenterLine;
+        if (perpendicularSq < -tolerance)
+            return intersections;
+
+        if (perpendicularSq < 0)
+            perpendicularSq = 0;
+
+        double perpendicular = Math.Sqrt(perpendicularSq);
+        double midpointX = first.Center.X + alongCenterLine * dx / centerDistance;
+        double midpointY = first.Center.Y + alongCenterLine * dy / centerDistance;
+        double offsetX = -dy * perpendicular / centerDistance;
+        double offsetY = dx * perpendicular / centerDistance;
+
+        var candidates = perpendicular <= tolerance
+            ? new[] { new Point(midpointX, midpointY) }
+            : new[]
+            {
+                new Point(midpointX + offsetX, midpointY + offsetY),
+                new Point(midpointX - offsetX, midpointY - offsetY)
+            };
+
+        foreach (var candidate in candidates)
+        {
+            if (!IsPointOnVisibleCircle(candidate, first) ||
+                !IsPointOnVisibleCircle(candidate, second) ||
+                ContainsPoint(intersections, candidate))
+            {
+                continue;
+            }
+
+            intersections.Add(candidate);
+        }
+
+        return intersections;
     }
 
     private static Point ClosestPointOnCircle(Point cursor, SnapCircle circle)
@@ -458,6 +590,17 @@ public class SnapService
     {
         var normalized = angleDeg % 360.0;
         return normalized < 0 ? normalized + 360.0 : normalized;
+    }
+
+    private static bool IsPointOnVisibleCircle(Point point, SnapCircle circle)
+    {
+        var angleDeg = Math.Atan2(point.Y - circle.Center.Y, point.X - circle.Center.X) * 180.0 / Math.PI;
+        return ContainsAngle(circle, angleDeg);
+    }
+
+    private static bool ContainsPoint(IEnumerable<Point> points, Point candidate, double tolerance = 0.01)
+    {
+        return points.Any(point => Distance(point, candidate) <= tolerance);
     }
 
     private static bool ContainsAngle(SnapCircle circle, double angleDeg)

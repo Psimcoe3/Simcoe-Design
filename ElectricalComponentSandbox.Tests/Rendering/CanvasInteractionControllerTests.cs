@@ -101,6 +101,30 @@ public class CanvasInteractionControllerTests
     }
 
     [Fact]
+    public void OnMouseMove_WithVisibleArcArcIntersection_SnapsToIntersection()
+    {
+        var drawCtx = new DrawingContext2D();
+        var snapService = new SnapService { SnapRadius = 10 };
+        var controller = new CanvasInteractionController(drawCtx, snapService, new ShadowGeometryTree());
+
+        controller.OnMouseMove(
+            new Point(45, 49),
+            Array.Empty<Point>(),
+            Array.Empty<(Point A, Point B)>(),
+            new[]
+            {
+                new SnapCircle(new Point(40, 40), 10.0, 0.0, 180.0),
+                new SnapCircle(new Point(50, 40), 10.0, 0.0, 180.0)
+            });
+
+        Assert.NotNull(controller.LastSnap);
+        Assert.True(controller.LastSnap!.Snapped);
+        Assert.Equal(SnapService.SnapType.Intersection, controller.LastSnap.Type);
+        Assert.Equal(45.0, controller.CursorDocPoint.X, 1);
+        Assert.Equal(48.7, controller.CursorDocPoint.Y, 1);
+    }
+
+    [Fact]
     public void OnMouseWheel_ZoomsAboutCursor_AndRaisesCursorMoved()
     {
         var drawCtx = new DrawingContext2D

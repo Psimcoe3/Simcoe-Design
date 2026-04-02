@@ -286,6 +286,47 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void UpdateCanvasHoverSnapForTesting_WithVisibleArcMarkups_SnapsToIntersection()
+    {
+        var firstArc = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Vertices = { new Point(40, 40) },
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 180
+        };
+        var secondArc = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Vertices = { new Point(50, 40) },
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 180
+        };
+
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(10, 0) }
+            },
+            (window, _, _) => window.UpdateCanvasHoverSnapForTesting(new Point(45, 49)),
+            viewModel =>
+            {
+                viewModel.Markups.Add(firstArc);
+                viewModel.Markups.Add(secondArc);
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.NotNull(outcome);
+        Assert.True(outcome!.Snapped);
+        Assert.Equal(SnapService.SnapType.Intersection, outcome.Type);
+        Assert.Equal(45.0, outcome.SnappedPoint.X, 1);
+        Assert.Equal(48.7, outcome.SnappedPoint.Y, 1);
+    }
+
+    [Fact]
     public void HandlePendingMarkupVertexInsertionClickForTesting_MissAndCancel_KeepThenClearPendingMode()
     {
         var outcome = RunWithSelectedMarkupWindow(

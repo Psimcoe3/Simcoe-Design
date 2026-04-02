@@ -70,6 +70,74 @@ public class SnapServiceTests
     }
 
     [Fact]
+    public void FindSnapPoint_NearLineArcIntersection_SnapsToIntersection()
+    {
+        var service = new SnapService { SnapRadius = 10 };
+        var cursor = new Point(48, 46);
+        var segments = new[] { (new Point(48, 30), new Point(48, 60)) };
+        var circles = new[] { new SnapCircle(new Point(40, 40), 10.0, 0.0, 90.0) };
+
+        var result = service.FindSnapPoint(
+            cursor,
+            Array.Empty<Point>(),
+            segments,
+            circles: circles);
+
+        Assert.True(result.Snapped);
+        Assert.Equal(SnapService.SnapType.Intersection, result.Type);
+        Assert.Equal(48.0, result.SnappedPoint.X, 1);
+        Assert.Equal(46.0, result.SnappedPoint.Y, 1);
+    }
+
+    [Fact]
+    public void FindSnapPoint_NearArcArcIntersection_SnapsToIntersection()
+    {
+        var service = new SnapService { SnapRadius = 10 };
+        var cursor = new Point(45, 49);
+        var circles = new[]
+        {
+            new SnapCircle(new Point(40, 40), 10.0, 0.0, 180.0),
+            new SnapCircle(new Point(50, 40), 10.0, 0.0, 180.0)
+        };
+
+        var result = service.FindSnapPoint(
+            cursor,
+            Array.Empty<Point>(),
+            Array.Empty<(Point, Point)>(),
+            circles: circles);
+
+        Assert.True(result.Snapped);
+        Assert.Equal(SnapService.SnapType.Intersection, result.Type);
+        Assert.Equal(45.0, result.SnappedPoint.X, 1);
+        Assert.Equal(48.7, result.SnappedPoint.Y, 1);
+    }
+
+    [Fact]
+    public void FindSnapPoint_NearOffSweepLineArcIntersection_DoesNotSnap()
+    {
+        var service = new SnapService
+        {
+            SnapRadius = 5,
+            SnapToEndpoints = false,
+            SnapToMidpoints = false,
+            SnapToCenter = false,
+            SnapToQuadrant = false
+        };
+        var cursor = new Point(48, 34);
+        var segments = new[] { (new Point(48, 30), new Point(48, 60)) };
+        var circles = new[] { new SnapCircle(new Point(40, 40), 10.0, 0.0, 90.0) };
+
+        var result = service.FindSnapPoint(
+            cursor,
+            Array.Empty<Point>(),
+            segments,
+            circles: circles);
+
+        Assert.False(result.Snapped);
+        Assert.Equal(SnapService.SnapType.None, result.Type);
+    }
+
+    [Fact]
     public void FindSnapPoint_NearCircleCenter_SnapsToCenter()
     {
         var service = new SnapService { SnapRadius = 15 };

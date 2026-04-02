@@ -203,6 +203,43 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ApplySketchLineSnapForTesting_WithVisibleArcAndPolylineGeometry_SnapsToIntersection()
+    {
+        var snapped = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Arc,
+                Vertices = { new Point(1000, 1000) },
+                Radius = 100,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90
+            });
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(1080, 900), new Point(1080, 1100) }
+            });
+            viewModel.SnapToGrid = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetSketchDraftLinePointsForTesting(new[] { new Point(920, 900) });
+                return window.ApplySketchLineSnapForTesting(new Point(1079, 1059));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.Equal(1080.0, snapped.X, 1);
+        Assert.Equal(1060.0, snapped.Y, 1);
+    }
+
+    [Fact]
     public void PreviewConduitDrawingSnapIndicatorForTesting_WithDraftAnchor_UsesTangentIndicator()
     {
         var outcome = RunOnSta(() =>
