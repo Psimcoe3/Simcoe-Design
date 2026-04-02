@@ -281,6 +281,33 @@ public class SnapServiceTests
     }
 
     [Fact]
+    public void FindSnapPoint_WithLastPointAndVisibleArc_SnapsToTangent()
+    {
+        var service = new SnapService
+        {
+            SnapRadius = 10,
+            SnapToCenter = false,
+            SnapToQuadrant = false,
+            SnapToTangent = true
+        };
+        var cursor = new Point(49, 45);
+        var lastPoint = new Point(40, 60);
+        var circles = new[] { new SnapCircle(new Point(40, 40), 10.0, 0.0, 90.0) };
+
+        var result = service.FindSnapPoint(
+            cursor,
+            Array.Empty<Point>(),
+            Array.Empty<(Point, Point)>(),
+            lastPoint: lastPoint,
+            circles: circles);
+
+        Assert.True(result.Snapped);
+        Assert.Equal(SnapService.SnapType.Tangent, result.Type);
+        Assert.Equal(48.7, result.SnappedPoint.X, 1);
+        Assert.Equal(45.0, result.SnappedPoint.Y, 1);
+    }
+
+    [Fact]
     public void FindSnapPoint_ArcQuadrantOutsideSweep_DoesNotSnap()
     {
         var service = new SnapService
