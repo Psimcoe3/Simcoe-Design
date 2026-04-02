@@ -225,6 +225,7 @@ public class CanvasInteractionControllerTests
     }
 
     [Theory]
+    [InlineData(SnapService.SnapType.Intersection, SnapGlyphType.Intersection)]
     [InlineData(SnapService.SnapType.Center, SnapGlyphType.Center)]
     [InlineData(SnapService.SnapType.Perpendicular, SnapGlyphType.Perpendicular)]
     [InlineData(SnapService.SnapType.Quadrant, SnapGlyphType.Quadrant)]
@@ -234,6 +235,28 @@ public class CanvasInteractionControllerTests
         var mappedGlyphType = CanvasInteractionController.MapSnapGlyphTypeForTesting(snapType);
 
         Assert.Equal(glyphType, mappedGlyphType);
+    }
+
+    [Fact]
+    public void DrawOverlays_WithIntersectionSnap_DrawsIntersectionGlyph()
+    {
+        var controller = new CanvasInteractionController(new DrawingContext2D(), new SnapService { SnapRadius = 10 }, new ShadowGeometryTree());
+        var renderer = new RecordingRenderer();
+
+        controller.OnMouseMove(
+            new Point(45, 49),
+            Array.Empty<Point>(),
+            Array.Empty<(Point A, Point B)>(),
+            new[]
+            {
+                new SnapCircle(new Point(40, 40), 10.0, 0.0, 180.0),
+                new SnapCircle(new Point(50, 40), 10.0, 0.0, 180.0)
+            });
+        controller.DrawOverlays(renderer);
+
+        Assert.Equal(45.0, renderer.LastSnapGlyphPoint.X, 1);
+        Assert.Equal(48.7, renderer.LastSnapGlyphPoint.Y, 1);
+        Assert.Equal(SnapGlyphType.Intersection, renderer.LastSnapGlyphType);
     }
 
     [Fact]

@@ -167,6 +167,44 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void PreviewSketchLineSnapIndicatorForTesting_WithVisibleArcAndPolylineGeometry_UsesIntersectionIndicator()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Arc,
+                Vertices = { new Point(1000, 1000) },
+                Radius = 100,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90
+            });
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(1080, 900), new Point(1080, 1100) }
+            });
+            viewModel.SnapToGrid = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetSketchDraftLinePointsForTesting(new[] { new Point(920, 900) });
+                window.PreviewSketchLineSnapIndicatorForTesting(new Point(1079, 1059));
+                return (window.HasSnapIndicatorForTesting, window.SnapIndicatorTypeForTesting);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.HasSnapIndicatorForTesting);
+        Assert.Equal(SnapService.SnapType.Intersection, outcome.SnapIndicatorTypeForTesting);
+    }
+
+    [Fact]
     public void ApplySketchLineSnapForTesting_WithVisibleArcMarkup_NearArcCurve_SnapsToNearest()
     {
         var snapped = RunOnSta(() =>
