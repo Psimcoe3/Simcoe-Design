@@ -21,7 +21,7 @@ public partial class MainWindow
     {
         SyncCanvasInteractionContextFromViewport();
         var snapGeometry = GetActiveSnapGeometry();
-        _canvasInteractionController?.OnMouseMove(canvasPoint, snapGeometry.Endpoints, snapGeometry.Segments);
+        _canvasInteractionController?.OnMouseMove(canvasPoint, snapGeometry.Endpoints, snapGeometry.Segments, snapGeometry.Circles);
         return _canvasInteractionController?.LastSnap;
     }
 
@@ -722,7 +722,7 @@ public partial class MainWindow
 
         SyncCanvasInteractionContextFromViewport();
         var snapGeometry = GetActiveSnapGeometry();
-        _canvasInteractionController?.OnMouseMove(e.GetPosition(PlanScrollViewer), snapGeometry.Endpoints, snapGeometry.Segments);
+        _canvasInteractionController?.OnMouseMove(e.GetPosition(PlanScrollViewer), snapGeometry.Endpoints, snapGeometry.Segments, snapGeometry.Circles);
         e.Handled = _canvasInteractionController?.IsRubberBanding == true;
     }
 
@@ -967,12 +967,13 @@ public partial class MainWindow
         }
     }
 
-    private (IEnumerable<Point> Endpoints, IEnumerable<(Point A, Point B)> Segments) GetActiveSnapGeometry()
+    private (IEnumerable<Point> Endpoints, IEnumerable<(Point A, Point B)> Segments, IEnumerable<(Point Center, double Radius)> Circles) GetActiveSnapGeometry()
     {
         IEnumerable<Point> endpoints = _drawingCanvasPoints.Count == 0
             ? _snapEndpointsCache
             : _snapEndpointsCache.Concat(_drawingCanvasPoints);
         IEnumerable<(Point A, Point B)> segments = _snapSegmentsCache;
+        IEnumerable<(Point Center, double Radius)> circles = GetVisibleMarkupSnapCircles();
 
         if (TryGetPendingMarkupVertexInsertionSnapGeometry(out var markupEndpoints, out var markupSegments))
         {
@@ -983,7 +984,53 @@ public partial class MainWindow
         if (TryGetActiveMarkupVertexDragSnapEndpoints(out var dragEndpoints))
             endpoints = endpoints.Concat(dragEndpoints);
 
-        return (endpoints, segments);
+        return (endpoints, segments, circles);
+    }
+
+    private IEnumerable<(Point Center, double Radius)> GetVisibleMarkupSnapCircles()
+    {
+        var layerVisibilityById = BuildLayerVisibilityLookup();
+        var excludedMarkupIds = GetActiveSnapCircleExclusionIds();
+
+        foreach (var markup in _viewModel.Markups)
+        {
+            if (excludedMarkupIds.Contains(markup.Id) ||
+                !IsLayerVisible(layerVisibilityById, markup.LayerId) ||
+                !_markupInteractionService.CanEditRadius(markup))
+            {
+                continue;
+            }
+
+            yield return (_markupInteractionService.GetRadiusPivotPoint(markup), Math.Max(markup.Radius, 0.1));
+        }
+    }
+
+    private HashSet<string> GetActiveSnapCircleExclusionIds()
+    {
+        var markupIds = new HashSet<string>(StringComparer.Ordinal);
+
+        if (_isDraggingMarkup)
+        {
+            foreach (var markup in _draggedMarkups)
+                markupIds.Add(markup.Id);
+        }
+
+        if (_isResizingMarkup)
+        {
+            foreach (var markup in _resizedMarkups)
+                markupIds.Add(markup.Id);
+        }
+
+        if (_vertexDraggedMarkup is { } vertexDraggedMarkup)
+            markupIds.Add(vertexDraggedMarkup.Id);
+
+        if (_radiusDraggedMarkup is { } radiusDraggedMarkup)
+            markupIds.Add(radiusDraggedMarkup.Id);
+
+        if (_arcAngleDraggedMarkup is { } arcAngleDraggedMarkup)
+            markupIds.Add(arcAngleDraggedMarkup.Id);
+
+        return markupIds;
     }
 
     private bool TryGetPendingMarkupVertexInsertionSnapGeometry(
@@ -1045,7 +1092,7 @@ public partial class MainWindow
     private Point ApplyDrawingSnap(Point canvasPos)
     {
         var snapGeometry = GetActiveSnapGeometry();
-        var snapResult = _viewModel.SnapService.FindSnapPoint(canvasPos, snapGeometry.Endpoints, snapGeometry.Segments);
+        var snapResult = _viewModel.SnapService.FindSnapPoint(canvasPos, snapGeometry.Endpoints, snapGeometry.Segments, circles: snapGeometry.Circles);
         if (snapResult.Snapped)
             return snapResult.SnappedPoint;
 

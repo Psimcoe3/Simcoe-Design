@@ -32,6 +32,29 @@ public class CanvasInteractionControllerTests
     }
 
     [Fact]
+    public void OnMouseMove_SnapsToCircleCenter_AndRaisesCursorMoved()
+    {
+        var drawCtx = new DrawingContext2D();
+        var snapService = new SnapService { SnapRadius = 10 };
+        var controller = new CanvasInteractionController(drawCtx, snapService, new ShadowGeometryTree());
+        var cursorMovedCount = 0;
+
+        controller.CursorMoved += () => cursorMovedCount++;
+
+        controller.OnMouseMove(
+            new Point(42, 39),
+            Array.Empty<Point>(),
+            Array.Empty<(Point A, Point B)>(),
+            new[] { (new Point(40, 40), 10.0) });
+
+        Assert.Equal(1, cursorMovedCount);
+        Assert.NotNull(controller.LastSnap);
+        Assert.True(controller.LastSnap!.Snapped);
+        Assert.Equal(SnapService.SnapType.Center, controller.LastSnap.Type);
+        Assert.Equal(new Point(40, 40), controller.CursorDocPoint);
+    }
+
+    [Fact]
     public void OnMouseWheel_ZoomsAboutCursor_AndRaisesCursorMoved()
     {
         var drawCtx = new DrawingContext2D

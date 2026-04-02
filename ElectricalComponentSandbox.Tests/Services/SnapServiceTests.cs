@@ -70,6 +70,42 @@ public class SnapServiceTests
     }
 
     [Fact]
+    public void FindSnapPoint_NearCircleCenter_SnapsToCenter()
+    {
+        var service = new SnapService { SnapRadius = 15 };
+        var cursor = new Point(42, 39);
+        var circles = new[] { (new Point(40, 40), 10.0) };
+
+        var result = service.FindSnapPoint(
+            cursor,
+            Array.Empty<Point>(),
+            Array.Empty<(Point, Point)>(),
+            circles: circles);
+
+        Assert.True(result.Snapped);
+        Assert.Equal(SnapService.SnapType.Center, result.Type);
+        Assert.Equal(new Point(40, 40), result.SnappedPoint);
+    }
+
+    [Fact]
+    public void FindSnapPoint_NearCircleQuadrant_SnapsToQuadrant()
+    {
+        var service = new SnapService { SnapRadius = 15 };
+        var cursor = new Point(69, 52);
+        var circles = new[] { (new Point(50, 50), 20.0) };
+
+        var result = service.FindSnapPoint(
+            cursor,
+            Array.Empty<Point>(),
+            Array.Empty<(Point, Point)>(),
+            circles: circles);
+
+        Assert.True(result.Snapped);
+        Assert.Equal(SnapService.SnapType.Quadrant, result.Type);
+        Assert.Equal(new Point(70, 50), result.SnappedPoint);
+    }
+
+    [Fact]
     public void TryGetIntersection_Parallel_ReturnsFalse()
     {
         var result = SnapService.TryGetIntersection(

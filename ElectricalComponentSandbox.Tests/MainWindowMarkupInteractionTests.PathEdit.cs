@@ -159,6 +159,35 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void UpdateCanvasHoverSnapForTesting_WithVisibleCircleMarkup_SnapsToCircleCenter()
+    {
+        var peerCircle = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Vertices = { new Point(40, 40) },
+            Radius = 10
+        };
+
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(10, 0) }
+            },
+            (window, _, _) => window.UpdateCanvasHoverSnapForTesting(new Point(42, 39)),
+            viewModel =>
+            {
+                viewModel.Markups.Add(peerCircle);
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.NotNull(outcome);
+        Assert.True(outcome!.Snapped);
+        Assert.Equal(SnapService.SnapType.Center, outcome.Type);
+        Assert.Equal(new Point(40, 40), outcome.SnappedPoint);
+    }
+
+    [Fact]
     public void HandlePendingMarkupVertexInsertionClickForTesting_MissAndCancel_KeepThenClearPendingMode()
     {
         var outcome = RunWithSelectedMarkupWindow(

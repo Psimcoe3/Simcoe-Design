@@ -84,7 +84,8 @@ public sealed class CanvasInteractionController
 
     public void OnMouseMove(Point screenPos,
                             IEnumerable<Point> snapEndpoints,
-                            IEnumerable<(Point A, Point B)> snapSegments)
+                            IEnumerable<(Point A, Point B)> snapSegments,
+                            IEnumerable<(Point Center, double Radius)>? snapCircles = null)
     {
         var docPos = _drawCtx.ScreenToDocument(screenPos);
 
@@ -104,7 +105,7 @@ public sealed class CanvasInteractionController
 
         // Snap
         LastSnap = _snapService.FindSnapPoint(docPos,
-            snapEndpoints, snapSegments);
+            snapEndpoints, snapSegments, circles: snapCircles);
         CursorDocPoint = LastSnap.Snapped ? LastSnap.SnappedPoint : docPos;
 
         // Rubber band
