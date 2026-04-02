@@ -24,7 +24,7 @@ public class SnapService
     // ── Toggle flags: extended OSNAP modes ───────────────────────────────────
     /// <summary>Nearest point on any segment</summary>
     public bool SnapToNearest      { get; set; } = false;
-    /// <summary>Perpendicular drop from last point onto a segment</summary>
+    /// <summary>Perpendicular drop from last point onto a segment or visible circle/arc</summary>
     public bool SnapToPerpendicular{ get; set; } = true;
     /// <summary>Centre of a circle / arc markup</summary>
     public bool SnapToCenter       { get; set; } = true;
@@ -195,9 +195,9 @@ public class SnapService
         }
 
         // 7. Perpendicular from last point
-        if (SnapToPerpendicular && lastPoint.HasValue && segList.Count > 0)
+        if (SnapToPerpendicular && lastPoint.HasValue && (segList.Count > 0 || circleList.Count > 0))
         {
-            var perpResult = FindPerpendicular(cursor, lastPoint.Value, segList);
+            var perpResult = FindPerpendicular(cursor, lastPoint.Value, segList, circleList);
             var perpDist = Distance(cursor, perpResult.SnappedPoint);
             if (perpResult.Snapped && IsBetterCandidate(perpDist, perpResult.Type, bestDist, bestPriority))
             {
@@ -292,6 +292,19 @@ public class SnapService
     /// </summary>
     public SnapResult FindPerpendicular(Point cursor, Point fromPoint, IEnumerable<(Point A, Point B)> segments)
     {
+        return FindPerpendicular(cursor, fromPoint, segments, null);
+    }
+
+    /// <summary>
+    /// Drops a perpendicular from <paramref name="fromPoint"/> onto each segment or visible circle/arc
+    /// and returns the candidate closest to the cursor.
+    /// </summary>
+    public SnapResult FindPerpendicular(
+        Point cursor,
+        Point fromPoint,
+        IEnumerable<(Point A, Point B)> segments,
+        IEnumerable<SnapCircle>? circles)
+    {
         var result = new SnapResult { SnappedPoint = cursor, Type = SnapType.None, Snapped = false };
         double bestDist = SnapRadius;
 
@@ -312,6 +325,28 @@ public class SnapService
             {
                 bestDist = dist;
                 result = new SnapResult { SnappedPoint = foot, Type = SnapType.Perpendicular, Snapped = true };
+            }
+        }
+
+        foreach (var circle in circles ?? Array.Empty<SnapCircle>())
+        {
+            var radial = new Vector(fromPoint.X - circle.Center.X, fromPoint.Y - circle.Center.Y);
+            if (radial.LengthSquared < 1e-10)
+                continue;
+
+            var baseAngleDeg = Math.Atan2(radial.Y, radial.X) * 180.0 / Math.PI;
+            foreach (var candidateAngleDeg in new[] { baseAngleDeg, baseAngleDeg + 180.0 })
+            {
+                if (!ContainsAngle(circle, candidateAngleDeg))
+                    continue;
+
+                var foot = PointOnCircle(circle.Center, circle.Radius, candidateAngleDeg);
+                double dist = Distance(cursor, foot);
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    result = new SnapResult { SnappedPoint = foot, Type = SnapType.Perpendicular, Snapped = true };
+                }
             }
         }
 
