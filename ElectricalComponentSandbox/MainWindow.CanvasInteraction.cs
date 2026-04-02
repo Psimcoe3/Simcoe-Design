@@ -24,6 +24,27 @@ public partial class MainWindow
         _canvasInteractionController?.OnMouseMove(canvasPoint, snapGeometry.Endpoints, snapGeometry.Segments, snapGeometry.Circles);
         return _canvasInteractionController?.LastSnap;
     }
+    internal void RefreshCanvasForTesting() => Update2DCanvas();
+    internal Point ApplySketchLineSnapForTesting(Point canvasPoint)
+    {
+        SyncCanvasInteractionContextFromViewport();
+        return GetSketchLineSnapPoint(canvasPoint);
+    }
+    internal void SetSketchDraftLinePointsForTesting(IEnumerable<Point> points)
+    {
+        _sketchDraftLinePoints.Clear();
+        _sketchDraftLinePoints.AddRange(points);
+    }
+    internal Point ApplyConduitDrawingSnapForTesting(Point canvasPoint)
+    {
+        SyncCanvasInteractionContextFromViewport();
+        return GetConduitDrawingSnapPoint(canvasPoint);
+    }
+    internal void SetDrawingCanvasPointsForTesting(IEnumerable<Point> points)
+    {
+        _drawingCanvasPoints.Clear();
+        _drawingCanvasPoints.AddRange(points);
+    }
 
     private void InitializeCanvasInteractionController()
     {
@@ -341,7 +362,7 @@ public partial class MainWindow
 
         if (_isSketchLineMode)
         {
-            var snapped = ApplyDrawingSnap(pos);
+            var snapped = GetSketchLineSnapPoint(pos);
             if (_sketchDraftLinePoints.Count > 0 && (Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift)))
                 snapped = ConstrainToAngle(_sketchDraftLinePoints[^1], snapped);
 
@@ -392,7 +413,7 @@ public partial class MainWindow
                 return;
             }
 
-            var snapped = ApplyDrawingSnap(pos);
+            var snapped = GetConduitDrawingSnapPoint(pos);
 
             if (_drawingCanvasPoints.Count > 0 &&
                 (Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift)))
@@ -589,7 +610,7 @@ public partial class MainWindow
         if (_isSketchLineMode && _sketchDraftLinePoints.Count > 0)
         {
             _canvasInteractionController?.ClearPreview();
-            var snapped = ApplyDrawingSnap(pos);
+            var snapped = GetSketchLineSnapPoint(pos);
             if (Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift))
                 snapped = ConstrainToAngle(_sketchDraftLinePoints[^1], snapped);
 
@@ -609,7 +630,7 @@ public partial class MainWindow
         if (_isDrawingConduit && _drawingCanvasPoints.Count > 0)
         {
             _canvasInteractionController?.ClearPreview();
-            var snapped = ClampCanvasToPlanBounds(ApplyDrawingSnap(pos));
+            var snapped = GetConduitDrawingSnapPoint(pos);
             if (Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift))
             {
                 snapped = ConstrainToAngle(_drawingCanvasPoints[^1], snapped);
@@ -1089,10 +1110,30 @@ public partial class MainWindow
         return true;
     }
 
-    private Point ApplyDrawingSnap(Point canvasPos)
+    private static Point? GetPathSnapAnchor(IReadOnlyList<Point> points)
+    {
+        return points.Count > 0 ? points[^1] : null;
+    }
+
+    private Point GetSketchLineSnapPoint(Point canvasPos)
+    {
+        return ApplyDrawingSnap(canvasPos, GetPathSnapAnchor(_sketchDraftLinePoints));
+    }
+
+    private Point GetConduitDrawingSnapPoint(Point canvasPos)
+    {
+        return ClampCanvasToPlanBounds(ApplyDrawingSnap(canvasPos, GetPathSnapAnchor(_drawingCanvasPoints)));
+    }
+
+    private Point ApplyDrawingSnap(Point canvasPos, Point? lastPoint = null)
     {
         var snapGeometry = GetActiveSnapGeometry();
-        var snapResult = _viewModel.SnapService.FindSnapPoint(canvasPos, snapGeometry.Endpoints, snapGeometry.Segments, circles: snapGeometry.Circles);
+        var snapResult = _viewModel.SnapService.FindSnapPoint(
+            canvasPos,
+            snapGeometry.Endpoints,
+            snapGeometry.Segments,
+            lastPoint: lastPoint,
+            circles: snapGeometry.Circles);
         if (snapResult.Snapped)
             return snapResult.SnappedPoint;
 

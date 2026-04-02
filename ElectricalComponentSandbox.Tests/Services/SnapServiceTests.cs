@@ -104,6 +104,57 @@ public class SnapServiceTests
         Assert.Equal(SnapService.SnapType.Quadrant, result.Type);
         Assert.Equal(new Point(70, 50), result.SnappedPoint);
     }
+    [Fact]
+    public void FindSnapPoint_WithLastPointAndSegment_SnapsToPerpendicular()
+    {
+        var service = new SnapService
+        {
+            SnapRadius = 15,
+            SnapToEndpoints = false,
+            SnapToMidpoints = false,
+            SnapToIntersections = false
+        };
+        var cursor = new Point(41, 29);
+        var lastPoint = new Point(10, 30);
+        var segments = new[] { (new Point(40, -100), new Point(40, 100)) };
+
+        var result = service.FindSnapPoint(
+            cursor,
+            Array.Empty<Point>(),
+            segments,
+            lastPoint: lastPoint);
+
+        Assert.True(result.Snapped);
+        Assert.Equal(SnapService.SnapType.Perpendicular, result.Type);
+        Assert.Equal(new Point(40, 30), result.SnappedPoint);
+    }
+
+    [Fact]
+    public void FindSnapPoint_WithLastPointAndCircle_SnapsToTangent()
+    {
+        var service = new SnapService
+        {
+            SnapRadius = 15,
+            SnapToCenter = false,
+            SnapToQuadrant = false,
+            SnapToTangent = true
+        };
+        var cursor = new Point(43, 67);
+        var lastPoint = new Point(0, 50);
+        var circles = new[] { (new Point(50, 50), 20.0) };
+
+        var result = service.FindSnapPoint(
+            cursor,
+            Array.Empty<Point>(),
+            Array.Empty<(Point, Point)>(),
+            lastPoint: lastPoint,
+            circles: circles);
+
+        Assert.True(result.Snapped);
+        Assert.Equal(SnapService.SnapType.Tangent, result.Type);
+        Assert.Equal(42.0, result.SnappedPoint.X, 1);
+        Assert.Equal(68.3, result.SnappedPoint.Y, 1);
+    }
 
     [Fact]
     public void TryGetIntersection_Parallel_ReturnsFalse()

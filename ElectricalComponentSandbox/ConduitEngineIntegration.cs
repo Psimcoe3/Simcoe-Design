@@ -37,6 +37,19 @@ public partial class MainWindow
 
     private static bool IsShiftHeld() =>
         Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
+    internal Point ApplyFreehandSnapForTesting(Point canvasPoint)
+    {
+        SyncCanvasInteractionContextFromViewport();
+        return GetFreehandSnapPoint(canvasPoint);
+    }
+    internal void SetFreehandPendingCanvasPointsForTesting(IEnumerable<Point> canvasPoints)
+    {
+        var pendingVertices = ConduitEngine.DrawingTool.PendingVertices;
+        pendingVertices.Clear();
+
+        foreach (var canvasPoint in canvasPoints)
+            pendingVertices.Add(CanvasToConduitWorld(canvasPoint));
+    }
 
     private bool HasConduitRuns() => ConduitEngine.Store.GetAllRuns().Any();
 
@@ -91,13 +104,21 @@ public partial class MainWindow
         UpdatePlanCanvasCursor();
         ActionLogService.Instance.Log(LogCategory.Edit, "Freehand conduit tool activated");
     }
+    private Point GetFreehandSnapPoint(Point canvasPoint)
+    {
+        Point? lastPoint = ConduitEngine.DrawingTool.PendingVertices.Count > 0
+            ? ConduitWorldToCanvas(ConduitEngine.DrawingTool.PendingVertices[^1])
+            : null;
+
+        return ClampCanvasToPlanBounds(ApplyDrawingSnap(canvasPoint, lastPoint));
+    }
 
     private bool HandleFreehandMouseDown(Point canvasPoint)
     {
         if (!_isFreehandDrawing)
             return false;
 
-        var snappedCanvas = ClampCanvasToPlanBounds(ApplyDrawingSnap(canvasPoint));
+        var snappedCanvas = GetFreehandSnapPoint(canvasPoint);
         ConduitEngine.DrawingTool.IsShiftHeld = IsShiftHeld();
         ConduitEngine.OnClick(CanvasToConduitWorld(snappedCanvas));
         DrawFreehandPreview();
@@ -109,7 +130,7 @@ public partial class MainWindow
         if (!_isFreehandDrawing || !ConduitEngine.DrawingTool.IsDrawing)
             return false;
 
-        var snappedCanvas = ClampCanvasToPlanBounds(ApplyDrawingSnap(canvasPoint));
+        var snappedCanvas = GetFreehandSnapPoint(canvasPoint);
         ConduitEngine.DrawingTool.IsShiftHeld = IsShiftHeld();
         ConduitEngine.OnMouseMove(CanvasToConduitWorld(snappedCanvas));
         DrawFreehandPreview();
