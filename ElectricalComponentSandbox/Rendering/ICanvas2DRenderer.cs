@@ -44,7 +44,7 @@ public enum TextAlign { Left, Center, Right }
 /// <summary>
 /// Snap glyph type drawn at candidate snap points
 /// </summary>
-public enum SnapGlyphType { Endpoint, Midpoint, Center, Intersection, Nearest, Perpendicular, Quadrant }
+public enum SnapGlyphType { Endpoint, Midpoint, Center, Intersection, Nearest, Perpendicular, Quadrant, Tangent }
 
 /// <summary>
 /// Abstraction over 2D canvas rendering backend.

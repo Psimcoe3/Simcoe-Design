@@ -317,6 +317,11 @@ public sealed class SkiaCanvas2DRenderer : ICanvas2DRenderer
                 _canvas.DrawLine(sc.X, sc.Y - size / 2, sc.X, sc.Y + size / 2, paint);
                 _canvas.DrawCircle(sc.X, sc.Y, size / 2, paint);
                 break;
+            case SnapGlyphType.Tangent:
+                _canvas.DrawCircle(sc.X - size / 6, sc.Y + size / 6, size / 2.5f, paint);
+                _canvas.DrawLine(sc.X - size / 2, sc.Y - size / 2, sc.X + size / 2, sc.Y - size / 2, paint);
+                _canvas.DrawLine(sc.X + size / 6, sc.Y - size / 2, sc.X + size / 2, sc.Y - size / 6, paint);
+                break;
         }
     }
 

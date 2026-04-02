@@ -25,6 +25,8 @@ public partial class MainWindow
         return _canvasInteractionController?.LastSnap;
     }
     internal void RefreshCanvasForTesting() => Update2DCanvas();
+    internal bool HasSnapIndicatorForTesting => _snapIndicator != null;
+    internal SnapService.SnapType? SnapIndicatorTypeForTesting => _snapIndicatorType;
     internal Point ApplySketchLineSnapForTesting(Point canvasPoint)
     {
         SyncCanvasInteractionContextFromViewport();
@@ -44,6 +46,16 @@ public partial class MainWindow
     {
         _drawingCanvasPoints.Clear();
         _drawingCanvasPoints.AddRange(points);
+    }
+    internal void PreviewSketchLineSnapIndicatorForTesting(Point canvasPoint)
+    {
+        SyncCanvasInteractionContextFromViewport();
+        UpdateSnapIndicator(GetSketchLineSnapResult(canvasPoint), canvasPoint);
+    }
+    internal void PreviewConduitDrawingSnapIndicatorForTesting(Point canvasPoint)
+    {
+        SyncCanvasInteractionContextFromViewport();
+        UpdateSnapIndicator(GetConduitDrawingSnapResult(canvasPoint), canvasPoint);
     }
 
     private void InitializeCanvasInteractionController()
@@ -601,8 +613,9 @@ public partial class MainWindow
         if (_pendingPlacementComponent != null)
         {
             _canvasInteractionController?.ClearPreview();
-            var snapped = ClampCanvasToPlanBounds(ApplyDrawingSnap(pos));
-            UpdateSnapIndicator(snapped, pos);
+            var snapResult = GetDrawingSnapResult(pos);
+            var snapped = ClampCanvasToPlanBounds(snapResult.SnappedPoint);
+            UpdateSnapIndicator(snapResult, pos);
             e.Handled = true;
             return;
         }
@@ -610,12 +623,13 @@ public partial class MainWindow
         if (_isSketchLineMode && _sketchDraftLinePoints.Count > 0)
         {
             _canvasInteractionController?.ClearPreview();
-            var snapped = GetSketchLineSnapPoint(pos);
+            var snapResult = GetSketchLineSnapResult(pos);
+            var snapped = snapResult.SnappedPoint;
             if (Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift))
                 snapped = ConstrainToAngle(_sketchDraftLinePoints[^1], snapped);
 
             UpdateSketchLineRubberBand(_sketchDraftLinePoints[^1], snapped);
-            UpdateSnapIndicator(snapped, pos);
+            UpdateSnapIndicator(snapResult, pos);
             return;
         }
 
@@ -630,14 +644,15 @@ public partial class MainWindow
         if (_isDrawingConduit && _drawingCanvasPoints.Count > 0)
         {
             _canvasInteractionController?.ClearPreview();
-            var snapped = GetConduitDrawingSnapPoint(pos);
+            var snapResult = GetConduitDrawingSnapResult(pos);
+            var snapped = snapResult.SnappedPoint;
             if (Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift))
             {
                 snapped = ConstrainToAngle(_drawingCanvasPoints[^1], snapped);
             }
             snapped = ClampCanvasToPlanBounds(snapped);
             UpdateRubberBand(_drawingCanvasPoints[^1], snapped);
-            UpdateSnapIndicator(snapped, pos);
+            UpdateSnapIndicator(snapResult, pos);
             return;
         }
 
@@ -951,32 +966,158 @@ public partial class MainWindow
         }
     }
 
-    private void UpdateSnapIndicator(Point snappedPos, Point rawPos)
+    private static bool ShouldShowSnapIndicator(SnapService.SnapResult snapResult, Point rawPos)
     {
-        bool didSnap = Math.Abs(snappedPos.X - rawPos.X) > 0.5 || Math.Abs(snappedPos.Y - rawPos.Y) > 0.5;
+        return snapResult.Snapped &&
+               (Math.Abs(snapResult.SnappedPoint.X - rawPos.X) > 0.5 ||
+                Math.Abs(snapResult.SnappedPoint.Y - rawPos.Y) > 0.5);
+    }
 
-        if (!didSnap)
+    private static Brush GetSnapIndicatorStrokeBrush(SnapService.SnapType snapType)
+    {
+        return snapType switch
+        {
+            SnapService.SnapType.Center or SnapService.SnapType.Quadrant => Brushes.Gold,
+            SnapService.SnapType.Perpendicular => Brushes.DeepSkyBlue,
+            SnapService.SnapType.Tangent => Brushes.Orange,
+            _ => Brushes.Lime
+        };
+    }
+
+    private static Brush GetSnapIndicatorFillBrush(SnapService.SnapType snapType)
+    {
+        return snapType switch
+        {
+            SnapService.SnapType.Center or SnapService.SnapType.Quadrant => new SolidColorBrush(Color.FromArgb(60, 255, 215, 0)),
+            SnapService.SnapType.Perpendicular => new SolidColorBrush(Color.FromArgb(60, 0, 191, 255)),
+            SnapService.SnapType.Tangent => new SolidColorBrush(Color.FromArgb(60, 255, 165, 0)),
+            _ => new SolidColorBrush(Color.FromArgb(60, 0, 255, 0))
+        };
+    }
+
+    private static FrameworkElement CreateSnapIndicator(SnapService.SnapType snapType)
+    {
+        const double size = 12.0;
+        var stroke = GetSnapIndicatorStrokeBrush(snapType);
+        var fill = GetSnapIndicatorFillBrush(snapType);
+
+        FrameworkElement indicator = snapType switch
+        {
+            SnapService.SnapType.Endpoint => new Rectangle
+            {
+                Width = size,
+                Height = size,
+                Stroke = stroke,
+                StrokeThickness = 2,
+                Fill = fill,
+                IsHitTestVisible = false
+            },
+            SnapService.SnapType.Midpoint => new Polygon
+            {
+                Points = new PointCollection
+                {
+                    new Point(size / 2, 0),
+                    new Point(size, size),
+                    new Point(0, size)
+                },
+                Stroke = stroke,
+                StrokeThickness = 2,
+                Fill = fill,
+                IsHitTestVisible = false
+            },
+            SnapService.SnapType.Intersection => new Canvas
+            {
+                Width = size,
+                Height = size,
+                IsHitTestVisible = false,
+                Children =
+                {
+                    new Line { X1 = 1, Y1 = 1, X2 = size - 1, Y2 = size - 1, Stroke = stroke, StrokeThickness = 2 },
+                    new Line { X1 = size - 1, Y1 = 1, X2 = 1, Y2 = size - 1, Stroke = stroke, StrokeThickness = 2 }
+                }
+            },
+            SnapService.SnapType.Perpendicular => new Canvas
+            {
+                Width = size,
+                Height = size,
+                IsHitTestVisible = false,
+                Children =
+                {
+                    new Line { X1 = 1, Y1 = size / 2, X2 = size - 1, Y2 = size / 2, Stroke = stroke, StrokeThickness = 2 },
+                    new Line { X1 = size / 2, Y1 = size / 2, X2 = size / 2, Y2 = size - 1, Stroke = stroke, StrokeThickness = 2 }
+                }
+            },
+            SnapService.SnapType.Quadrant => new Canvas
+            {
+                Width = size,
+                Height = size,
+                IsHitTestVisible = false,
+                Children =
+                {
+                    new Ellipse { Width = size, Height = size, Stroke = stroke, StrokeThickness = 2, Fill = fill },
+                    new Line { X1 = 1, Y1 = size / 2, X2 = size - 1, Y2 = size / 2, Stroke = stroke, StrokeThickness = 2 },
+                    new Line { X1 = size / 2, Y1 = 1, X2 = size / 2, Y2 = size - 1, Stroke = stroke, StrokeThickness = 2 }
+                }
+            },
+            SnapService.SnapType.Tangent => new Canvas
+            {
+                Width = size,
+                Height = size,
+                IsHitTestVisible = false,
+                Children =
+                {
+                    new Ellipse { Width = size - 4, Height = size - 4, Stroke = stroke, StrokeThickness = 2, Fill = fill },
+                    new Line { X1 = 1, Y1 = 2, X2 = size - 3, Y2 = 2, Stroke = stroke, StrokeThickness = 2 },
+                    new Line { X1 = size - 3, Y1 = 2, X2 = size - 1, Y2 = size / 2, Stroke = stroke, StrokeThickness = 2 }
+                }
+            },
+            _ => new Ellipse
+            {
+                Width = size,
+                Height = size,
+                Stroke = stroke,
+                StrokeThickness = 2,
+                Fill = fill,
+                IsHitTestVisible = false
+            }
+        };
+
+        indicator.Width = size;
+        indicator.Height = size;
+        indicator.IsHitTestVisible = false;
+        return indicator;
+    }
+
+    private void UpdateSnapIndicator(SnapService.SnapResult snapResult, Point rawPos)
+    {
+        if (!ShouldShowSnapIndicator(snapResult, rawPos))
         {
             RemoveSnapIndicator();
             return;
         }
 
-        if (_snapIndicator == null)
+        if (_snapIndicator == null || _snapIndicatorType != snapResult.Type)
         {
-            _snapIndicator = new Ellipse
-            {
-                Width = 12,
-                Height = 12,
-                Stroke = Brushes.Lime,
-                StrokeThickness = 2,
-                Fill = new SolidColorBrush(Color.FromArgb(60, 0, 255, 0)),
-                IsHitTestVisible = false
-            };
+            RemoveSnapIndicator();
+            _snapIndicator = CreateSnapIndicator(snapResult.Type);
+            _snapIndicatorType = snapResult.Type;
             PlanCanvas.Children.Add(_snapIndicator);
         }
 
-        Canvas.SetLeft(_snapIndicator, snappedPos.X - 6);
-        Canvas.SetTop(_snapIndicator, snappedPos.Y - 6);
+        Canvas.SetLeft(_snapIndicator, snapResult.SnappedPoint.X - _snapIndicator.Width / 2);
+        Canvas.SetTop(_snapIndicator, snapResult.SnappedPoint.Y - _snapIndicator.Height / 2);
+    }
+
+    private void UpdateSnapIndicator(Point snappedPos, Point rawPos)
+    {
+        UpdateSnapIndicator(
+            new SnapService.SnapResult
+            {
+                Snapped = Math.Abs(snappedPos.X - rawPos.X) > 0.5 || Math.Abs(snappedPos.Y - rawPos.Y) > 0.5,
+                SnappedPoint = snappedPos,
+                Type = SnapService.SnapType.Nearest
+            },
+            rawPos);
     }
 
     private void RemoveSnapIndicator()
@@ -985,6 +1126,7 @@ public partial class MainWindow
         {
             PlanCanvas.Children.Remove(_snapIndicator);
             _snapIndicator = null;
+            _snapIndicatorType = null;
         }
     }
 
@@ -1115,17 +1257,29 @@ public partial class MainWindow
         return points.Count > 0 ? points[^1] : null;
     }
 
+    private SnapService.SnapResult GetSketchLineSnapResult(Point canvasPos)
+    {
+        return GetDrawingSnapResult(canvasPos, GetPathSnapAnchor(_sketchDraftLinePoints));
+    }
+
     private Point GetSketchLineSnapPoint(Point canvasPos)
     {
-        return ApplyDrawingSnap(canvasPos, GetPathSnapAnchor(_sketchDraftLinePoints));
+        return GetSketchLineSnapResult(canvasPos).SnappedPoint;
+    }
+
+    private SnapService.SnapResult GetConduitDrawingSnapResult(Point canvasPos)
+    {
+        var snapResult = GetDrawingSnapResult(canvasPos, GetPathSnapAnchor(_drawingCanvasPoints));
+        snapResult.SnappedPoint = ClampCanvasToPlanBounds(snapResult.SnappedPoint);
+        return snapResult;
     }
 
     private Point GetConduitDrawingSnapPoint(Point canvasPos)
     {
-        return ClampCanvasToPlanBounds(ApplyDrawingSnap(canvasPos, GetPathSnapAnchor(_drawingCanvasPoints)));
+        return GetConduitDrawingSnapResult(canvasPos).SnappedPoint;
     }
 
-    private Point ApplyDrawingSnap(Point canvasPos, Point? lastPoint = null)
+    private SnapService.SnapResult GetDrawingSnapResult(Point canvasPos, Point? lastPoint = null)
     {
         var snapGeometry = GetActiveSnapGeometry();
         var snapResult = _viewModel.SnapService.FindSnapPoint(
@@ -1135,17 +1289,33 @@ public partial class MainWindow
             lastPoint: lastPoint,
             circles: snapGeometry.Circles);
         if (snapResult.Snapped)
-            return snapResult.SnappedPoint;
+            return snapResult;
 
         if (_viewModel.SnapToGrid)
         {
             double gridPx = _viewModel.GridSize * 20;
             double snappedX = Math.Round(canvasPos.X / gridPx) * gridPx;
             double snappedY = Math.Round(canvasPos.Y / gridPx) * gridPx;
-            return new Point(snappedX, snappedY);
+            var snappedPoint = new Point(snappedX, snappedY);
+            return new SnapService.SnapResult
+            {
+                SnappedPoint = snappedPoint,
+                Type = SnapService.SnapType.Grid,
+                Snapped = Math.Abs(snappedPoint.X - canvasPos.X) > 0.5 || Math.Abs(snappedPoint.Y - canvasPos.Y) > 0.5
+            };
         }
 
-        return canvasPos;
+        return new SnapService.SnapResult
+        {
+            SnappedPoint = canvasPos,
+            Type = SnapService.SnapType.None,
+            Snapped = false
+        };
+    }
+
+    private Point ApplyDrawingSnap(Point canvasPos, Point? lastPoint = null)
+    {
+        return GetDrawingSnapResult(canvasPos, lastPoint).SnappedPoint;
     }
 
     private static Point ConstrainToAngle(Point anchor, Point target)

@@ -68,6 +68,9 @@ public sealed class CanvasInteractionController
     /// <summary>Fired every time the cursor moves — host should call RequestRedraw</summary>
     public event Action? CursorMoved;
 
+    internal static SnapGlyphType MapSnapGlyphTypeForTesting(SnapService.SnapType snapType)
+        => MapSnapGlyphType(snapType);
+
     // ── Constructor ───────────────────────────────────────────────────────────
 
     public CanvasInteractionController(
@@ -236,14 +239,7 @@ public sealed class CanvasInteractionController
         // Snap glyph
         if (LastSnap?.Snapped == true)
         {
-            var glyphType = LastSnap.Type switch
-            {
-                SnapService.SnapType.Endpoint     => SnapGlyphType.Endpoint,
-                SnapService.SnapType.Midpoint     => SnapGlyphType.Midpoint,
-                SnapService.SnapType.Intersection => SnapGlyphType.Intersection,
-                SnapService.SnapType.Grid         => SnapGlyphType.Nearest,
-                _                                 => SnapGlyphType.Nearest
-            };
+            var glyphType = MapSnapGlyphType(LastSnap.Type);
             renderer.DrawSnapGlyph(LastSnap.SnappedPoint, glyphType);
         }
 
@@ -305,5 +301,22 @@ public sealed class CanvasInteractionController
         double dx = pos.X, dy = pos.Y;
         double angle = Math.Atan2(dy, dx) * 180.0 / Math.PI;
         return Math.Round(angle / PolarIncrementDeg) * PolarIncrementDeg;
+    }
+
+    private static SnapGlyphType MapSnapGlyphType(SnapService.SnapType snapType)
+    {
+        return snapType switch
+        {
+            SnapService.SnapType.Endpoint => SnapGlyphType.Endpoint,
+            SnapService.SnapType.Midpoint => SnapGlyphType.Midpoint,
+            SnapService.SnapType.Center => SnapGlyphType.Center,
+            SnapService.SnapType.Intersection => SnapGlyphType.Intersection,
+            SnapService.SnapType.Perpendicular => SnapGlyphType.Perpendicular,
+            SnapService.SnapType.Quadrant => SnapGlyphType.Quadrant,
+            SnapService.SnapType.Tangent => SnapGlyphType.Tangent,
+            SnapService.SnapType.Grid => SnapGlyphType.Nearest,
+            SnapService.SnapType.Nearest => SnapGlyphType.Nearest,
+            _ => SnapGlyphType.Nearest
+        };
     }
 }

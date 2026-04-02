@@ -88,7 +88,8 @@ public partial class MainWindow
 #pragma warning restore CS0414
     private readonly List<Point> _drawingCanvasPoints = new();
     private Line? _rubberBandLine = null;
-    private Ellipse? _snapIndicator = null;
+    private FrameworkElement? _snapIndicator = null;
+    private SnapService.SnapType? _snapIndicatorType = null;
     private bool _isPdfCalibrationMode = false;
     private Point? _pdfCalibrationFirstCanvasPoint = null;
     private Point? _pdfCalibrationFirstDocumentPoint = null;

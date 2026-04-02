@@ -154,6 +154,18 @@ public class CanvasInteractionControllerTests
         Assert.Equal(SnapGlyphType.Endpoint, renderer.LastSnapGlyphType);
     }
 
+    [Theory]
+    [InlineData(SnapService.SnapType.Center, SnapGlyphType.Center)]
+    [InlineData(SnapService.SnapType.Perpendicular, SnapGlyphType.Perpendicular)]
+    [InlineData(SnapService.SnapType.Quadrant, SnapGlyphType.Quadrant)]
+    [InlineData(SnapService.SnapType.Tangent, SnapGlyphType.Tangent)]
+    public void MapSnapGlyphTypeForTesting_UsesExpectedGlyph(SnapService.SnapType snapType, SnapGlyphType glyphType)
+    {
+        var mappedGlyphType = CanvasInteractionController.MapSnapGlyphTypeForTesting(snapType);
+
+        Assert.Equal(glyphType, mappedGlyphType);
+    }
+
     [Fact]
     public void DrawOverlays_DrawsSelectionRectWhileRubberBanding()
     {

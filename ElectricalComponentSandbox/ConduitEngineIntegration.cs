@@ -42,6 +42,11 @@ public partial class MainWindow
         SyncCanvasInteractionContextFromViewport();
         return GetFreehandSnapPoint(canvasPoint);
     }
+    internal void PreviewFreehandSnapIndicatorForTesting(Point canvasPoint)
+    {
+        SyncCanvasInteractionContextFromViewport();
+        UpdateSnapIndicator(GetFreehandSnapResult(canvasPoint), canvasPoint);
+    }
     internal void SetFreehandPendingCanvasPointsForTesting(IEnumerable<Point> canvasPoints)
     {
         var pendingVertices = ConduitEngine.DrawingTool.PendingVertices;
@@ -104,13 +109,20 @@ public partial class MainWindow
         UpdatePlanCanvasCursor();
         ActionLogService.Instance.Log(LogCategory.Edit, "Freehand conduit tool activated");
     }
-    private Point GetFreehandSnapPoint(Point canvasPoint)
+    private SnapService.SnapResult GetFreehandSnapResult(Point canvasPoint)
     {
         Point? lastPoint = ConduitEngine.DrawingTool.PendingVertices.Count > 0
             ? ConduitWorldToCanvas(ConduitEngine.DrawingTool.PendingVertices[^1])
             : null;
 
-        return ClampCanvasToPlanBounds(ApplyDrawingSnap(canvasPoint, lastPoint));
+        var snapResult = GetDrawingSnapResult(canvasPoint, lastPoint);
+        snapResult.SnappedPoint = ClampCanvasToPlanBounds(snapResult.SnappedPoint);
+        return snapResult;
+    }
+
+    private Point GetFreehandSnapPoint(Point canvasPoint)
+    {
+        return GetFreehandSnapResult(canvasPoint).SnappedPoint;
     }
 
     private bool HandleFreehandMouseDown(Point canvasPoint)
@@ -130,9 +142,11 @@ public partial class MainWindow
         if (!_isFreehandDrawing || !ConduitEngine.DrawingTool.IsDrawing)
             return false;
 
-        var snappedCanvas = GetFreehandSnapPoint(canvasPoint);
+        var snapResult = GetFreehandSnapResult(canvasPoint);
+        var snappedCanvas = snapResult.SnappedPoint;
         ConduitEngine.DrawingTool.IsShiftHeld = IsShiftHeld();
         ConduitEngine.OnMouseMove(CanvasToConduitWorld(snappedCanvas));
+        UpdateSnapIndicator(snapResult, canvasPoint);
         DrawFreehandPreview();
         return true;
     }
@@ -153,6 +167,7 @@ public partial class MainWindow
         FreehandConduitButton.Background = System.Windows.SystemColors.ControlBrush;
         FreehandConduitButton.Content = "Freehand Conduit";
         UpdatePlanCanvasCursor();
+        RemoveSnapIndicator();
         ClearFreehandPreview();
 
         if (run != null)
