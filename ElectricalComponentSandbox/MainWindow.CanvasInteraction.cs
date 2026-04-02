@@ -1136,7 +1136,11 @@ public partial class MainWindow
             ? _snapEndpointsCache
             : _snapEndpointsCache.Concat(_drawingCanvasPoints);
         IEnumerable<(Point A, Point B)> segments = _snapSegmentsCache;
+        var visibleMarkupGeometry = GetVisibleMarkupSnapGeometry();
         IEnumerable<(Point Center, double Radius)> circles = GetVisibleMarkupSnapCircles();
+
+        endpoints = endpoints.Concat(visibleMarkupGeometry.Endpoints);
+        segments = segments.Concat(visibleMarkupGeometry.Segments);
 
         if (TryGetPendingMarkupVertexInsertionSnapGeometry(out var markupEndpoints, out var markupSegments))
         {
@@ -1150,10 +1154,88 @@ public partial class MainWindow
         return (endpoints, segments, circles);
     }
 
+    private (IReadOnlyList<Point> Endpoints, IReadOnlyList<(Point A, Point B)> Segments) GetVisibleMarkupSnapGeometry()
+    {
+        var endpoints = new List<Point>();
+        var segments = new List<(Point A, Point B)>();
+        var layerVisibilityById = BuildLayerVisibilityLookup();
+        var excludedMarkupIds = GetActiveSnapMarkupExclusionIds();
+
+        foreach (var markup in _viewModel.Markups)
+        {
+            if (excludedMarkupIds.Contains(markup.Id) || !IsLayerVisible(layerVisibilityById, markup.LayerId))
+                continue;
+
+            AddVisibleMarkupSnapGeometry(markup, endpoints, segments);
+        }
+
+        return (endpoints, segments);
+    }
+
+    private static void AddVisibleMarkupSnapGeometry(
+        MarkupRecord markup,
+        ICollection<Point> endpoints,
+        ICollection<(Point A, Point B)> segments)
+    {
+        switch (markup.Type)
+        {
+            case MarkupType.Circle:
+            case MarkupType.Arc:
+            case MarkupType.Text:
+            case MarkupType.Stamp:
+                return;
+
+            case MarkupType.Rectangle:
+            case MarkupType.Box:
+            case MarkupType.Panel:
+            {
+                var rect = markup.BoundingRect != Rect.Empty
+                    ? markup.BoundingRect
+                    : markup.Vertices.Count >= 2
+                        ? new Rect(markup.Vertices[0], markup.Vertices[1])
+                        : Rect.Empty;
+
+                if (rect == Rect.Empty)
+                    return;
+
+                var rectPoints = new[]
+                {
+                    rect.TopLeft,
+                    new Point(rect.Right, rect.Top),
+                    rect.BottomRight,
+                    new Point(rect.Left, rect.Bottom)
+                };
+
+                foreach (var point in rectPoints)
+                    endpoints.Add(point);
+
+                for (int index = 0; index < rectPoints.Length; index++)
+                {
+                    var nextIndex = (index + 1) % rectPoints.Length;
+                    segments.Add((rectPoints[index], rectPoints[nextIndex]));
+                }
+
+                return;
+            }
+        }
+
+        if (markup.Vertices.Count < 2)
+            return;
+
+        foreach (var point in markup.Vertices)
+            endpoints.Add(point);
+
+        for (int index = 0; index < markup.Vertices.Count - 1; index++)
+            segments.Add((markup.Vertices[index], markup.Vertices[index + 1]));
+
+        if (markup.Type is MarkupType.Polygon or MarkupType.Hatch)
+            segments.Add((markup.Vertices[^1], markup.Vertices[0]));
+    }
+
     private IEnumerable<(Point Center, double Radius)> GetVisibleMarkupSnapCircles()
     {
         var layerVisibilityById = BuildLayerVisibilityLookup();
-        var excludedMarkupIds = GetActiveSnapCircleExclusionIds();
+        var excludedMarkupIds = GetActiveSnapMarkupExclusionIds();
 
         foreach (var markup in _viewModel.Markups)
         {
@@ -1168,7 +1250,7 @@ public partial class MainWindow
         }
     }
 
-    private HashSet<string> GetActiveSnapCircleExclusionIds()
+    private HashSet<string> GetActiveSnapMarkupExclusionIds()
     {
         var markupIds = new HashSet<string>(StringComparer.Ordinal);
 

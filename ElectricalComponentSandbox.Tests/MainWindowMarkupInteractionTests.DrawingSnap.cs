@@ -9,7 +9,7 @@ namespace ElectricalComponentSandbox.Tests;
 public partial class MainWindowMarkupInteractionTests
 {
     [Fact]
-    public void ApplySketchLineSnapForTesting_WithDraftAnchor_SnapsPerpendicularToVisibleMarkupSegment()
+    public void ApplySketchLineSnapForTesting_WithDraftAnchor_SnapsPerpendicularToVisibleComponentSegment()
     {
         var snapped = RunOnSta(() =>
         {
@@ -73,7 +73,7 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
-    public void PreviewSketchLineSnapIndicatorForTesting_WithDraftAnchor_UsesPerpendicularIndicator()
+    public void PreviewSketchLineSnapIndicatorForTesting_WithDraftAnchor_UsesPerpendicularIndicatorForComponentGeometry()
     {
         var outcome = RunOnSta(() =>
         {
@@ -140,7 +140,7 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
-    public void ApplyFreehandSnapForTesting_WithPendingAnchor_SnapsPerpendicularToVisibleMarkupSegment()
+    public void ApplyFreehandSnapForTesting_WithPendingAnchor_SnapsPerpendicularToVisibleComponentSegment()
     {
         var snapped = RunOnSta(() =>
         {
@@ -168,7 +168,7 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
-    public void PreviewFreehandSnapIndicatorForTesting_WithPendingAnchor_UsesPerpendicularIndicator()
+    public void PreviewFreehandSnapIndicatorForTesting_WithPendingAnchor_UsesPerpendicularIndicatorForComponentGeometry()
     {
         var outcome = RunOnSta(() =>
         {
@@ -195,5 +195,67 @@ public partial class MainWindowMarkupInteractionTests
 
         Assert.True(outcome.HasSnapIndicatorForTesting);
         Assert.Equal(SnapService.SnapType.Perpendicular, outcome.SnapIndicatorTypeForTesting);
+    }
+
+    [Fact]
+    public void ApplySketchLineSnapForTesting_WithDraftAnchor_SnapsPerpendicularToVisiblePolylineMarkupSegment()
+    {
+        var snapped = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(1000, 800), new Point(1000, 1000) }
+            });
+            viewModel.SnapToGrid = false;
+            viewModel.SnapService.SnapToEndpoints = false;
+            viewModel.SnapService.SnapToMidpoints = false;
+            viewModel.SnapService.SnapToIntersections = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetSketchDraftLinePointsForTesting(new[] { new Point(920, 900) });
+                return window.ApplySketchLineSnapForTesting(new Point(1002, 899));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.Equal(new Point(1000, 900), snapped);
+    }
+
+    [Fact]
+    public void ApplyConduitDrawingSnapForTesting_WithDraftAnchor_SnapsPerpendicularToVisiblePolylineMarkupSegment()
+    {
+        var snapped = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(1000, 800), new Point(1000, 1000) }
+            });
+            viewModel.SnapToGrid = false;
+            viewModel.SnapService.SnapToEndpoints = false;
+            viewModel.SnapService.SnapToMidpoints = false;
+            viewModel.SnapService.SnapToIntersections = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetDrawingCanvasPointsForTesting(new[] { new Point(920, 900) });
+                return window.ApplyConduitDrawingSnapForTesting(new Point(1002, 899));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.Equal(new Point(1000, 900), snapped);
     }
 }
