@@ -1565,9 +1565,10 @@ public partial class MainWindow
             _mobileSelectionCandidate = false;
         }
 
+        var snappedPoint = ApplyDrawingSnap(canvasPoint);
         var resizedBounds = _markupInteractionService.BuildResizedBounds(
             _markupResizeStartBounds,
-            canvasPoint,
+            snappedPoint,
             _activeMarkupResizeHandle,
             GetMarkupMinimumSize());
 
@@ -1577,7 +1578,7 @@ public partial class MainWindow
                 _markupInteractionService.Resize(markup, snapshot, _markupResizeStartBounds, resizedBounds);
         }
 
-        _lastMousePosition = canvasPoint;
+        _lastMousePosition = snappedPoint;
         SkiaBackground.RequestRedraw();
     }
 
