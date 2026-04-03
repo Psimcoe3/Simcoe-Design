@@ -286,6 +286,7 @@ public class CanvasInteractionControllerTests
     [Theory]
     [InlineData(SnapService.SnapType.Intersection, SnapGlyphType.Intersection)]
     [InlineData(SnapService.SnapType.Center, SnapGlyphType.Center)]
+    [InlineData(SnapService.SnapType.Nearest, SnapGlyphType.Nearest)]
     [InlineData(SnapService.SnapType.Perpendicular, SnapGlyphType.Perpendicular)]
     [InlineData(SnapService.SnapType.Quadrant, SnapGlyphType.Quadrant)]
     [InlineData(SnapService.SnapType.Tangent, SnapGlyphType.Tangent)]
@@ -316,6 +317,35 @@ public class CanvasInteractionControllerTests
         Assert.Equal(45.0, renderer.LastSnapGlyphPoint.X, 1);
         Assert.Equal(48.7, renderer.LastSnapGlyphPoint.Y, 1);
         Assert.Equal(SnapGlyphType.Intersection, renderer.LastSnapGlyphType);
+    }
+
+    [Fact]
+    public void DrawOverlays_WithNearestSnap_DrawsNearestGlyph()
+    {
+        var controller = new CanvasInteractionController(
+            new DrawingContext2D(),
+            new SnapService
+            {
+                SnapRadius = 10,
+                SnapToEndpoints = false,
+                SnapToMidpoints = false,
+                SnapToCenter = false,
+                SnapToQuadrant = false,
+                SnapToNearest = true
+            },
+            new ShadowGeometryTree());
+        var renderer = new RecordingRenderer();
+
+        controller.OnMouseMove(
+            new Point(48, 48),
+            Array.Empty<Point>(),
+            Array.Empty<(Point A, Point B)>(),
+            new[] { new SnapCircle(new Point(40, 40), 10.0, 0.0, 90.0) });
+        controller.DrawOverlays(renderer);
+
+        Assert.Equal(47.1, renderer.LastSnapGlyphPoint.X, 1);
+        Assert.Equal(47.1, renderer.LastSnapGlyphPoint.Y, 1);
+        Assert.Equal(SnapGlyphType.Nearest, renderer.LastSnapGlyphType);
     }
 
     [Fact]
