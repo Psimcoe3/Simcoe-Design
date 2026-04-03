@@ -254,6 +254,35 @@ public class SnapServiceTests
     }
 
     [Fact]
+    public void FindSnapPoint_WithLastPointAndCircle_SnapsToPerpendicular()
+    {
+        var service = new SnapService
+        {
+            SnapRadius = 10,
+            SnapToEndpoints = false,
+            SnapToMidpoints = false,
+            SnapToIntersections = false,
+            SnapToCenter = false,
+            SnapToQuadrant = false
+        };
+        var cursor = new Point(48, 46);
+        var lastPoint = new Point(20, 20);
+        var circles = new[] { new SnapCircle(new Point(40, 40), 10.0) };
+
+        var result = service.FindSnapPoint(
+            cursor,
+            Array.Empty<Point>(),
+            Array.Empty<(Point, Point)>(),
+            lastPoint: lastPoint,
+            circles: circles);
+
+        Assert.True(result.Snapped);
+        Assert.Equal(SnapService.SnapType.Perpendicular, result.Type);
+        Assert.Equal(47.1, result.SnappedPoint.X, 1);
+        Assert.Equal(47.1, result.SnappedPoint.Y, 1);
+    }
+
+    [Fact]
     public void FindSnapPoint_WithLastPointAndVisibleArc_SnapsToPerpendicular()
     {
         var service = new SnapService
