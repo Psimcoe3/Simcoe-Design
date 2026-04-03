@@ -27,15 +27,22 @@ public static class ReferenceCatalogService
 
     public static string? GetReferenceDocsRoot(string? rootHint = null)
     {
+        if (!string.IsNullOrWhiteSpace(rootHint))
+        {
+            if (TryNormalizeReferenceDocsRoot(rootHint, out var hintedRoot))
+                return hintedRoot;
+
+            var hintedWorkspaceRoot = TryFindWorkspaceRoot(rootHint);
+            if (hintedWorkspaceRoot != null)
+                return Path.Combine(hintedWorkspaceRoot, "References", "docs");
+        }
+
         if (TryNormalizeReferenceDocsRoot(_referenceDocsRootOverride, out var overrideRoot))
             return overrideRoot;
 
         var configuredFromEnvironment = Environment.GetEnvironmentVariable(ReferenceRootEnvVar);
         if (TryNormalizeReferenceDocsRoot(configuredFromEnvironment, out var environmentRoot))
             return environmentRoot;
-
-        if (TryNormalizeReferenceDocsRoot(rootHint, out var hintedRoot))
-            return hintedRoot;
 
         var workspaceRoot = string.IsNullOrWhiteSpace(rootHint)
             ? TryFindWorkspaceRoot()

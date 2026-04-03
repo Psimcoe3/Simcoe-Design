@@ -60,6 +60,28 @@ public class ReferenceCatalogServiceTests : IDisposable
     }
 
     [Fact]
+    public void ResolveLaunchTarget_ExplicitWorkspaceRoot_WinsOverConfiguredOverride()
+    {
+        var workspaceRoot = CreateWorkspace();
+        var overrideWorkspaceRoot = Path.Combine(_tempDir, "override-workspace");
+        var overrideDocsRoot = Path.Combine(overrideWorkspaceRoot, "References", "docs");
+        Directory.CreateDirectory(overrideDocsRoot);
+
+        var relativePath = Path.Combine("References", "docs", "2026_national_electrical_estimator_ebook.pdf");
+        var expectedPath = Path.Combine(workspaceRoot, relativePath);
+        File.WriteAllText(expectedPath, "workspace-root");
+        File.WriteAllText(Path.Combine(overrideDocsRoot, "2026_national_electrical_estimator_ebook.pdf"), "override-root");
+
+        var set = ReferenceCatalogService.TrySetReferenceDocsRootOverride(overrideDocsRoot, out _, out var errorMessage);
+        Assert.True(set, errorMessage);
+
+        var resolution = ReferenceCatalogService.ResolveLaunchTarget(relativePath, workspaceRoot);
+
+        Assert.True(resolution.Success);
+        Assert.Equal(Path.GetFullPath(expectedPath), resolution.LaunchTarget);
+    }
+
+    [Fact]
     public void ResolveLaunchTarget_MissingRepoRelativePath_ReturnsClearError()
     {
         var workspaceRoot = CreateWorkspace();
