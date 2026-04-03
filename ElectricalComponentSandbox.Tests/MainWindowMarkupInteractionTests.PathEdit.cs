@@ -350,6 +350,41 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void UpdateCanvasHoverSnapForTesting_WithVisibleCircleMarkup_NearCircleCurve_SnapsToNearest()
+    {
+        var peerCircle = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Vertices = { new Point(40, 40) },
+            Radius = 10
+        };
+
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(10, 0) }
+            },
+            (window, _, _) => window.UpdateCanvasHoverSnapForTesting(new Point(48, 48)),
+            viewModel =>
+            {
+                viewModel.Markups.Add(peerCircle);
+                viewModel.SnapToGrid = false;
+                viewModel.SnapService.SnapToEndpoints = false;
+                viewModel.SnapService.SnapToMidpoints = false;
+                viewModel.SnapService.SnapToCenter = false;
+                viewModel.SnapService.SnapToQuadrant = false;
+                viewModel.SnapService.SnapToNearest = true;
+            });
+
+        Assert.NotNull(outcome);
+        Assert.True(outcome!.Snapped);
+        Assert.Equal(SnapService.SnapType.Nearest, outcome.Type);
+        Assert.Equal(47.1, outcome.SnappedPoint.X, 1);
+        Assert.Equal(47.1, outcome.SnappedPoint.Y, 1);
+    }
+
+    [Fact]
     public void UpdateCanvasHoverSnapForTesting_WithVisibleArcMarkup_SnapsToArcMidpoint()
     {
         var peerArc = new MarkupRecord
@@ -420,6 +455,42 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(SnapService.SnapType.Intersection, outcome.Type);
         Assert.Equal(45.0, outcome.SnappedPoint.X, 1);
         Assert.Equal(48.7, outcome.SnappedPoint.Y, 1);
+    }
+
+    [Fact]
+    public void UpdateCanvasHoverSnapForTesting_WithVisibleCircleAndPolylineGeometry_SnapsToIntersection()
+    {
+        var peerCircle = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Vertices = { new Point(40, 40) },
+            Radius = 10
+        };
+        var peerPolyline = new MarkupRecord
+        {
+            Type = MarkupType.Polyline,
+            Vertices = { new Point(48, 30), new Point(48, 50) }
+        };
+
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(10, 0) }
+            },
+            (window, _, _) => window.UpdateCanvasHoverSnapForTesting(new Point(47, 45)),
+            viewModel =>
+            {
+                viewModel.Markups.Add(peerCircle);
+                viewModel.Markups.Add(peerPolyline);
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.NotNull(outcome);
+        Assert.True(outcome!.Snapped);
+        Assert.Equal(SnapService.SnapType.Intersection, outcome.Type);
+        Assert.Equal(48.0, outcome.SnappedPoint.X, 1);
+        Assert.Equal(46.0, outcome.SnappedPoint.Y, 1);
     }
 
     [Fact]

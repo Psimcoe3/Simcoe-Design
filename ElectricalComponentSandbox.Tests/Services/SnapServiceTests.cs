@@ -437,6 +437,53 @@ public class SnapServiceTests
     }
 
     [Fact]
+    public void FindSnapPoint_NearVisibleCircleCurve_SnapsToNearest()
+    {
+        var service = new SnapService
+        {
+            SnapRadius = 10,
+            SnapToEndpoints = false,
+            SnapToMidpoints = false,
+            SnapToCenter = false,
+            SnapToQuadrant = false,
+            SnapToNearest = true
+        };
+        var cursor = new Point(48, 48);
+        var circles = new[] { new SnapCircle(new Point(40, 40), 10.0) };
+
+        var result = service.FindSnapPoint(
+            cursor,
+            Array.Empty<Point>(),
+            Array.Empty<(Point, Point)>(),
+            circles: circles);
+
+        Assert.True(result.Snapped);
+        Assert.Equal(SnapService.SnapType.Nearest, result.Type);
+        Assert.Equal(47.1, result.SnappedPoint.X, 1);
+        Assert.Equal(47.1, result.SnappedPoint.Y, 1);
+    }
+
+    [Fact]
+    public void FindSnapPoint_NearLineCircleIntersection_SnapsToIntersection()
+    {
+        var service = new SnapService { SnapRadius = 10 };
+        var cursor = new Point(47, 45);
+        var segments = new[] { (new Point(48, 30), new Point(48, 50)) };
+        var circles = new[] { new SnapCircle(new Point(40, 40), 10.0) };
+
+        var result = service.FindSnapPoint(
+            cursor,
+            Array.Empty<Point>(),
+            segments,
+            circles: circles);
+
+        Assert.True(result.Snapped);
+        Assert.Equal(SnapService.SnapType.Intersection, result.Type);
+        Assert.Equal(48.0, result.SnappedPoint.X, 1);
+        Assert.Equal(46.0, result.SnappedPoint.Y, 1);
+    }
+
+    [Fact]
     public void FindSnapPoint_NearInvisibleArcContinuation_DoesNotSnapToNearest()
     {
         var service = new SnapService

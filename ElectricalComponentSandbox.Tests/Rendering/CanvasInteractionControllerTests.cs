@@ -140,6 +140,34 @@ public class CanvasInteractionControllerTests
     }
 
     [Fact]
+    public void OnMouseMove_NearVisibleCircleCurve_SnapsToNearest()
+    {
+        var drawCtx = new DrawingContext2D();
+        var snapService = new SnapService
+        {
+            SnapRadius = 10,
+            SnapToEndpoints = false,
+            SnapToMidpoints = false,
+            SnapToCenter = false,
+            SnapToQuadrant = false,
+            SnapToNearest = true
+        };
+        var controller = new CanvasInteractionController(drawCtx, snapService, new ShadowGeometryTree());
+
+        controller.OnMouseMove(
+            new Point(48, 48),
+            Array.Empty<Point>(),
+            Array.Empty<(Point A, Point B)>(),
+            new[] { new SnapCircle(new Point(40, 40), 10.0) });
+
+        Assert.NotNull(controller.LastSnap);
+        Assert.True(controller.LastSnap!.Snapped);
+        Assert.Equal(SnapService.SnapType.Nearest, controller.LastSnap.Type);
+        Assert.Equal(47.1, controller.CursorDocPoint.X, 1);
+        Assert.Equal(47.1, controller.CursorDocPoint.Y, 1);
+    }
+
+    [Fact]
     public void OnMouseMove_NearVisibleArcMidpoint_SnapsToMidpoint()
     {
         var drawCtx = new DrawingContext2D();
@@ -181,6 +209,26 @@ public class CanvasInteractionControllerTests
         Assert.Equal(SnapService.SnapType.Intersection, controller.LastSnap.Type);
         Assert.Equal(45.0, controller.CursorDocPoint.X, 1);
         Assert.Equal(48.7, controller.CursorDocPoint.Y, 1);
+    }
+
+    [Fact]
+    public void OnMouseMove_WithVisibleCircleAndSegment_SnapsToIntersection()
+    {
+        var drawCtx = new DrawingContext2D();
+        var snapService = new SnapService { SnapRadius = 10 };
+        var controller = new CanvasInteractionController(drawCtx, snapService, new ShadowGeometryTree());
+
+        controller.OnMouseMove(
+            new Point(47, 45),
+            Array.Empty<Point>(),
+            new[] { (new Point(48, 30), new Point(48, 50)) },
+            new[] { new SnapCircle(new Point(40, 40), 10.0) });
+
+        Assert.NotNull(controller.LastSnap);
+        Assert.True(controller.LastSnap!.Snapped);
+        Assert.Equal(SnapService.SnapType.Intersection, controller.LastSnap.Type);
+        Assert.Equal(48.0, controller.CursorDocPoint.X, 1);
+        Assert.Equal(46.0, controller.CursorDocPoint.Y, 1);
     }
 
     [Fact]
