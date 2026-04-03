@@ -104,6 +104,38 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ApplySketchLineSnapForTesting_WithVisibleArcMarkup_SnapsToArcMidpoint()
+    {
+        var snapped = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Arc,
+                Vertices = { new Point(1000, 1000) },
+                Radius = 100,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90
+            });
+            viewModel.SnapToGrid = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetSketchDraftLinePointsForTesting(new[] { new Point(920, 900) });
+                return window.ApplySketchLineSnapForTesting(new Point(1074, 1074));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.Equal(1070.7, snapped.X, 1);
+        Assert.Equal(1070.7, snapped.Y, 1);
+    }
+
+    [Fact]
     public void ApplySketchLineSnapForTesting_WithDraftAnchor_SnapsToVisibleArcTangent()
     {
         var snapped = RunOnSta(() =>
@@ -199,6 +231,39 @@ public partial class MainWindowMarkupInteractionTests
 
         Assert.True(outcome.HasSnapIndicatorForTesting);
         Assert.Equal(SnapService.SnapType.Endpoint, outcome.SnapIndicatorTypeForTesting);
+    }
+
+    [Fact]
+    public void PreviewSketchLineSnapIndicatorForTesting_WithVisibleArcMarkup_UsesMidpointIndicator()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Arc,
+                Vertices = { new Point(1000, 1000) },
+                Radius = 100,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90
+            });
+            viewModel.SnapToGrid = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetSketchDraftLinePointsForTesting(new[] { new Point(920, 900) });
+                window.PreviewSketchLineSnapIndicatorForTesting(new Point(1074, 1074));
+                return (window.HasSnapIndicatorForTesting, window.SnapIndicatorTypeForTesting);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.HasSnapIndicatorForTesting);
+        Assert.Equal(SnapService.SnapType.Midpoint, outcome.SnapIndicatorTypeForTesting);
     }
 
     [Fact]
@@ -366,6 +431,7 @@ public partial class MainWindowMarkupInteractionTests
             });
             viewModel.SnapToGrid = false;
             viewModel.SnapService.SnapToEndpoints = false;
+            viewModel.SnapService.SnapToMidpoints = false;
             viewModel.SnapService.SnapToCenter = false;
             viewModel.SnapService.SnapToQuadrant = false;
             viewModel.SnapService.SnapToNearest = true;

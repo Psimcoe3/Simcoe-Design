@@ -109,6 +109,20 @@ public class SnapService
                     result = new SnapResult { SnappedPoint = mid, Type = SnapType.Midpoint, Snapped = true };
                 }
             }
+
+            foreach (var circle in circleList)
+            {
+                if (!TryGetArcMidpoint(circle, out var midpoint))
+                    continue;
+
+                double dist = Distance(cursor, midpoint);
+                if (IsBetterCandidate(dist, SnapType.Midpoint, bestDist, bestPriority))
+                {
+                    bestDist = dist;
+                    bestPriority = GetPriority(SnapType.Midpoint);
+                    result = new SnapResult { SnappedPoint = midpoint, Type = SnapType.Midpoint, Snapped = true };
+                }
+            }
         }
 
         // 3. Intersections
@@ -613,6 +627,22 @@ public class SnapService
         return new Point(
             center.X + Math.Cos(angleRad) * radius,
             center.Y + Math.Sin(angleRad) * radius);
+    }
+
+    private static bool TryGetArcMidpoint(SnapCircle circle, out Point midpoint)
+    {
+        midpoint = default;
+
+        if (!circle.StartAngleDeg.HasValue || !circle.SweepAngleDeg.HasValue)
+            return false;
+
+        const double toleranceDeg = 0.001;
+        var sweep = circle.SweepAngleDeg.Value;
+        if (Math.Abs(sweep) < toleranceDeg || Math.Abs(Math.Abs(sweep) - 360.0) < toleranceDeg)
+            return false;
+
+        midpoint = PointOnCircle(circle.Center, circle.Radius, circle.StartAngleDeg.Value + sweep / 2.0);
+        return true;
     }
 
     private static double Distance(Point a, Point b)

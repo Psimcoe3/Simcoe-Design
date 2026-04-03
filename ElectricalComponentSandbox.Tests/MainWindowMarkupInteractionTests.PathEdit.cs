@@ -273,6 +273,7 @@ public partial class MainWindowMarkupInteractionTests
                 viewModel.Markups.Add(peerArc);
                 viewModel.SnapToGrid = false;
                 viewModel.SnapService.SnapToEndpoints = false;
+                viewModel.SnapService.SnapToMidpoints = false;
                 viewModel.SnapService.SnapToCenter = false;
                 viewModel.SnapService.SnapToQuadrant = false;
                 viewModel.SnapService.SnapToNearest = true;
@@ -281,6 +282,38 @@ public partial class MainWindowMarkupInteractionTests
         Assert.NotNull(outcome);
         Assert.True(outcome!.Snapped);
         Assert.Equal(SnapService.SnapType.Nearest, outcome.Type);
+        Assert.Equal(47.1, outcome.SnappedPoint.X, 1);
+        Assert.Equal(47.1, outcome.SnappedPoint.Y, 1);
+    }
+
+    [Fact]
+    public void UpdateCanvasHoverSnapForTesting_WithVisibleArcMarkup_SnapsToArcMidpoint()
+    {
+        var peerArc = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Vertices = { new Point(40, 40) },
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90
+        };
+
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(10, 0) }
+            },
+            (window, _, _) => window.UpdateCanvasHoverSnapForTesting(new Point(48, 48)),
+            viewModel =>
+            {
+                viewModel.Markups.Add(peerArc);
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.NotNull(outcome);
+        Assert.True(outcome!.Snapped);
+        Assert.Equal(SnapService.SnapType.Midpoint, outcome.Type);
         Assert.Equal(47.1, outcome.SnappedPoint.X, 1);
         Assert.Equal(47.1, outcome.SnappedPoint.Y, 1);
     }

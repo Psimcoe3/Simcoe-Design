@@ -50,6 +50,25 @@ public class SnapServiceTests
     }
 
     [Fact]
+    public void FindSnapPoint_NearVisibleArcMidpoint_SnapsToMidpoint()
+    {
+        var service = new SnapService { SnapRadius = 10 };
+        var cursor = new Point(48, 48);
+        var circles = new[] { new SnapCircle(new Point(40, 40), 10.0, 0.0, 90.0) };
+
+        var result = service.FindSnapPoint(
+            cursor,
+            Array.Empty<Point>(),
+            Array.Empty<(Point, Point)>(),
+            circles: circles);
+
+        Assert.True(result.Snapped);
+        Assert.Equal(SnapService.SnapType.Midpoint, result.Type);
+        Assert.Equal(47.1, result.SnappedPoint.X, 1);
+        Assert.Equal(47.1, result.SnappedPoint.Y, 1);
+    }
+
+    [Fact]
     public void FindSnapPoint_NearIntersection_SnapsToIntersection()
     {
         var service = new SnapService { SnapRadius = 15 };
@@ -360,6 +379,7 @@ public class SnapServiceTests
         {
             SnapRadius = 10,
             SnapToEndpoints = false,
+            SnapToMidpoints = false,
             SnapToCenter = false,
             SnapToQuadrant = false,
             SnapToNearest = true
