@@ -136,6 +136,65 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ApplySketchLineSnapForTesting_WithVisibleCircleMarkup_SnapsToCircleCenter()
+    {
+        var snapped = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Circle,
+                Vertices = { new Point(1000, 1000) },
+                Radius = 100
+            });
+            viewModel.SnapToGrid = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetSketchDraftLinePointsForTesting(new[] { new Point(920, 900) });
+                return window.ApplySketchLineSnapForTesting(new Point(1004, 998));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.Equal(new Point(1000, 1000), snapped);
+    }
+
+    [Fact]
+    public void ApplySketchLineSnapForTesting_WithVisibleCircleMarkup_SnapsToCircleQuadrant()
+    {
+        var snapped = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Circle,
+                Vertices = { new Point(1000, 1000) },
+                Radius = 100
+            });
+            viewModel.SnapToGrid = false;
+            viewModel.SnapService.SnapToCenter = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetSketchDraftLinePointsForTesting(new[] { new Point(920, 900) });
+                return window.ApplySketchLineSnapForTesting(new Point(1001, 1098));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.Equal(new Point(1000, 1100), snapped);
+    }
+
+    [Fact]
     public void ApplySketchLineSnapForTesting_WithVisibleArcMarkup_SnapsToArcCenter()
     {
         var snapped = RunOnSta(() =>
@@ -327,6 +386,69 @@ public partial class MainWindowMarkupInteractionTests
 
         Assert.True(outcome.HasSnapIndicatorForTesting);
         Assert.Equal(SnapService.SnapType.Midpoint, outcome.SnapIndicatorTypeForTesting);
+    }
+
+    [Fact]
+    public void PreviewSketchLineSnapIndicatorForTesting_WithVisibleCircleMarkup_UsesCenterIndicator()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Circle,
+                Vertices = { new Point(1000, 1000) },
+                Radius = 100
+            });
+            viewModel.SnapToGrid = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetSketchDraftLinePointsForTesting(new[] { new Point(920, 900) });
+                window.PreviewSketchLineSnapIndicatorForTesting(new Point(1004, 998));
+                return (window.HasSnapIndicatorForTesting, window.SnapIndicatorTypeForTesting);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.HasSnapIndicatorForTesting);
+        Assert.Equal(SnapService.SnapType.Center, outcome.SnapIndicatorTypeForTesting);
+    }
+
+    [Fact]
+    public void PreviewSketchLineSnapIndicatorForTesting_WithVisibleCircleMarkup_UsesQuadrantIndicator()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Circle,
+                Vertices = { new Point(1000, 1000) },
+                Radius = 100
+            });
+            viewModel.SnapToGrid = false;
+            viewModel.SnapService.SnapToCenter = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetSketchDraftLinePointsForTesting(new[] { new Point(920, 900) });
+                window.PreviewSketchLineSnapIndicatorForTesting(new Point(1001, 1098));
+                return (window.HasSnapIndicatorForTesting, window.SnapIndicatorTypeForTesting);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.HasSnapIndicatorForTesting);
+        Assert.Equal(SnapService.SnapType.Quadrant, outcome.SnapIndicatorTypeForTesting);
     }
 
     [Fact]
@@ -1192,6 +1314,65 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ApplyConduitDrawingSnapForTesting_WithVisibleCircleMarkup_SnapsToCircleCenter()
+    {
+        var snapped = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Circle,
+                Vertices = { new Point(1000, 1000) },
+                Radius = 100
+            });
+            viewModel.SnapToGrid = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetDrawingCanvasPointsForTesting(new[] { new Point(920, 900) });
+                return window.ApplyConduitDrawingSnapForTesting(new Point(1004, 998));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.Equal(new Point(1000, 1000), snapped);
+    }
+
+    [Fact]
+    public void ApplyConduitDrawingSnapForTesting_WithVisibleCircleMarkup_SnapsToCircleQuadrant()
+    {
+        var snapped = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Circle,
+                Vertices = { new Point(1000, 1000) },
+                Radius = 100
+            });
+            viewModel.SnapToGrid = false;
+            viewModel.SnapService.SnapToCenter = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetDrawingCanvasPointsForTesting(new[] { new Point(920, 900) });
+                return window.ApplyConduitDrawingSnapForTesting(new Point(1001, 1098));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.Equal(new Point(1000, 1100), snapped);
+    }
+
+    [Fact]
     public void ApplyConduitDrawingSnapForTesting_WithVisibleArcMarkup_SnapsToArcCenter()
     {
         var snapped = RunOnSta(() =>
@@ -1318,6 +1499,69 @@ public partial class MainWindowMarkupInteractionTests
 
         Assert.True(outcome.HasSnapIndicatorForTesting);
         Assert.Equal(SnapService.SnapType.Midpoint, outcome.SnapIndicatorTypeForTesting);
+    }
+
+    [Fact]
+    public void PreviewConduitDrawingSnapIndicatorForTesting_WithVisibleCircleMarkup_UsesCenterIndicator()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Circle,
+                Vertices = { new Point(1000, 1000) },
+                Radius = 100
+            });
+            viewModel.SnapToGrid = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetDrawingCanvasPointsForTesting(new[] { new Point(920, 900) });
+                window.PreviewConduitDrawingSnapIndicatorForTesting(new Point(1004, 998));
+                return (window.HasSnapIndicatorForTesting, window.SnapIndicatorTypeForTesting);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.HasSnapIndicatorForTesting);
+        Assert.Equal(SnapService.SnapType.Center, outcome.SnapIndicatorTypeForTesting);
+    }
+
+    [Fact]
+    public void PreviewConduitDrawingSnapIndicatorForTesting_WithVisibleCircleMarkup_UsesQuadrantIndicator()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Circle,
+                Vertices = { new Point(1000, 1000) },
+                Radius = 100
+            });
+            viewModel.SnapToGrid = false;
+            viewModel.SnapService.SnapToCenter = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetDrawingCanvasPointsForTesting(new[] { new Point(920, 900) });
+                window.PreviewConduitDrawingSnapIndicatorForTesting(new Point(1001, 1098));
+                return (window.HasSnapIndicatorForTesting, window.SnapIndicatorTypeForTesting);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.HasSnapIndicatorForTesting);
+        Assert.Equal(SnapService.SnapType.Quadrant, outcome.SnapIndicatorTypeForTesting);
     }
 
     [Fact]
@@ -1952,6 +2196,65 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ApplyFreehandSnapForTesting_WithVisibleCircleMarkup_SnapsToCircleCenter()
+    {
+        var snapped = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Circle,
+                Vertices = { new Point(1000, 1000) },
+                Radius = 100
+            });
+            viewModel.SnapToGrid = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetFreehandPendingCanvasPointsForTesting(new[] { new Point(920, 900) });
+                return window.ApplyFreehandSnapForTesting(new Point(1004, 998));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.Equal(new Point(1000, 1000), snapped);
+    }
+
+    [Fact]
+    public void ApplyFreehandSnapForTesting_WithVisibleCircleMarkup_SnapsToCircleQuadrant()
+    {
+        var snapped = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Circle,
+                Vertices = { new Point(1000, 1000) },
+                Radius = 100
+            });
+            viewModel.SnapToGrid = false;
+            viewModel.SnapService.SnapToCenter = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetFreehandPendingCanvasPointsForTesting(new[] { new Point(920, 900) });
+                return window.ApplyFreehandSnapForTesting(new Point(1001, 1098));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.Equal(new Point(1000, 1100), snapped);
+    }
+
+    [Fact]
     public void ApplyFreehandSnapForTesting_WithVisibleArcMarkup_SnapsToArcCenter()
     {
         var snapped = RunOnSta(() =>
@@ -2108,6 +2411,69 @@ public partial class MainWindowMarkupInteractionTests
 
         Assert.True(outcome.HasSnapIndicatorForTesting);
         Assert.Equal(SnapService.SnapType.Midpoint, outcome.SnapIndicatorTypeForTesting);
+    }
+
+    [Fact]
+    public void PreviewFreehandSnapIndicatorForTesting_WithVisibleCircleMarkup_UsesCenterIndicator()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Circle,
+                Vertices = { new Point(1000, 1000) },
+                Radius = 100
+            });
+            viewModel.SnapToGrid = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetFreehandPendingCanvasPointsForTesting(new[] { new Point(920, 900) });
+                window.PreviewFreehandSnapIndicatorForTesting(new Point(1004, 998));
+                return (window.HasSnapIndicatorForTesting, window.SnapIndicatorTypeForTesting);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.HasSnapIndicatorForTesting);
+        Assert.Equal(SnapService.SnapType.Center, outcome.SnapIndicatorTypeForTesting);
+    }
+
+    [Fact]
+    public void PreviewFreehandSnapIndicatorForTesting_WithVisibleCircleMarkup_UsesQuadrantIndicator()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            viewModel.Markups.Add(new MarkupRecord
+            {
+                Type = MarkupType.Circle,
+                Vertices = { new Point(1000, 1000) },
+                Radius = 100
+            });
+            viewModel.SnapToGrid = false;
+            viewModel.SnapService.SnapToCenter = false;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.SetFreehandPendingCanvasPointsForTesting(new[] { new Point(920, 900) });
+                window.PreviewFreehandSnapIndicatorForTesting(new Point(1001, 1098));
+                return (window.HasSnapIndicatorForTesting, window.SnapIndicatorTypeForTesting);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.HasSnapIndicatorForTesting);
+        Assert.Equal(SnapService.SnapType.Quadrant, outcome.SnapIndicatorTypeForTesting);
     }
 
     [Fact]
