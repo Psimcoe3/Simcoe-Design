@@ -86,6 +86,48 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void SetLineGeometry_UpdatesMeasurementEndPointAndBounds()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(10, 10), new Point(30, 10) }
+        };
+        markup.UpdateBoundingRect();
+
+        var result = _sut.SetLineGeometry(markup, 25, 90);
+
+        Assert.True(result);
+        Assert.Equal(new Point(10, 10), markup.Vertices[0]);
+        Assert.Equal(10, markup.Vertices[1].X, 6);
+        Assert.Equal(35, markup.Vertices[1].Y, 6);
+        Assert.Equal(10, markup.BoundingRect.X, 6);
+        Assert.Equal(10, markup.BoundingRect.Y, 6);
+        Assert.Equal(0, markup.BoundingRect.Width, 6);
+        Assert.Equal(25, markup.BoundingRect.Height, 6);
+    }
+
+    [Fact]
+    public void SetLineGeometry_ThreePointMeasurement_RepositionsAnchor()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(5, 3) }
+        };
+        markup.UpdateBoundingRect();
+
+        var result = _sut.SetLineGeometry(markup, 24, 45);
+
+        Assert.True(result);
+        Assert.Equal(3, markup.Vertices.Count);
+        Assert.Equal(16.970562748477143, markup.Vertices[1].X, 6);
+        Assert.Equal(16.97056274847714, markup.Vertices[1].Y, 6);
+        Assert.Equal(3.3941125496954285, markup.Vertices[2].X, 6);
+        Assert.Equal(13.57645019878171, markup.Vertices[2].Y, 6);
+    }
+
+    [Fact]
     public void SetLineGeometry_RadialDimension_RepositionsRadiusPointAndAnchor()
     {
         var markup = new MarkupRecord
@@ -156,6 +198,34 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void SetAngularGeometry_AngularMeasurement_RepositionsSecondRayAndAnchor()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 12), new Point(10, 10) },
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+        markup.UpdateBoundingRect();
+
+        var result = _sut.SetAngularGeometry(markup, 60, 14);
+
+        Assert.True(result);
+        Assert.Equal(new Point(0, 0), markup.Vertices[0]);
+        Assert.Equal(new Point(10, 0), markup.Vertices[1]);
+        Assert.Equal(6, markup.Vertices[2].X, 6);
+        Assert.Equal(10.392304845413264, markup.Vertices[2].Y, 6);
+        Assert.Equal(17.443601136622522, markup.Vertices[3].X, 6);
+        Assert.Equal(10.071067811865476, markup.Vertices[3].Y, 6);
+        Assert.Equal(14, markup.Radius, 6);
+        Assert.Equal(0, markup.ArcStartDeg, 6);
+        Assert.Equal(60, markup.ArcSweepDeg, 6);
+    }
+
+    [Fact]
     public void SetArcAngle_AngularDimension_EndHandleUpdatesSweepAndSecondRay()
     {
         var markup = new MarkupRecord
@@ -197,11 +267,59 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void SetRadius_AngularMeasurement_UpdatesRadiusAndPreservesAngle()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10), new Point(9, 9) },
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        _sut.SetRadius(markup, 12);
+
+        Assert.Equal(12, markup.Radius, 6);
+        Assert.Equal(90, markup.ArcSweepDeg, 6);
+        Assert.Equal(11.828427124746192, markup.Vertices[3].X, 6);
+        Assert.Equal(11.82842712474619, markup.Vertices[3].Y, 6);
+    }
+
+    [Fact]
     public void SetArcLengthGeometry_ArcLengthDimension_RepositionsEndPointAndAnchor()
     {
         var markup = new MarkupRecord
         {
             Type = MarkupType.Dimension,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+        markup.UpdateBoundingRect();
+
+        var result = _sut.SetArcLengthGeometry(markup, 6.283185307179586, 12);
+
+        Assert.True(result);
+        Assert.Equal(new Point(12, 0), markup.Vertices[0]);
+        Assert.Equal(10.392304845413264, markup.Vertices[1].X, 6);
+        Assert.Equal(6, markup.Vertices[1].Y, 6);
+        Assert.Equal(11.59110991546882, markup.Vertices[2].X, 6);
+        Assert.Equal(3.105828541230249, markup.Vertices[2].Y, 6);
+        Assert.Equal(12, markup.Radius, 6);
+        Assert.Equal(0, markup.ArcStartDeg, 6);
+        Assert.Equal(30, markup.ArcSweepDeg, 6);
+    }
+
+    [Fact]
+    public void SetArcLengthGeometry_ArcLengthMeasurement_RepositionsEndPointAndAnchor()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
             Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
             Radius = 10,
             ArcStartDeg = 0,
@@ -273,6 +391,40 @@ public partial class MarkupInteractionServiceTests
             Vertices = { new Point(0, 0), new Point(10, 0), new Point(5, 3) }
         };
         markup.Metadata.Subject = "ArcLength";
+        markup.UpdateBoundingRect();
+
+        var result = _sut.SetLineGeometry(markup, 24, 45);
+
+        Assert.False(result);
+        Assert.Equal(new Point(10, 0), markup.Vertices[1]);
+    }
+
+    [Fact]
+    public void SetLineGeometry_ArcLengthMeasurement_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(5, 3) }
+        };
+        markup.Metadata.Subject = "ArcLength";
+        markup.UpdateBoundingRect();
+
+        var result = _sut.SetLineGeometry(markup, 24, 45);
+
+        Assert.False(result);
+        Assert.Equal(new Point(10, 0), markup.Vertices[1]);
+    }
+
+    [Fact]
+    public void SetLineGeometry_AngularMeasurement_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(5, 3) }
+        };
+        markup.Metadata.Subject = "Angular";
         markup.UpdateBoundingRect();
 
         var result = _sut.SetLineGeometry(markup, 24, 45);

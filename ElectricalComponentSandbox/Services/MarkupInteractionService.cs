@@ -868,10 +868,7 @@ public sealed class MarkupInteractionService
 
     private static bool IsLineGeometryEditable(MarkupRecord markup)
     {
-        if (markup.Type == MarkupType.Measurement)
-            return markup.Vertices.Count >= 2 && markup.Vertices.Count <= 3;
-
-        if (markup.Type != MarkupType.Dimension)
+        if (markup.Type is not (MarkupType.Dimension or MarkupType.Measurement))
             return false;
 
         if (string.Equals(markup.Metadata.Subject, "ArcLength", StringComparison.OrdinalIgnoreCase))
