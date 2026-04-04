@@ -90,6 +90,8 @@ public partial class MainWindow
         => UnsupportedGeometryEditMessage;
     internal static string GetLineGeometryVertexCountMessageForTesting()
         => LineGeometryVertexCountMessage;
+    internal static bool TryBuildGeometryPromptForTesting(MarkupRecord markup, out string title, out string prompt, out string defaultValue)
+        => TryBuildGeometryPrompt(markup, out title, out prompt, out defaultValue);
     internal void DrawSelectedMarkupOverlayForTesting(ICanvas2DRenderer renderer)
         => DrawSelectedMarkupOverlay(renderer);
     internal bool HandlePendingMarkupVertexInsertionClickForTesting(Point canvasPoint)

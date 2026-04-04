@@ -234,6 +234,48 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void TryBuildGeometryPromptForTesting_AngularMeasurement_UsesSpecializedPromptAndDefaults()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10), new Point(8, 8) },
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        var built = MainWindow.TryBuildGeometryPromptForTesting(markup, out var title, out var prompt, out var defaultValue);
+
+        Assert.True(built);
+        Assert.Equal("Edit Measurement Geometry", title);
+        Assert.Equal("Enter angle and optional radius. The vertex and first ray stay fixed.\n\nExamples:\nangle=45\nradius=18", prompt);
+        Assert.Equal($"angle=90{Environment.NewLine}radius=8", defaultValue);
+    }
+
+    [Fact]
+    public void TryBuildGeometryPromptForTesting_ArcLengthMeasurement_UsesSpecializedPromptAndDefaults()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        var built = MainWindow.TryBuildGeometryPromptForTesting(markup, out var title, out var prompt, out var defaultValue);
+
+        Assert.True(built);
+        Assert.Equal("Edit Measurement Geometry", title);
+        Assert.Equal("Enter arc length and optional radius. The arc center and start angle stay fixed.\n\nExamples:\narclength=24\nradius=12", prompt);
+        Assert.Equal($"arclength=15.71{Environment.NewLine}radius=10", defaultValue);
+    }
+
+    [Fact]
     public void UpdateContextualInspectorForTesting_WithSelectedMarkup_ShowsMarkupInspectorMode()
     {
         var outcome = RunWithSelectedMarkupWindow(
