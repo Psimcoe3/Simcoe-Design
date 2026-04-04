@@ -1,5 +1,7 @@
 # Simcoe-Design
 
+> **Note**: The primary development branch is `main`. All contributions and pull requests should target the `main` branch.
+
 ## Electrical Component Sandbox
 
 A desktop application for designing and editing parametric electrical construction components, inspired by Revit Family Editor. This application provides an isolated workspace to create, edit, and manage electrical components like conduit, boxes, panels, and supports.

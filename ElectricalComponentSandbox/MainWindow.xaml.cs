@@ -17,7 +17,6 @@ using ElectricalComponentSandbox.Services.Dimensioning;
 using ElectricalComponentSandbox.Services.RevitIntrospection;
 using ElectricalComponentSandbox.Rendering;
 using HelixToolkit.Wpf;
-using PDFtoImage;
 
 namespace ElectricalComponentSandbox;
 
@@ -78,6 +77,7 @@ public partial class MainWindow : Window
         RebuildCanvasInteractionShadowTree(layerVisibilityById);
         UpdateCanvasGuidance();
     }
+
 
     private void RebuildSnapGeometryCache(IReadOnlyDictionary<string, bool> layerVisibilityById)
     {
@@ -426,7 +426,6 @@ public partial class MainWindow : Window
         Canvas.SetLeft(element, canvasX - Math.Max(5, element.Width) / 2);
         Canvas.SetTop(element, canvasY - Math.Max(5, element.Height) / 2);
         PlanCanvas.Children.Add(element);
-        _canvasToComponentMap[element] = component;
     }
     
     private static Color ResolveComponentColor(ElectricalComponent component, Color fallback)
