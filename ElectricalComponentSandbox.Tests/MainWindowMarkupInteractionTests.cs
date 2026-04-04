@@ -276,6 +276,42 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void TryBuildGeometryPromptForTesting_RadialMeasurement_UsesRadiusPromptAndDefaults()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(0, 0), new Point(12, 0), new Point(15, 3) },
+            Metadata = new MarkupMetadata { Subject = "Radial" }
+        };
+
+        var built = MainWindow.TryBuildGeometryPromptForTesting(markup, out var title, out var prompt, out var defaultValue);
+
+        Assert.True(built);
+        Assert.Equal("Edit Measurement Geometry", title);
+        Assert.Equal("Enter radius and optional angle. The first point stays fixed.\n\nExamples:\nradius=24\nangle=30", prompt);
+        Assert.Equal($"radius=12{Environment.NewLine}angle=0", defaultValue);
+    }
+
+    [Fact]
+    public void TryBuildGeometryPromptForTesting_DiameterMeasurement_UsesDiameterPromptAndDefaults()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(-6, 0), new Point(6, 0), new Point(9, 3) },
+            Metadata = new MarkupMetadata { Subject = "Diameter" }
+        };
+
+        var built = MainWindow.TryBuildGeometryPromptForTesting(markup, out var title, out var prompt, out var defaultValue);
+
+        Assert.True(built);
+        Assert.Equal("Edit Measurement Geometry", title);
+        Assert.Equal("Enter diameter and optional angle. The first point stays fixed.\n\nExamples:\ndiameter=24\nangle=30", prompt);
+        Assert.Equal($"diameter=12{Environment.NewLine}angle=0", defaultValue);
+    }
+
+    [Fact]
     public void UpdateContextualInspectorForTesting_WithSelectedMarkup_ShowsMarkupInspectorMode()
     {
         var outcome = RunWithSelectedMarkupWindow(
