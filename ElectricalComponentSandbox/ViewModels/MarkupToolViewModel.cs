@@ -663,7 +663,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
             return GetSelectionSet(_selectedMarkup).Count > 1
                 ? "Numeric geometry editing is disabled for grouped selections"
-                : "Numeric geometry editing is currently available for polyline, polygon, circle, arc, rectangle, stamp, hyperlink, box, panel, angular dimension, arc-length dimension, and line-style dimension or measurement markups only";
+                : "Numeric geometry editing is currently available for polyline, polygon, circle, arc, rectangle, stamp, hyperlink, box, panel, angular dimension or measurement, arc-length dimension or measurement, and line-style dimension or measurement markups only";
         }
     }
 

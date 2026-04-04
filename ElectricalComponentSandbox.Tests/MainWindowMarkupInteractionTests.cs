@@ -216,6 +216,24 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void GetUnsupportedGeometryEditMessageForTesting_IncludesSpecializedMeasurements()
+    {
+        var message = MainWindow.GetUnsupportedGeometryEditMessageForTesting();
+
+        Assert.Contains("angular dimension or measurement", message, StringComparison.Ordinal);
+        Assert.Contains("arc-length dimension or measurement", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GetLineGeometryVertexCountMessageForTesting_IncludesSpecializedMeasurements()
+    {
+        var message = MainWindow.GetLineGeometryVertexCountMessageForTesting();
+
+        Assert.Contains("Angular dimensions or measurements", message, StringComparison.Ordinal);
+        Assert.Contains("arc-length dimensions or measurements", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void UpdateContextualInspectorForTesting_WithSelectedMarkup_ShowsMarkupInspectorMode()
     {
         var outcome = RunWithSelectedMarkupWindow(

@@ -839,7 +839,7 @@ public partial class MainViewModelTests
     }
 
     [Fact]
-    public void MarkupTool_UnsupportedSelection_IncludesArcLengthInAvailabilitySummary()
+    public void MarkupTool_UnsupportedSelection_IncludesSpecializedMeasurementAvailabilityInSummary()
     {
         var vm = new MainViewModel();
         var markup = new MarkupRecord
@@ -854,7 +854,8 @@ public partial class MainViewModelTests
         vm.MarkupTool.SelectedMarkup = markup;
 
         Assert.False(vm.MarkupTool.HasGeometryEditableSelection);
-        Assert.Contains("arc-length dimension", vm.MarkupTool.SelectedMarkupGeometryEditSummary, StringComparison.Ordinal);
+        Assert.Contains("angular dimension or measurement", vm.MarkupTool.SelectedMarkupGeometryEditSummary, StringComparison.Ordinal);
+        Assert.Contains("arc-length dimension or measurement", vm.MarkupTool.SelectedMarkupGeometryEditSummary, StringComparison.Ordinal);
     }
 
     [Fact]

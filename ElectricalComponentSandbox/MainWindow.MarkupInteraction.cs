@@ -19,6 +19,9 @@ internal enum MarkupHandleOverlayMode
 
 public partial class MainWindow
 {
+    private const string UnsupportedGeometryEditMessage = "Numeric geometry editing is currently available for polyline, polygon, circle, arc, rectangle, stamp, hyperlink, box, panel, angular dimension or measurement, arc-length dimension or measurement, and line-style dimension or measurement markups.";
+    private const string LineGeometryVertexCountMessage = "Numeric geometry editing for dimensions and measurements is currently available for line-style markups with 2 or 3 points. Angular dimensions or measurements use angle/radius semantics, and arc-length dimensions or measurements use arc length/radius semantics.";
+
     private bool _isDraggingMarkupArcAngle = false;
     private readonly MarkupInteractionService _markupInteractionService = new();
     private bool _isPendingMarkupVertexInsertion = false;
@@ -83,6 +86,10 @@ public partial class MainWindow
         => IsLineGeometryReadoutEligible(markup, activeVertexIndex);
     internal static string BuildLineGeometryReadoutForTesting(MarkupRecord markup)
         => BuildLineGeometryReadout(markup);
+    internal static string GetUnsupportedGeometryEditMessageForTesting()
+        => UnsupportedGeometryEditMessage;
+    internal static string GetLineGeometryVertexCountMessageForTesting()
+        => LineGeometryVertexCountMessage;
     internal void DrawSelectedMarkupOverlayForTesting(ICanvas2DRenderer renderer)
         => DrawSelectedMarkupOverlay(renderer);
     internal bool HandlePendingMarkupVertexInsertionClickForTesting(Point canvasPoint)
@@ -557,7 +564,7 @@ public partial class MainWindow
         {
             if (showValidationFeedback)
             {
-                MessageBox.Show("Numeric geometry editing for dimensions and measurements is currently available for line-style markups with 2 or 3 points. Angular dimensions use angle/radius semantics, and arc-length dimensions use arc length/radius semantics.", "Edit Geometry",
+                MessageBox.Show(LineGeometryVertexCountMessage, "Edit Geometry",
                     MessageBoxButton.OK, MessageBoxImage.Information);
             }
 
@@ -1151,7 +1158,7 @@ public partial class MainWindow
     {
         if (showFeedbackIfUnsupported)
         {
-            MessageBox.Show("Numeric geometry editing is currently available for polyline, polygon, circle, arc, rectangle, stamp, hyperlink, box, panel, angular dimension, arc-length dimension, and line-style dimension or measurement markups.", "Edit Geometry",
+            MessageBox.Show(UnsupportedGeometryEditMessage, "Edit Geometry",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
