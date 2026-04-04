@@ -150,11 +150,90 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void IsLineGeometryReadoutEligibleForTesting_RequiresEndpointDragOnLineStyleMeasurement()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(0, 0), new Point(12, 0), new Point(15, 3) },
+            Metadata = new MarkupMetadata { Subject = "Radial" }
+        };
+
+        Assert.True(MainWindow.IsLineGeometryReadoutEligibleForTesting(markup, activeVertexIndex: 1));
+        Assert.False(MainWindow.IsLineGeometryReadoutEligibleForTesting(markup, activeVertexIndex: 2));
+    }
+
+    [Fact]
     public void BuildLineGeometryReadoutForTesting_UsesSemanticLengthLabel()
     {
         var markup = new MarkupRecord
         {
             Type = MarkupType.Dimension,
+            Vertices = { new Point(-6, 0), new Point(6, 0), new Point(9, 3) },
+            Metadata = new MarkupMetadata { Subject = "Diameter" }
+        };
+
+        Assert.Equal("Diameter 12  Angle 0 deg", MainWindow.BuildLineGeometryReadoutForTesting(markup));
+    }
+
+    [Fact]
+    public void BuildLineGeometryReadoutForTesting_RadialMeasurement_UsesRadiusLabel()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(0, 0), new Point(12, 0), new Point(15, 3) },
+            Metadata = new MarkupMetadata { Subject = "Radial" }
+        };
+
+        Assert.Equal("Radius 12  Angle 0 deg", MainWindow.BuildLineGeometryReadoutForTesting(markup));
+
+            [Fact]
+            public void BuildLineGeometryReadoutForTesting_RadialDimension_UsesRadiusLabel()
+            {
+                var markup = new MarkupRecord
+                {
+                    Type = MarkupType.Dimension,
+                    Vertices = { new Point(0, 0), new Point(12, 0), new Point(15, 3) },
+                    Metadata = new MarkupMetadata { Subject = "Radial" }
+                };
+
+                Assert.Equal("Radius 12  Angle 0 deg", MainWindow.BuildLineGeometryReadoutForTesting(markup));
+            }
+
+            [Fact]
+            public void BuildLineGeometryReadoutForTesting_DiameterMeasurement_UsesDiameterLabel()
+            {
+                var markup = new MarkupRecord
+                {
+                    Type = MarkupType.Measurement,
+                    Vertices = { new Point(-6, 0), new Point(6, 0), new Point(9, 3) },
+                    Metadata = new MarkupMetadata { Subject = "Diameter" }
+                };
+
+                Assert.Equal("Diameter 12  Angle 0 deg", MainWindow.BuildLineGeometryReadoutForTesting(markup));
+            }
+    }
+
+    [Fact]
+    public void BuildLineGeometryReadoutForTesting_RadialDimension_UsesRadiusLabel()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(12, 0), new Point(15, 3) },
+            Metadata = new MarkupMetadata { Subject = "Radial" }
+        };
+
+        Assert.Equal("Radius 12  Angle 0 deg", MainWindow.BuildLineGeometryReadoutForTesting(markup));
+    }
+
+    [Fact]
+    public void BuildLineGeometryReadoutForTesting_DiameterMeasurement_UsesDiameterLabel()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
             Vertices = { new Point(-6, 0), new Point(6, 0), new Point(9, 3) },
             Metadata = new MarkupMetadata { Subject = "Diameter" }
         };
