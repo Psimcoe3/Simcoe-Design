@@ -65,6 +65,38 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void CanEditArcAngles_AngularMeasurement_ReturnsTrue()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10) },
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        Assert.True(_sut.CanEditArcAngles(markup));
+    }
+
+    [Fact]
+    public void CanEditArcAngles_AngularDimension_ReturnsTrue()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10) },
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        Assert.True(_sut.CanEditArcAngles(markup));
+    }
+
+    [Fact]
     public void CanEditArcAngles_ArcLengthMeasurement_ReturnsTrue()
     {
         var markup = new MarkupRecord
@@ -126,6 +158,38 @@ public partial class MarkupInteractionServiceTests
         };
 
         Assert.False(_sut.CanEditRadius(markup));
+    }
+
+    [Fact]
+    public void CanEditArcAngles_AngularMeasurementWithoutEnoughVertices_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(0, 0), new Point(10, 0) },
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        Assert.False(_sut.CanEditArcAngles(markup));
+    }
+
+    [Fact]
+    public void CanEditArcAngles_AngularDimensionWithoutEnoughVertices_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(0, 0), new Point(10, 0) },
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        Assert.False(_sut.CanEditArcAngles(markup));
     }
 
     [Fact]
@@ -458,11 +522,49 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void GetArcAngleHandles_AngularMeasurement_ReturnsEndOnly()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(2, 3), new Point(12, 3), new Point(2, 13) },
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        var handles = _sut.GetArcAngleHandles(markup);
+
+        Assert.Single(handles);
+        Assert.Equal(MarkupArcAngleHandle.End, handles[0]);
+    }
+
+    [Fact]
     public void GetArcAngleHandles_ArcLengthMeasurement_ReturnsEndOnly()
     {
         var markup = new MarkupRecord
         {
             Type = MarkupType.Measurement,
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        var handles = _sut.GetArcAngleHandles(markup);
+
+        Assert.Single(handles);
+        Assert.Equal(MarkupArcAngleHandle.End, handles[0]);
+    }
+
+    [Fact]
+    public void GetArcAngleHandles_ArcLengthDimension_ReturnsEndOnly()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
             Radius = 10,
             ArcStartDeg = 0,
             ArcSweepDeg = 90,
@@ -585,11 +687,47 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void HitTestArcAngleHandle_AngularDimensionEnd_ReturnsEndHandle()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(2, 3), new Point(12, 3), new Point(2, 13) },
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        var hit = _sut.HitTestArcAngleHandle(new Point(2.5, 12.5), markup, tolerance: 1.0);
+
+        Assert.Equal(MarkupArcAngleHandle.End, hit);
+    }
+
+    [Fact]
     public void HitTestArcAngleHandle_ArcLengthDimensionEnd_ReturnsEndHandle()
     {
         var markup = new MarkupRecord
         {
             Type = MarkupType.Dimension,
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        var hit = _sut.HitTestArcAngleHandle(new Point(0.5, 9.5), markup, tolerance: 1.0);
+
+        Assert.Equal(MarkupArcAngleHandle.End, hit);
+    }
+
+    [Fact]
+    public void HitTestArcAngleHandle_ArcLengthMeasurementEnd_ReturnsEndHandle()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
             Radius = 10,
             ArcStartDeg = 0,
             ArcSweepDeg = 90,
@@ -617,6 +755,95 @@ public partial class MarkupInteractionServiceTests
         var hit = _sut.HitTestArcAngleHandle(new Point(15, 5), markup, tolerance: 1.5);
 
         Assert.Equal(MarkupArcAngleHandle.Start, hit);
+    }
+
+    [Fact]
+    public void HitTestRadiusHandle_Arc_ReturnsTrueNearHandle()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 180,
+            Vertices = { new Point(20, 20) }
+        };
+
+        var hit = _sut.HitTestRadiusHandle(new Point(20.5, 29.5), markup, tolerance: 1.0);
+
+        Assert.True(hit);
+    }
+
+    [Fact]
+    public void HitTestRadiusHandle_AngularMeasurement_ReturnsTrueNearHandle()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(2, 3), new Point(12, 3), new Point(2, 13) },
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        var hit = _sut.HitTestRadiusHandle(new Point(7.9, 8.4), markup, tolerance: 0.5);
+
+        Assert.True(hit);
+    }
+
+    [Fact]
+    public void HitTestRadiusHandle_AngularDimension_ReturnsTrueNearHandle()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(2, 3), new Point(12, 3), new Point(2, 13) },
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        var hit = _sut.HitTestRadiusHandle(new Point(7.9, 8.4), markup, tolerance: 0.5);
+
+        Assert.True(hit);
+    }
+
+    [Fact]
+    public void HitTestRadiusHandle_ArcLengthMeasurement_ReturnsTrueNearHandle()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        var hit = _sut.HitTestRadiusHandle(new Point(7.4, 7.0), markup, tolerance: 0.5);
+
+        Assert.True(hit);
+    }
+
+    [Fact]
+    public void HitTestRadiusHandle_ArcLengthDimension_ReturnsTrueNearHandle()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        var hit = _sut.HitTestRadiusHandle(new Point(7.4, 7.0), markup, tolerance: 0.5);
+
+        Assert.True(hit);
     }
 
     [Fact]
