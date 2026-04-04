@@ -685,12 +685,52 @@ public partial class MainViewModelTests
     }
 
     [Fact]
+    public void MarkupTool_SelectedRadialMeasurement_ReportsRadialGeometryEditability()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(0, 0), new Point(12, 0), new Point(15, 3) },
+            Metadata = new MarkupMetadata { Subject = "Radial" }
+        };
+        markup.UpdateBoundingRect();
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasGeometryEditableSelection);
+        Assert.Equal("Numeric edit available: radius and angle", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.Equal($"Radius: 12{Environment.NewLine}Angle: 0 deg", vm.MarkupTool.SelectedMarkupGeometryDetails);
+    }
+
+    [Fact]
     public void MarkupTool_SelectedDiameterDimension_ReportsDiameterGeometryEditability()
     {
         var vm = new MainViewModel();
         var markup = new MarkupRecord
         {
             Type = MarkupType.Dimension,
+            Vertices = { new Point(-6, 0), new Point(6, 0), new Point(9, 3) },
+            Metadata = new MarkupMetadata { Subject = "Diameter" }
+        };
+        markup.UpdateBoundingRect();
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasGeometryEditableSelection);
+        Assert.Equal("Numeric edit available: diameter and angle", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.Equal($"Diameter: 12{Environment.NewLine}Angle: 0 deg", vm.MarkupTool.SelectedMarkupGeometryDetails);
+    }
+
+    [Fact]
+    public void MarkupTool_SelectedDiameterMeasurement_ReportsDiameterGeometryEditability()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
             Vertices = { new Point(-6, 0), new Point(6, 0), new Point(9, 3) },
             Metadata = new MarkupMetadata { Subject = "Diameter" }
         };
@@ -728,12 +768,59 @@ public partial class MainViewModelTests
     }
 
     [Fact]
+    public void MarkupTool_SelectedAngularMeasurement_ReportsAngularGeometryEditability()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(0, 0), new Point(12, 0), new Point(0, 12), new Point(10, 10) },
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+        markup.UpdateBoundingRect();
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasGeometryEditableSelection);
+        Assert.Equal("Numeric edit available: angle and radius", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.Equal($"Angle: 90 deg{Environment.NewLine}Radius: 8", vm.MarkupTool.SelectedMarkupGeometryDetails);
+    }
+
+    [Fact]
     public void MarkupTool_SelectedArcLengthDimension_ReportsArcLengthGeometryEditability()
     {
         var vm = new MainViewModel();
         var markup = new MarkupRecord
         {
             Type = MarkupType.Dimension,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            TextContent = "12"
+        };
+        markup.Metadata.Subject = "ArcLength";
+        markup.UpdateBoundingRect();
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasGeometryEditableSelection);
+        Assert.Equal("Numeric edit available: arc length and radius", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.Equal($"Arc Length: 15.71{Environment.NewLine}Radius: 10{Environment.NewLine}Start: 0 deg{Environment.NewLine}Sweep: 90 deg", vm.MarkupTool.SelectedMarkupGeometryDetails);
+    }
+
+    [Fact]
+    public void MarkupTool_SelectedArcLengthMeasurement_ReportsArcLengthGeometryEditability()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
             Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
             Radius = 10,
             ArcStartDeg = 0,

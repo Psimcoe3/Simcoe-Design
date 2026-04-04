@@ -1298,10 +1298,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
     private static bool IsLineGeometryEditable(MarkupRecord markup)
     {
-        if (markup.Type == MarkupType.Measurement)
-            return markup.Vertices.Count >= 2 && markup.Vertices.Count <= 3;
-
-        if (markup.Type != MarkupType.Dimension)
+        if (markup.Type is not (MarkupType.Dimension or MarkupType.Measurement))
             return false;
 
         if (IsArcLengthDimension(markup))
@@ -1331,16 +1328,20 @@ public class MarkupToolViewModel : INotifyPropertyChanged
     }
 
     private static bool IsRadialDimension(MarkupRecord markup)
-        => markup.Type == MarkupType.Dimension && string.Equals(markup.Metadata.Subject, "Radial", StringComparison.OrdinalIgnoreCase);
+        => markup.Type is MarkupType.Dimension or MarkupType.Measurement
+            && string.Equals(markup.Metadata.Subject, "Radial", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsDiameterDimension(MarkupRecord markup)
-        => markup.Type == MarkupType.Dimension && string.Equals(markup.Metadata.Subject, "Diameter", StringComparison.OrdinalIgnoreCase);
+        => markup.Type is MarkupType.Dimension or MarkupType.Measurement
+            && string.Equals(markup.Metadata.Subject, "Diameter", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsAngularDimension(MarkupRecord markup)
-        => markup.Type == MarkupType.Dimension && string.Equals(markup.Metadata.Subject, "Angular", StringComparison.OrdinalIgnoreCase);
+        => markup.Type is MarkupType.Dimension or MarkupType.Measurement
+            && string.Equals(markup.Metadata.Subject, "Angular", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsArcLengthDimension(MarkupRecord markup)
-        => markup.Type == MarkupType.Dimension && string.Equals(markup.Metadata.Subject, "ArcLength", StringComparison.OrdinalIgnoreCase);
+        => markup.Type is MarkupType.Dimension or MarkupType.Measurement
+            && string.Equals(markup.Metadata.Subject, "ArcLength", StringComparison.OrdinalIgnoreCase);
 
     private void OnCountsChanged()
     {
