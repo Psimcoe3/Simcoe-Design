@@ -351,82 +351,12 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
-    public void ExecuteEditMarkupGeometryCommandForTesting_RadialDimension_UpdatesGeometryAndSupportsUndo()
-    {
-        var outcome = RunWithSelectedMarkupWindow(
-            new MarkupRecord
-            {
-                Type = MarkupType.Dimension,
-                Vertices = { new Point(0, 0), new Point(10, 0), new Point(13, 3) },
-                Metadata = new MarkupMetadata { Subject = "Radial" }
-            },
-            (window, viewModel, markup) =>
-            {
-                var edited = window.ExecuteEditMarkupGeometryCommandForTesting("radius=20\nangle=90");
-                var editedState = (
-                    markup.Vertices[1],
-                    markup.Vertices[2]);
-
-                viewModel.Undo();
-                var undoneState = (
-                    markup.Vertices[1],
-                    markup.Vertices[2]);
-
-                return (edited, editedState, undoneState);
-            });
-
-        Assert.True(outcome.edited);
-        Assert.Equal(0, outcome.editedState.Item1.X, 6);
-        Assert.Equal(20, outcome.editedState.Item1.Y, 6);
-        Assert.Equal(-6, outcome.editedState.Item2.X, 6);
-        Assert.Equal(26, outcome.editedState.Item2.Y, 6);
-
-        Assert.Equal(new Point(10, 0), outcome.undoneState.Item1);
-        Assert.Equal(new Point(13, 3), outcome.undoneState.Item2);
-    }
-
-    [Fact]
     public void ExecuteEditMarkupGeometryCommandForTesting_DiameterMeasurement_UpdatesGeometryAndSupportsUndo()
     {
         var outcome = RunWithSelectedMarkupWindow(
             new MarkupRecord
             {
                 Type = MarkupType.Measurement,
-                Vertices = { new Point(-10, 0), new Point(10, 0), new Point(13, 3) },
-                Metadata = new MarkupMetadata { Subject = "Diameter" }
-            },
-            (window, viewModel, markup) =>
-            {
-                var edited = window.ExecuteEditMarkupGeometryCommandForTesting("diameter=24\nangle=90");
-                var editedState = (
-                    markup.Vertices[1],
-                    markup.Vertices[2]);
-
-                viewModel.Undo();
-                var undoneState = (
-                    markup.Vertices[1],
-                    markup.Vertices[2]);
-
-                return (edited, editedState, undoneState);
-            });
-
-        Assert.True(outcome.edited);
-        Assert.Equal(-10, outcome.editedState.Item1.X, 6);
-        Assert.Equal(24, outcome.editedState.Item1.Y, 6);
-        Assert.Equal(-13.6, outcome.editedState.Item2.X, 6);
-        Assert.Equal(27.6, outcome.editedState.Item2.Y, 6);
-
-        Assert.Equal(new Point(10, 0), outcome.undoneState.Item1);
-        Assert.Equal(new Point(13, 3), outcome.undoneState.Item2);
-    }
-
-    [Fact]
-    public void ExecuteEditMarkupGeometryCommandForTesting_DiameterDimension_UpdatesGeometryAndSupportsUndo()
-    {
-        var outcome = RunWithSelectedMarkupWindow(
-            new MarkupRecord
-            {
-                Type = MarkupType.Dimension,
                 Vertices = { new Point(-10, 0), new Point(10, 0), new Point(13, 3) },
                 Metadata = new MarkupMetadata { Subject = "Diameter" }
             },

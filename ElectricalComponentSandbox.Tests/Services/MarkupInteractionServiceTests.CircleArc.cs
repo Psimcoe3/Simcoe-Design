@@ -49,11 +49,43 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void CanEditRadius_AngularDimension_ReturnsTrue()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10) },
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        Assert.True(_sut.CanEditRadius(markup));
+    }
+
+    [Fact]
     public void CanEditArcAngles_ArcLengthMeasurement_ReturnsTrue()
     {
         var markup = new MarkupRecord
         {
             Type = MarkupType.Measurement,
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7, 7) },
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        Assert.True(_sut.CanEditArcAngles(markup));
+    }
+
+    [Fact]
+    public void CanEditArcAngles_ArcLengthDimension_ReturnsTrue()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
             Radius = 10,
             ArcStartDeg = 0,
             ArcSweepDeg = 90,
@@ -81,11 +113,43 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void CanEditRadius_AngularDimensionWithoutEnoughVertices_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(0, 0), new Point(10, 0) },
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        Assert.False(_sut.CanEditRadius(markup));
+    }
+
+    [Fact]
     public void CanEditArcAngles_ArcLengthMeasurementWithoutRadius_ReturnsFalse()
     {
         var markup = new MarkupRecord
         {
             Type = MarkupType.Measurement,
+            Radius = 0,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7, 7) },
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        Assert.False(_sut.CanEditArcAngles(markup));
+    }
+
+    [Fact]
+    public void CanEditArcAngles_ArcLengthDimensionWithoutRadius_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
             Radius = 0,
             ArcStartDeg = 0,
             ArcSweepDeg = 90,
@@ -133,6 +197,24 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void GetRadiusPivotPoint_AngularDimension_ReturnsVertex()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(2, 3), new Point(12, 3), new Point(2, 13) },
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        var pivot = _sut.GetRadiusPivotPoint(markup);
+
+        Assert.Equal(new Point(2, 3), pivot);
+    }
+
+    [Fact]
     public void GetRadiusPivotPoint_ArcLengthMeasurement_ReturnsArcCenter()
     {
         var markup = new MarkupRecord
@@ -151,11 +233,48 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void GetRadiusPivotPoint_ArcLengthDimension_ReturnsArcCenter()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        var pivot = _sut.GetRadiusPivotPoint(markup);
+
+        Assert.Equal(new Point(0, 0), pivot);
+    }
+
+    [Fact]
     public void TryGetArcAnglePivotPoint_AngularMeasurementEndHandle_ReturnsVertex()
     {
         var markup = new MarkupRecord
         {
             Type = MarkupType.Measurement,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(2, 3), new Point(12, 3), new Point(2, 13) },
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        var found = _sut.TryGetArcAnglePivotPoint(markup, MarkupArcAngleHandle.End, out var pivot);
+
+        Assert.True(found);
+        Assert.Equal(new Point(2, 3), pivot);
+    }
+
+    [Fact]
+    public void TryGetArcAnglePivotPoint_AngularDimensionEndHandle_ReturnsVertex()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
             Radius = 8,
             ArcStartDeg = 0,
             ArcSweepDeg = 90,
@@ -189,11 +308,48 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void TryGetArcAnglePivotPoint_ArcLengthDimensionEndHandle_ReturnsArcCenter()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        var found = _sut.TryGetArcAnglePivotPoint(markup, MarkupArcAngleHandle.End, out var pivot);
+
+        Assert.True(found);
+        Assert.Equal(new Point(0, 0), pivot);
+    }
+
+    [Fact]
     public void TryGetArcAnglePivotPoint_AngularMeasurementStartHandle_ReturnsFalse()
     {
         var markup = new MarkupRecord
         {
             Type = MarkupType.Measurement,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(2, 3), new Point(12, 3), new Point(2, 13) },
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        var found = _sut.TryGetArcAnglePivotPoint(markup, MarkupArcAngleHandle.Start, out _);
+
+        Assert.False(found);
+    }
+
+    [Fact]
+    public void TryGetArcAnglePivotPoint_AngularDimensionStartHandle_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
             Radius = 8,
             ArcStartDeg = 0,
             ArcSweepDeg = 90,

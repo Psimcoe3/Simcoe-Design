@@ -78,62 +78,6 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal("Diameter 18  Angle 0 deg", outcome);
     }
 
-                public void DrawSelectedMarkupOverlayForTesting_DiameterMeasurementVertexDrag_RendersGeometryReadout()
-                {
-                    var outcome = RunWithSelectedMarkupWindow(
-                        new MarkupRecord
-                        {
-                            Type = MarkupType.Measurement,
-                            Vertices = { new Point(0, 0), new Point(12, 0), new Point(30, 20) },
-                            Metadata = new MarkupMetadata { Subject = "Diameter" }
-                        },
-                        (window, _, _) =>
-                        {
-                            var renderer = new OverlayRecordingRenderer();
-                            var began = window.BeginSelectedMarkupVertexDragForTesting(new Point(12, 0));
-                            window.UpdateDraggedMarkupVertexPreviewForTesting(new Point(18, 0));
-                            window.DrawSelectedMarkupOverlayForTesting(renderer);
-                            window.FinishMarkupVertexDragForTesting();
-                            return (began, renderer.LastTextBoxText);
-                        },
-                        viewModel =>
-                        {
-                            viewModel.SnapToGrid = false;
-                        });
-
-                    Assert.True(outcome.began);
-                    Assert.Equal("Diameter 18  Angle 0 deg", outcome.LastTextBoxText);
-                }
-
-                [Fact]
-                public void DrawSelectedMarkupOverlayForTesting_RadialDimensionVertexDrag_RendersGeometryReadout()
-                {
-                    var outcome = RunWithSelectedMarkupWindow(
-                        new MarkupRecord
-                        {
-                            Type = MarkupType.Dimension,
-                            Vertices = { new Point(0, 0), new Point(12, 0), new Point(15, 3) },
-                            Metadata = new MarkupMetadata { Subject = "Radial" }
-                        },
-                        (window, _, _) =>
-                        {
-                            var renderer = new OverlayRecordingRenderer();
-                            var began = window.BeginSelectedMarkupVertexDragForTesting(new Point(10, -5));
-                            window.UpdateDraggedMarkupVertexPreviewForTesting(new Point(18, 0));
-                            window.DrawSelectedMarkupOverlayForTesting(renderer);
-                            window.FinishMarkupVertexDragForTesting();
-                            return (began, renderer.LastTextBoxText);
-                        },
-                        viewModel =>
-                        {
-                            viewModel.SnapToGrid = false;
-                        });
-
-                    Assert.True(outcome.began);
-                    Assert.Equal("Radius 18  Angle 0 deg", outcome.LastTextBoxText);
-                }
-
-                [Fact]
     [Fact]
     public void DrawSelectedMarkupOverlayForTesting_DiameterMeasurementVertexDrag_RendersGeometryReadout()
     {

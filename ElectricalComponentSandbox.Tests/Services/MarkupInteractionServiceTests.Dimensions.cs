@@ -535,4 +535,21 @@ public partial class MarkupInteractionServiceTests
         Assert.False(result);
         Assert.Equal(new Point(10, 0), markup.Vertices[1]);
     }
+
+    [Fact]
+    public void SetLineGeometry_AngularDimension_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(5, 3) }
+        };
+        markup.Metadata.Subject = "Angular";
+        markup.UpdateBoundingRect();
+
+        var result = _sut.SetLineGeometry(markup, 24, 45);
+
+        Assert.False(result);
+        Assert.Equal(new Point(10, 0), markup.Vertices[1]);
+    }
 }
