@@ -1361,13 +1361,13 @@ public partial class MainWindow
 
     private static bool IsAngularDimension(MarkupRecord markup)
     {
-        return markup.Type == MarkupType.Dimension &&
+        return markup.Type is MarkupType.Dimension or MarkupType.Measurement &&
                string.Equals(markup.Metadata.Subject, "Angular", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsArcLengthDimension(MarkupRecord markup)
     {
-        return markup.Type == MarkupType.Dimension &&
+        return markup.Type is MarkupType.Dimension or MarkupType.Measurement &&
                string.Equals(markup.Metadata.Subject, "ArcLength", StringComparison.OrdinalIgnoreCase);
     }
 

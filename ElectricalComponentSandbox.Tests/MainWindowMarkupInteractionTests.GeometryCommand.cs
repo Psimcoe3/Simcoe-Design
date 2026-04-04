@@ -247,6 +247,148 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_LineMeasurement_UpdatesGeometryAndSupportsUndo()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Measurement,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(5, 3) }
+            },
+            (window, viewModel, markup) =>
+            {
+                var edited = window.ExecuteEditMarkupGeometryCommandForTesting("length=24\nangle=45");
+                var editedState = (
+                    markup.Vertices[1],
+                    markup.Vertices[2]);
+
+                viewModel.Undo();
+                var undoneState = (
+                    markup.Vertices[1],
+                    markup.Vertices[2]);
+
+                return (edited, editedState, undoneState);
+            });
+
+        Assert.True(outcome.edited);
+        Assert.Equal(16.970562748477143, outcome.editedState.Item1.X, 6);
+        Assert.Equal(16.97056274847714, outcome.editedState.Item1.Y, 6);
+        Assert.Equal(3.3941125496954285, outcome.editedState.Item2.X, 6);
+        Assert.Equal(13.57645019878171, outcome.editedState.Item2.Y, 6);
+
+        Assert.Equal(new Point(10, 0), outcome.undoneState.Item1);
+        Assert.Equal(new Point(5, 3), outcome.undoneState.Item2);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_AngularMeasurement_UpdatesGeometryAndSupportsUndo()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Measurement,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 12), new Point(10, 10) },
+                Radius = 8,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90,
+                Metadata = new MarkupMetadata { Subject = "Angular" }
+            },
+            (window, viewModel, markup) =>
+            {
+                var edited = window.ExecuteEditMarkupGeometryCommandForTesting("angle=60\nradius=14");
+                var editedState = (
+                    markup.Vertices[2],
+                    markup.Vertices[3],
+                    markup.Radius,
+                    markup.ArcStartDeg,
+                    markup.ArcSweepDeg);
+
+                viewModel.Undo();
+                var undoneState = (
+                    markup.Vertices[2],
+                    markup.Vertices[3],
+                    markup.Radius,
+                    markup.ArcStartDeg,
+                    markup.ArcSweepDeg);
+
+                return (edited, editedState, undoneState);
+            });
+
+        Assert.True(outcome.edited);
+        Assert.Equal(6, outcome.editedState.Item1.X, 6);
+        Assert.Equal(10.392304845413264, outcome.editedState.Item1.Y, 6);
+        Assert.Equal(17.443601136622522, outcome.editedState.Item2.X, 6);
+        Assert.Equal(10.071067811865476, outcome.editedState.Item2.Y, 6);
+        Assert.Equal(14, outcome.editedState.Item3, 6);
+        Assert.Equal(0, outcome.editedState.Item4, 6);
+        Assert.Equal(60, outcome.editedState.Item5, 6);
+
+        Assert.Equal(new Point(0, 12), outcome.undoneState.Item1);
+        Assert.Equal(new Point(10, 10), outcome.undoneState.Item2);
+        Assert.Equal(8, outcome.undoneState.Item3, 6);
+        Assert.Equal(0, outcome.undoneState.Item4, 6);
+        Assert.Equal(90, outcome.undoneState.Item5, 6);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_ArcLengthMeasurement_UpdatesGeometryAndSupportsUndo()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Measurement,
+                Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90,
+                Metadata = new MarkupMetadata { Subject = "ArcLength" }
+            },
+            (window, viewModel, markup) =>
+            {
+                var edited = window.ExecuteEditMarkupGeometryCommandForTesting("arclength=6.283185307179586\nradius=12");
+                var editedState = (
+                    markup.Vertices[0],
+                    markup.Vertices[1],
+                    markup.Vertices[2],
+                    markup.Radius,
+                    markup.ArcStartDeg,
+                    markup.ArcSweepDeg);
+
+                viewModel.Undo();
+                var undoneState = (
+                    markup.Vertices[0],
+                    markup.Vertices[1],
+                    markup.Vertices[2],
+                    markup.Radius,
+                    markup.ArcStartDeg,
+                    markup.ArcSweepDeg);
+
+                return (edited, editedState, undoneState);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.True(outcome.edited);
+        Assert.Equal(new Point(12, 0), outcome.editedState.Item1);
+        Assert.Equal(10.392304845413264, outcome.editedState.Item2.X, 6);
+        Assert.Equal(6, outcome.editedState.Item2.Y, 6);
+        Assert.Equal(11.59110991546882, outcome.editedState.Item3.X, 6);
+        Assert.Equal(3.105828541230249, outcome.editedState.Item3.Y, 6);
+        Assert.Equal(12, outcome.editedState.Item4, 6);
+        Assert.Equal(0, outcome.editedState.Item5, 6);
+        Assert.Equal(30, outcome.editedState.Item6, 6);
+
+        Assert.Equal(new Point(10, 0), outcome.undoneState.Item1);
+        Assert.Equal(new Point(0, 10), outcome.undoneState.Item2);
+        Assert.Equal(new Point(7.0710678118654755, 7.0710678118654755), outcome.undoneState.Item3);
+        Assert.Equal(10, outcome.undoneState.Item4, 6);
+        Assert.Equal(0, outcome.undoneState.Item5, 6);
+        Assert.Equal(90, outcome.undoneState.Item6, 6);
+    }
+
+    [Fact]
     public void ExecuteEditMarkupGeometryCommandForTesting_ArcLengthDimension_UpdatesGeometryAndSupportsUndo()
     {
         var outcome = RunWithSelectedMarkupWindow(
