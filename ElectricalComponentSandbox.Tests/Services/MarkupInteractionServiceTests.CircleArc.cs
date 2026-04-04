@@ -179,6 +179,82 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void GetRadiusHandlePoint_AngularMeasurement_UsesMidSweepBetweenRays()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(2, 3), new Point(12, 3), new Point(2, 13) },
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        var handle = _sut.GetRadiusHandlePoint(markup);
+
+        Assert.Equal(7.656854249492381, handle.X, 6);
+        Assert.Equal(8.65685424949238, handle.Y, 6);
+    }
+
+    [Fact]
+    public void GetRadiusHandlePoint_AngularDimension_UsesMidSweepBetweenRays()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(2, 3), new Point(12, 3), new Point(2, 13) },
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        var handle = _sut.GetRadiusHandlePoint(markup);
+
+        Assert.Equal(7.656854249492381, handle.X, 6);
+        Assert.Equal(8.65685424949238, handle.Y, 6);
+    }
+
+    [Fact]
+    public void GetRadiusHandlePoint_ArcLengthMeasurement_UsesArcCenterAndMidSweepAngle()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        var handle = _sut.GetRadiusHandlePoint(markup);
+
+        Assert.Equal(7.0710678118654755, handle.X, 6);
+        Assert.Equal(7.0710678118654755, handle.Y, 6);
+    }
+
+    [Fact]
+    public void GetRadiusHandlePoint_ArcLengthDimension_UsesArcCenterAndMidSweepAngle()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        var handle = _sut.GetRadiusHandlePoint(markup);
+
+        Assert.Equal(7.0710678118654755, handle.X, 6);
+        Assert.Equal(7.0710678118654755, handle.Y, 6);
+    }
+
+    [Fact]
     public void GetRadiusPivotPoint_AngularMeasurement_ReturnsVertex()
     {
         var markup = new MarkupRecord
