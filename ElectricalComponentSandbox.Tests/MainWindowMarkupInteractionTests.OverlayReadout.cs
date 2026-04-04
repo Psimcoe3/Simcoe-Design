@@ -342,6 +342,36 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_ArcLengthMeasurementAngleDrag_RendersArcLengthReadout()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Measurement,
+                Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90,
+                Metadata = new MarkupMetadata { Subject = "ArcLength" }
+            },
+            (window, _, _) =>
+            {
+                var renderer = new OverlayRecordingRenderer();
+                window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
+                window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(-10, 0));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                window.FinishMarkupArcAngleDragForTesting();
+                return renderer.LastTextBoxText;
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.Equal("Arc Length 31.42  Sweep 180 deg  Radius 10", outcome);
+    }
+
+    [Fact]
     public void DrawSelectedMarkupOverlayForTesting_AngularAngleDrag_RendersSnapReadout()
     {
         var outcome = RunWithSelectedMarkupWindow(
@@ -497,12 +527,74 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_AngularMeasurementRadiusDrag_RendersRadiusReadout()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Measurement,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10), new Point(8, 8) },
+                Radius = 8,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90,
+                Metadata = new MarkupMetadata { Subject = "Angular" }
+            },
+            (window, _, _) =>
+            {
+                var renderer = new OverlayRecordingRenderer();
+                window.BeginSelectedMarkupRadiusDragForTesting(new Point(5.656854249492381, 5.65685424949238));
+                window.UpdateDraggedMarkupRadiusPreviewForTesting(new Point(11, 11));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                window.FinishMarkupRadiusDragForTesting();
+                return renderer.LastTextBoxText;
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = true;
+                viewModel.GridSize = 1.0;
+            });
+
+        Assert.Equal("Radius 28.28", outcome);
+    }
+
+    [Fact]
     public void DrawSelectedMarkupOverlayForTesting_ArcLengthRadiusDrag_RendersRadiusReadout()
     {
         var outcome = RunWithSelectedMarkupWindow(
             new MarkupRecord
             {
                 Type = MarkupType.Dimension,
+                Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90,
+                Metadata = new MarkupMetadata { Subject = "ArcLength" }
+            },
+            (window, _, _) =>
+            {
+                var renderer = new OverlayRecordingRenderer();
+                window.BeginSelectedMarkupRadiusDragForTesting(new Point(7.0710678118654755, 7.0710678118654755));
+                window.UpdateDraggedMarkupRadiusPreviewForTesting(new Point(11, 11));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                window.FinishMarkupRadiusDragForTesting();
+                return renderer.LastTextBoxText;
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = true;
+                viewModel.GridSize = 1.0;
+            });
+
+        Assert.Equal("Radius 28.28", outcome);
+    }
+
+    [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_ArcLengthMeasurementRadiusDrag_RendersRadiusReadout()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Measurement,
                 Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
                 Radius = 10,
                 ArcStartDeg = 0,
@@ -556,12 +648,68 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_AngularMeasurementRadiusDrag_MarksRadiusGripHot()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Measurement,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10), new Point(8, 8) },
+                Radius = 8,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90,
+                Metadata = new MarkupMetadata { Subject = "Angular" }
+            },
+            (window, _, _) =>
+            {
+                var renderer = new OverlayRecordingRenderer();
+                var began = window.BeginSelectedMarkupRadiusDragForTesting(new Point(5.656854249492381, 5.65685424949238));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                window.FinishMarkupRadiusDragForTesting();
+                return (began, renderer.HotGripPoints.ToArray());
+            });
+
+        Assert.True(outcome.began);
+        Assert.Single(outcome.Item2);
+        Assert.Equal(5.656854249492381, outcome.Item2[0].X, 6);
+        Assert.Equal(5.65685424949238, outcome.Item2[0].Y, 6);
+    }
+
+    [Fact]
     public void DrawSelectedMarkupOverlayForTesting_AngularAngleDrag_MarksAngleGripHot()
     {
         var outcome = RunWithSelectedMarkupWindow(
             new MarkupRecord
             {
                 Type = MarkupType.Dimension,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10), new Point(8, 8) },
+                Radius = 8,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90,
+                Metadata = new MarkupMetadata { Subject = "Angular" }
+            },
+            (window, _, _) =>
+            {
+                var renderer = new OverlayRecordingRenderer();
+                var began = window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                window.FinishMarkupArcAngleDragForTesting();
+                return (began, renderer.HotGripPoints.ToArray());
+            });
+
+        Assert.True(outcome.began);
+        Assert.Single(outcome.Item2);
+        Assert.Equal(0, outcome.Item2[0].X, 6);
+        Assert.Equal(10, outcome.Item2[0].Y, 6);
+    }
+
+    [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_AngularMeasurementAngleDrag_MarksAngleGripHot()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Measurement,
                 Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10), new Point(8, 8) },
                 Radius = 8,
                 ArcStartDeg = 0,
@@ -717,12 +865,68 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_ArcLengthMeasurementRadiusDrag_MarksRadiusGripHot()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Measurement,
+                Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90,
+                Metadata = new MarkupMetadata { Subject = "ArcLength" }
+            },
+            (window, _, _) =>
+            {
+                var renderer = new OverlayRecordingRenderer();
+                var began = window.BeginSelectedMarkupRadiusDragForTesting(new Point(7.0710678118654755, 7.0710678118654755));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                window.FinishMarkupRadiusDragForTesting();
+                return (began, renderer.HotGripPoints.ToArray());
+            });
+
+        Assert.True(outcome.began);
+        Assert.Single(outcome.Item2);
+        Assert.Equal(7.0710678118654755, outcome.Item2[0].X, 6);
+        Assert.Equal(7.0710678118654755, outcome.Item2[0].Y, 6);
+    }
+
+    [Fact]
     public void DrawSelectedMarkupOverlayForTesting_ArcLengthAngleDrag_MarksAngleGripHot()
     {
         var outcome = RunWithSelectedMarkupWindow(
             new MarkupRecord
             {
                 Type = MarkupType.Dimension,
+                Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90,
+                Metadata = new MarkupMetadata { Subject = "ArcLength" }
+            },
+            (window, _, _) =>
+            {
+                var renderer = new OverlayRecordingRenderer();
+                var began = window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                window.FinishMarkupArcAngleDragForTesting();
+                return (began, renderer.HotGripPoints.ToArray());
+            });
+
+        Assert.True(outcome.began);
+        Assert.Single(outcome.Item2);
+        Assert.Equal(0, outcome.Item2[0].X, 6);
+        Assert.Equal(10, outcome.Item2[0].Y, 6);
+    }
+
+    [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_ArcLengthMeasurementAngleDrag_MarksAngleGripHot()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Measurement,
                 Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
                 Radius = 10,
                 ArcStartDeg = 0,
