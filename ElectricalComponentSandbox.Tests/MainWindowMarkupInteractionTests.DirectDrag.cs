@@ -451,6 +451,119 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ExecuteEscapeShortcutForTesting_ActiveResizeDrag_RestoresPreviewGeometry()
+    {
+        var selectedMarkup = CreateGroupedRectangle(new Rect(0, 0, 10, 10), "group-1");
+        var peerMarkup = CreateGroupedRectangle(new Rect(20, 20, 10, 10), "group-1");
+
+        var outcome = RunWithSelectedMarkupWindow(
+            selectedMarkup,
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupResizeDragForTesting(new Point(30, 30));
+                window.UpdateMarkupResizePreviewForTesting(new Point(40, 50));
+                var previewPrimary = (markup.Vertices[0], markup.Vertices[1]);
+                var previewPeer = (peerMarkup.Vertices[0], peerMarkup.Vertices[1]);
+                var cancelled = window.ExecuteEscapeShortcutForTesting();
+                var cancelledPrimary = (markup.Vertices[0], markup.Vertices[1]);
+                var cancelledPeer = (peerMarkup.Vertices[0], peerMarkup.Vertices[1]);
+                window.UpdateMarkupResizePreviewForTesting(new Point(60, 70));
+                var postCancelPrimary = (markup.Vertices[0], markup.Vertices[1]);
+                var postCancelPeer = (peerMarkup.Vertices[0], peerMarkup.Vertices[1]);
+                window.FinishMarkupResizeDragForTesting();
+                var finalPrimary = (markup.Vertices[0], markup.Vertices[1]);
+                var finalPeer = (peerMarkup.Vertices[0], peerMarkup.Vertices[1]);
+                return (began, cancelled, previewPrimary, previewPeer, cancelledPrimary, cancelledPeer, postCancelPrimary, postCancelPeer, finalPrimary, finalPeer);
+            },
+            viewModel =>
+            {
+                viewModel.Markups.Add(peerMarkup);
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.True(outcome.began);
+        Assert.True(outcome.cancelled);
+        Assert.NotEqual((new Point(0, 0), new Point(10, 10)), outcome.previewPrimary);
+        Assert.NotEqual((new Point(20, 20), new Point(30, 30)), outcome.previewPeer);
+        Assert.Equal((new Point(0, 0), new Point(10, 10)), outcome.cancelledPrimary);
+        Assert.Equal((new Point(20, 20), new Point(30, 30)), outcome.cancelledPeer);
+        Assert.Equal((new Point(0, 0), new Point(10, 10)), outcome.postCancelPrimary);
+        Assert.Equal((new Point(20, 20), new Point(30, 30)), outcome.postCancelPeer);
+        Assert.Equal((new Point(0, 0), new Point(10, 10)), outcome.finalPrimary);
+        Assert.Equal((new Point(20, 20), new Point(30, 30)), outcome.finalPeer);
+    }
+
+    [Fact]
+    public void ExecuteEscapeShortcutForTesting_ActiveVertexDrag_RestoresPreviewGeometry()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(20, 0) }
+            },
+            (window, _, markup) =>
+            {
+                var began = window.BeginSelectedMarkupVertexDragForTesting(new Point(10, 0));
+                window.UpdateDraggedMarkupVertexPreviewForTesting(new Point(15, 5));
+                var previewVertex = markup.Vertices[1];
+                var cancelled = window.ExecuteEscapeShortcutForTesting();
+                var cancelledVertex = markup.Vertices[1];
+                window.UpdateDraggedMarkupVertexPreviewForTesting(new Point(18, 8));
+                var postCancelVertex = markup.Vertices[1];
+                window.FinishMarkupVertexDragForTesting();
+                var finalVertex = markup.Vertices[1];
+                return (began, cancelled, previewVertex, cancelledVertex, postCancelVertex, finalVertex);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.True(outcome.began);
+        Assert.True(outcome.cancelled);
+        Assert.NotEqual(new Point(10, 0), outcome.previewVertex);
+        Assert.Equal(new Point(10, 0), outcome.cancelledVertex);
+        Assert.Equal(new Point(10, 0), outcome.postCancelVertex);
+        Assert.Equal(new Point(10, 0), outcome.finalVertex);
+    }
+
+    [Fact]
+    public void ExecuteEscapeShortcutForTesting_ActiveSelectionDrag_RestoresPreviewGeometry()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(10, 0) }
+            },
+            (window, _, markup) =>
+            {
+                var began = window.BeginSelectedMarkupSelectionDragForTesting(new Point(5, 0));
+                window.UpdateDraggedMarkupPreviewForTesting(new Point(12, 8));
+                var previewState = (markup.Vertices[0], markup.Vertices[1]);
+                var cancelled = window.ExecuteEscapeShortcutForTesting();
+                var cancelledState = (markup.Vertices[0], markup.Vertices[1]);
+                window.UpdateDraggedMarkupPreviewForTesting(new Point(25, 25));
+                var postCancelState = (markup.Vertices[0], markup.Vertices[1]);
+                window.FinishMarkupSelectionDragForTesting();
+                var finalState = (markup.Vertices[0], markup.Vertices[1]);
+                return (began, cancelled, previewState, cancelledState, postCancelState, finalState);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.True(outcome.began);
+        Assert.True(outcome.cancelled);
+        Assert.Equal((new Point(7, 8), new Point(17, 8)), outcome.previewState);
+        Assert.Equal((new Point(0, 0), new Point(10, 0)), outcome.cancelledState);
+        Assert.Equal((new Point(0, 0), new Point(10, 0)), outcome.postCancelState);
+        Assert.Equal((new Point(0, 0), new Point(10, 0)), outcome.finalState);
+    }
+
+    [Fact]
     public void DirectRadiusDragForTesting_Circle_UsesGridSnapAndSupportsUndo()
     {
         var outcome = RunWithSelectedMarkupWindow(
@@ -480,6 +593,42 @@ public partial class MainWindowMarkupInteractionTests
         Assert.True(outcome.began);
         Assert.Equal(28.284271247461902, outcome.editedRadius, 6);
         Assert.Equal(10, outcome.undoneRadius, 6);
+    }
+
+    [Fact]
+    public void ExecuteEscapeShortcutForTesting_ActiveRadiusDrag_RestoresPreviewGeometry()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Circle,
+                Vertices = { new Point(0, 0) },
+                Radius = 10
+            },
+            (window, _, markup) =>
+            {
+                var began = window.BeginSelectedMarkupRadiusDragForTesting(new Point(10, 0));
+                window.UpdateDraggedMarkupRadiusPreviewForTesting(new Point(14, 0));
+                var previewRadius = markup.Radius;
+                var cancelled = window.ExecuteEscapeShortcutForTesting();
+                var cancelledRadius = markup.Radius;
+                window.UpdateDraggedMarkupRadiusPreviewForTesting(new Point(18, 0));
+                var postCancelRadius = markup.Radius;
+                window.FinishMarkupRadiusDragForTesting();
+                var finalRadius = markup.Radius;
+                return (began, cancelled, previewRadius, cancelledRadius, postCancelRadius, finalRadius);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.True(outcome.began);
+        Assert.True(outcome.cancelled);
+        Assert.Equal(14, outcome.previewRadius, 6);
+        Assert.Equal(10, outcome.cancelledRadius, 6);
+        Assert.Equal(10, outcome.postCancelRadius, 6);
+        Assert.Equal(10, outcome.finalRadius, 6);
     }
 
     [Fact]
@@ -516,6 +665,44 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(60, outcome.editedState.Item2, 6);
         Assert.Equal(0, outcome.undoneState.Item1, 6);
         Assert.Equal(90, outcome.undoneState.Item2, 6);
+    }
+
+    [Fact]
+    public void ExecuteEscapeShortcutForTesting_ActiveArcAngleDrag_RestoresPreviewGeometry()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Arc,
+                Vertices = { new Point(0, 0) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90
+            },
+            (window, _, markup) =>
+            {
+                var began = window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
+                window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(-10, 0));
+                var previewState = (markup.ArcStartDeg, markup.ArcSweepDeg);
+                var cancelled = window.ExecuteEscapeShortcutForTesting();
+                var cancelledState = (markup.ArcStartDeg, markup.ArcSweepDeg);
+                window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(10, 10));
+                var postCancelState = (markup.ArcStartDeg, markup.ArcSweepDeg);
+                window.FinishMarkupArcAngleDragForTesting();
+                var finalState = (markup.ArcStartDeg, markup.ArcSweepDeg);
+                return (began, cancelled, previewState, cancelledState, postCancelState, finalState);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.True(outcome.began);
+        Assert.True(outcome.cancelled);
+        Assert.Equal((0d, 180d), outcome.previewState);
+        Assert.Equal((0d, 90d), outcome.cancelledState);
+        Assert.Equal((0d, 90d), outcome.postCancelState);
+        Assert.Equal((0d, 90d), outcome.finalState);
     }
 
     [Fact]

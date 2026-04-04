@@ -533,6 +533,9 @@ public partial class MainWindow
             return true;
         }
 
+        if (TryCancelActiveMarkupDragInteraction())
+            return true;
+
         if (_isAddingCustomDimension)
         {
             CancelCustomDimensionMode();

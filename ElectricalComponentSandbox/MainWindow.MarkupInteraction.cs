@@ -257,6 +257,112 @@ public partial class MainWindow
         SkiaBackground.RequestRedraw();
     }
 
+    private bool TryCancelActiveMarkupDragInteraction()
+    {
+        if (_isDraggingMarkupArcAngle)
+        {
+            CancelMarkupArcAngleDrag();
+            return true;
+        }
+
+        if (_isDraggingMarkupRadius)
+        {
+            CancelMarkupRadiusDrag();
+            return true;
+        }
+
+        if (_isDraggingMarkupVertex)
+        {
+            CancelMarkupVertexDrag();
+            return true;
+        }
+
+        if (_isResizingMarkup)
+        {
+            CancelMarkupResizeDrag();
+            return true;
+        }
+
+        if (_isDraggingMarkup)
+        {
+            CancelMarkupSelectionDrag();
+            return true;
+        }
+
+        return false;
+    }
+
+    private void CancelMarkupArcAngleDrag()
+    {
+        if (_arcAngleDraggedMarkup != null && _markupArcAngleStartSnapshot != null)
+            _markupInteractionService.Apply(_arcAngleDraggedMarkup, _markupArcAngleStartSnapshot);
+
+        _isDraggingMarkupArcAngle = false;
+        _activeMarkupArcAngleHandle = MarkupArcAngleHandle.None;
+        _arcAngleDraggedMarkup = null;
+        _markupArcAngleStartSnapshot = null;
+        CancelActiveMarkupDragPreview();
+    }
+
+    private void CancelMarkupRadiusDrag()
+    {
+        if (_radiusDraggedMarkup != null && _markupRadiusStartSnapshot != null)
+            _markupInteractionService.Apply(_radiusDraggedMarkup, _markupRadiusStartSnapshot);
+
+        _isDraggingMarkupRadius = false;
+        _radiusDraggedMarkup = null;
+        _markupRadiusStartSnapshot = null;
+        CancelActiveMarkupDragPreview();
+    }
+
+    private void CancelMarkupVertexDrag()
+    {
+        if (_vertexDraggedMarkup != null && _markupVertexStartSnapshot != null)
+            _markupInteractionService.Apply(_vertexDraggedMarkup, _markupVertexStartSnapshot);
+
+        _isDraggingMarkupVertex = false;
+        _vertexDraggedMarkup = null;
+        _markupVertexStartSnapshot = null;
+        CancelActiveMarkupDragPreview();
+    }
+
+    private void CancelMarkupResizeDrag()
+    {
+        foreach (var markup in _resizedMarkups)
+        {
+            if (_markupResizeStartSnapshots.TryGetValue(markup.Id, out var snapshot))
+                _markupInteractionService.Apply(markup, snapshot);
+        }
+
+        _isResizingMarkup = false;
+        _activeMarkupResizeHandle = MarkupResizeHandle.None;
+        _markupResizeStartBounds = Rect.Empty;
+        _resizedMarkups.Clear();
+        _markupResizeStartSnapshots.Clear();
+        CancelActiveMarkupDragPreview();
+    }
+
+    private void CancelMarkupSelectionDrag()
+    {
+        foreach (var markup in _draggedMarkups)
+        {
+            if (_markupDragStartSnapshots.TryGetValue(markup.Id, out var snapshot))
+                _markupInteractionService.Apply(markup, snapshot);
+        }
+
+        _isDraggingMarkup = false;
+        _draggedMarkups.Clear();
+        _markupDragStartSnapshots.Clear();
+        CancelActiveMarkupDragPreview();
+    }
+
+    private void CancelActiveMarkupDragPreview()
+    {
+        _mobileSelectionCandidate = false;
+        PlanCanvas.ReleaseMouseCapture();
+        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+    }
+
     private bool DeleteSelectedMarkupVertex()
     {
         if (_viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup || _activeMarkupVertexIndex < 0)
