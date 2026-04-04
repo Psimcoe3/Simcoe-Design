@@ -289,12 +289,74 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_AngularMeasurementAngleDrag_RendersSnapReadout()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Measurement,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10), new Point(8, 8) },
+                Radius = 8,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90,
+                Metadata = new MarkupMetadata { Subject = "Angular" }
+            },
+            (window, _, _) =>
+            {
+                var renderer = new OverlayRecordingRenderer();
+                window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
+                window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(6, 8));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                window.FinishMarkupArcAngleDragForTesting();
+                return renderer.LastTextBoxText;
+            },
+            viewModel =>
+            {
+                viewModel.IsPolarActive = true;
+                viewModel.PolarIncrementDeg = 30;
+            });
+
+        Assert.Equal("Angle 60 deg  Radius 8  Snap 30 deg", outcome);
+    }
+
+    [Fact]
     public void DrawSelectedMarkupOverlayForTesting_ArcLengthAngleDrag_RendersSnapReadout()
     {
         var outcome = RunWithSelectedMarkupWindow(
             new MarkupRecord
             {
                 Type = MarkupType.Dimension,
+                Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90,
+                Metadata = new MarkupMetadata { Subject = "ArcLength" }
+            },
+            (window, _, _) =>
+            {
+                var renderer = new OverlayRecordingRenderer();
+                window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
+                window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(6, 8));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                window.FinishMarkupArcAngleDragForTesting();
+                return renderer.LastTextBoxText;
+            },
+            viewModel =>
+            {
+                viewModel.IsPolarActive = true;
+                viewModel.PolarIncrementDeg = 30;
+            });
+
+        Assert.Equal("Arc Length 10.47  Sweep 60 deg  Radius 10  Snap 30 deg", outcome);
+    }
+
+    [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_ArcLengthMeasurementAngleDrag_RendersSnapReadout()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Measurement,
                 Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
                 Radius = 10,
                 ArcStartDeg = 0,
