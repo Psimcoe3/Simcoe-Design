@@ -586,7 +586,7 @@ public partial class MainWindow
             return true;
         }
 
-        if (!TryGetLineGeometryLengthAssignment(values, input, markup, length, out var nextLength) || nextLength <= 0)
+        if (!TryGetLineGeometryLengthAssignment(values, markup, length, out var nextLength) || nextLength <= 0)
         {
             ShowGeometryValidationWarning(showValidationFeedback, $"{lengthLabel} must be a positive number.", $"Edit {markup.TypeDisplayText} Geometry");
             return true;
@@ -1300,12 +1300,17 @@ public partial class MainWindow
         });
     }
 
-    private static bool TryGetLineGeometryLengthAssignment(Dictionary<string, double> values, string input, MarkupRecord markup, double fallbackValue, out double value)
+    private static bool TryGetLineGeometryLengthAssignment(Dictionary<string, double> values, MarkupRecord markup, double fallbackValue, out double value)
     {
-        if (TryGetAssignment(values, GetLineGeometryLengthKey(markup), fallbackValue, out value))
+        var lengthKey = GetLineGeometryLengthKey(markup);
+        if (values.TryGetValue(lengthKey, out value))
             return true;
 
-        return TryGetAssignment(values, "length", fallbackValue, out value);
+        if (!string.Equals(lengthKey, "length", StringComparison.OrdinalIgnoreCase) && values.TryGetValue("length", out value))
+            return true;
+
+        value = fallbackValue;
+        return true;
     }
 
     private static string GetLineGeometryLengthKey(MarkupRecord markup)
