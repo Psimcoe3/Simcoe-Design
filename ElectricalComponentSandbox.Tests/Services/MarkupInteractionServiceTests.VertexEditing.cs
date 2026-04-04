@@ -32,6 +32,20 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void HitTestVertexHandle_Measurement_ReturnsMatchingIndex()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(10, 10), new Point(20, 20), new Point(30, 30) }
+        };
+
+        var hitIndex = _sut.HitTestVertexHandle(new Point(29.5, 30.5), markup, tolerance: 1.0);
+
+        Assert.Equal(2, hitIndex);
+    }
+
+    [Fact]
     public void MoveVertex_Polygon_UpdatesVertexAndBoundingRect()
     {
         var markup = new MarkupRecord
@@ -61,6 +75,22 @@ public partial class MarkupInteractionServiceTests
         Assert.True(found);
         Assert.Equal(1, insertIndex);
         Assert.Equal(new Point(9, 0), projectedPoint);
+    }
+
+    [Fact]
+    public void TryFindInsertionPoint_PolygonClosingEdge_ReturnsClosingInsertIndex()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Polygon,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(10, 10), new Point(0, 10) }
+        };
+
+        var found = _sut.TryFindInsertionPoint(new Point(-1, 4), markup, 2.0, out var insertIndex, out var projectedPoint);
+
+        Assert.True(found);
+        Assert.Equal(4, insertIndex);
+        Assert.Equal(new Point(0, 4), projectedPoint);
     }
 
     [Fact]

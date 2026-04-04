@@ -100,6 +100,30 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void BuildResizedBounds_BottomHandle_ResizesHeightOnly()
+    {
+        var resized = _sut.BuildResizedBounds(
+            new Rect(10, 20, 30, 40),
+            new Point(25, 70),
+            MarkupResizeHandle.Bottom,
+            minimumSize: 6);
+
+        Assert.Equal(new Rect(10, 20, 30, 50), resized);
+    }
+
+    [Fact]
+    public void BuildResizedBounds_RightHandle_ClampsWidthAndKeepsVerticalBounds()
+    {
+        var resized = _sut.BuildResizedBounds(
+            new Rect(10, 20, 30, 40),
+            new Point(12, 35),
+            MarkupResizeHandle.Right,
+            minimumSize: 6);
+
+        Assert.Equal(new Rect(10, 20, 6, 40), resized);
+    }
+
+    [Fact]
     public void BuildResizedBounds_BottomRightHandle_ClampsToMinimumSize()
     {
         var resized = _sut.BuildResizedBounds(
