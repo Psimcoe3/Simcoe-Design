@@ -45,6 +45,54 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ExecuteAddMarkupReplyCommandForTesting_WithoutSelection_ReturnsFalse()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var added = window.ExecuteAddMarkupReplyCommandForTesting("Need revised feeder routing.", "Reviewer");
+                return (added, VisibleReplyCount: viewModel.MarkupTool.SelectedMarkupReplies.Count, CanUndo: viewModel.UndoRedo.CanUndo);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.False(outcome.added);
+        Assert.Equal(0, outcome.VisibleReplyCount);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ExecuteAddMarkupReplyCommandForTesting_BlankReply_ReturnsFalseAndLeavesRepliesUnchanged()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Panel issue"
+                }
+            },
+            (window, viewModel, markup) =>
+            {
+                var added = window.ExecuteAddMarkupReplyCommandForTesting("   ", "Reviewer");
+                return (added, ReplyCount: markup.Replies.Count, VisibleReplyCount: viewModel.MarkupTool.SelectedMarkupReplies.Count, CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.False(outcome.added);
+        Assert.Equal(0, outcome.ReplyCount);
+        Assert.Equal(0, outcome.VisibleReplyCount);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
     public void ExecuteSetSelectedMarkupStatusForTesting_AddsAuditReplyAndSupportsUndo()
     {
         var outcome = RunWithSelectedMarkupWindow(
@@ -92,6 +140,56 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ExecuteSetSelectedMarkupStatusForTesting_WithoutSelection_ReturnsFalse()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var changed = window.ExecuteSetSelectedMarkupStatusForTesting(MarkupStatus.Approved, "Reviewer");
+                return (changed, CanUndo: viewModel.UndoRedo.CanUndo);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.False(outcome.changed);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ExecuteSetSelectedMarkupStatusForTesting_SameStatus_ReturnsFalseAndLeavesAuditTrailUnchanged()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Status = MarkupStatus.Approved,
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Panel issue"
+                }
+            },
+            (window, viewModel, markup) =>
+            {
+                var changed = window.ExecuteSetSelectedMarkupStatusForTesting(MarkupStatus.Approved, "Reviewer");
+                return (changed, Status: markup.Status, StatusNote: markup.StatusNote, ReplyCount: markup.Replies.Count, VisibleReplyCount: viewModel.MarkupTool.SelectedMarkupReplies.Count, CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.False(outcome.changed);
+        Assert.Equal(MarkupStatus.Approved, outcome.Status);
+        Assert.Null(outcome.StatusNote);
+        Assert.Equal(0, outcome.ReplyCount);
+        Assert.Equal(0, outcome.VisibleReplyCount);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
     public void ExecuteAssignSelectedMarkupForTesting_AddsAssignmentAuditAndSupportsUndo()
     {
         var outcome = RunWithSelectedMarkupWindow(
@@ -131,6 +229,55 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Null(outcome.afterUndo.AssignedTo);
         Assert.Equal(0, outcome.afterUndo.ReplyCount);
         Assert.Equal(0, outcome.afterUndo.VisibleReplyCount);
+    }
+
+    [Fact]
+    public void ExecuteAssignSelectedMarkupForTesting_WithoutSelection_ReturnsFalse()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var changed = window.ExecuteAssignSelectedMarkupForTesting("Field Crew", "Coordinator");
+                return (changed, CanUndo: viewModel.UndoRedo.CanUndo);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.False(outcome.changed);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ExecuteAssignSelectedMarkupForTesting_SameAssignee_ReturnsFalseAndLeavesAuditTrailUnchanged()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                AssignedTo = "Field Crew",
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Panel issue"
+                }
+            },
+            (window, viewModel, markup) =>
+            {
+                var changed = window.ExecuteAssignSelectedMarkupForTesting("Field Crew", "Coordinator");
+                return (changed, AssignedTo: markup.AssignedTo, ReplyCount: markup.Replies.Count, VisibleReplyCount: viewModel.MarkupTool.SelectedMarkupReplies.Count, CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.False(outcome.changed);
+        Assert.Equal("Field Crew", outcome.AssignedTo);
+        Assert.Equal(0, outcome.ReplyCount);
+        Assert.Equal(0, outcome.VisibleReplyCount);
+        Assert.False(outcome.CanUndo);
     }
 
     [Fact]
@@ -194,6 +341,66 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ExecuteSetSelectedIssueGroupStatusForTesting_WithoutSelectedBucket_ReturnsFalse()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Status = MarkupStatus.Open,
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Bucket A",
+                    Author = "Paul"
+                }
+            },
+            (window, viewModel, markup) =>
+            {
+                viewModel.MarkupTool.IssueGroupMode = MarkupIssueGroupMode.Author;
+                viewModel.MarkupTool.SelectedIssueGroup = null;
+
+                var changed = window.ExecuteSetSelectedIssueGroupStatusForTesting(MarkupStatus.Resolved, "Reviewer");
+                return (changed, Status: markup.Status, ReplyCount: markup.Replies.Count, CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.False(outcome.changed);
+        Assert.Equal(MarkupStatus.Open, outcome.Status);
+        Assert.Equal(0, outcome.ReplyCount);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ExecuteSetSelectedIssueGroupStatusForTesting_NoEligibleMarkupInBucket_ReturnsFalseAndLeavesAuditTrailUnchanged()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Status = MarkupStatus.Resolved,
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Bucket A",
+                    Author = "Paul"
+                }
+            },
+            (window, viewModel, markup) =>
+            {
+                viewModel.MarkupTool.IssueGroupMode = MarkupIssueGroupMode.Author;
+                viewModel.MarkupTool.SelectedIssueGroup = Assert.Single(viewModel.MarkupTool.IssueGroups.Where(group => group.DisplayName == "Paul"));
+
+                var changed = window.ExecuteSetSelectedIssueGroupStatusForTesting(MarkupStatus.Resolved, "Reviewer");
+                return (changed, Status: markup.Status, ReplyCount: markup.Replies.Count, CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.False(outcome.changed);
+        Assert.Equal(MarkupStatus.Resolved, outcome.Status);
+        Assert.Equal(0, outcome.ReplyCount);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
     public void ExecuteAssignSelectedIssueGroupForTesting_UpdatesOnlySelectedBucketAndSupportsUndo()
     {
         var outcome = RunWithSelectedMarkupWindow(
@@ -249,6 +456,65 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Null(outcome.afterUndo.OtherAssignee);
         Assert.Equal(0, outcome.afterUndo.ReplyCount);
         Assert.Equal(0, outcome.afterUndo.OtherReplyCount);
+    }
+
+    [Fact]
+    public void ExecuteAssignSelectedIssueGroupForTesting_WithoutSelectedBucket_ReturnsFalse()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Bucket A",
+                    Author = "Paul"
+                }
+            },
+            (window, viewModel, markup) =>
+            {
+                viewModel.MarkupTool.IssueGroupMode = MarkupIssueGroupMode.Author;
+                viewModel.MarkupTool.SelectedIssueGroup = null;
+
+                var changed = window.ExecuteAssignSelectedIssueGroupForTesting("Field Crew", "Reviewer");
+                return (changed, AssignedTo: markup.AssignedTo, ReplyCount: markup.Replies.Count, CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.False(outcome.changed);
+        Assert.Null(outcome.AssignedTo);
+        Assert.Equal(0, outcome.ReplyCount);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ExecuteAssignSelectedIssueGroupForTesting_NoEligibleMarkupInBucket_ReturnsFalseAndLeavesAuditTrailUnchanged()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                AssignedTo = "Field Crew",
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Bucket A",
+                    Author = "Paul"
+                }
+            },
+            (window, viewModel, markup) =>
+            {
+                viewModel.MarkupTool.IssueGroupMode = MarkupIssueGroupMode.Author;
+                viewModel.MarkupTool.SelectedIssueGroup = Assert.Single(viewModel.MarkupTool.IssueGroups.Where(group => group.DisplayName == "Paul"));
+
+                var changed = window.ExecuteAssignSelectedIssueGroupForTesting("Field Crew", "Reviewer");
+                return (changed, AssignedTo: markup.AssignedTo, ReplyCount: markup.Replies.Count, CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.False(outcome.changed);
+        Assert.Equal("Field Crew", outcome.AssignedTo);
+        Assert.Equal(0, outcome.ReplyCount);
+        Assert.False(outcome.CanUndo);
     }
 
     [Fact]
