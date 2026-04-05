@@ -7,7 +7,6 @@
     xmlns:local="clr-namespace:ElectricalComponentSandbox"
     xmlns:converters="clr-namespace:ElectricalComponentSandbox.Converters"
     xmlns:rendering="clr-namespace:ElectricalComponentSandbox.Rendering"
-    xmlns:viewModels="clr-namespace:ElectricalComponentSandbox.ViewModels"
     xmlns:h="http://helix-toolkit.org/wpf"
     mc:Ignorable="d"
     Icon="app.ico"
@@ -24,11 +23,6 @@
     <SolidColorBrush x:Key="MobileSurfaceAltBrush" Color="#F2F2F7"/>
     <SolidColorBrush x:Key="MobileBorderBrush" Color="#C6C6C8"/>
     <SolidColorBrush x:Key="MobileMutedTextBrush" Color="#8E8E93"/>
-    <SolidColorBrush x:Key="ShellSurfaceBrush" Color="#FFF7F8FA"/>
-    <SolidColorBrush x:Key="ShellCardBrush" Color="#FFFFFFFF"/>
-    <SolidColorBrush x:Key="ShellBorderBrush" Color="#FFD8DEE4"/>
-    <SolidColorBrush x:Key="ShellPrimaryTextBrush" Color="#FF1F2933"/>
-    <SolidColorBrush x:Key="ShellMutedTextBrush" Color="#FF52606D"/>
         
         <Style TargetType="Button">
             <Setter Property="Margin" Value="5"/>
@@ -41,30 +35,6 @@
             <Setter Property="Margin" Value="5"/>
             <Setter Property="Padding" Value="5"/>
         </Style>
-        <Style x:Key="ProjectBrowserTreeItemStyle" TargetType="TreeViewItem">
-            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
-            <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}"/>
-        </Style>
-        <HierarchicalDataTemplate DataType="{x:Type viewModels:ProjectBrowserSheetItemViewModel}" ItemsSource="{Binding Children}">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" Margin="0"/>
-                <Border Margin="6,0,0,0"
-                        Padding="4,1"
-                        Background="{StaticResource ShellSurfaceBrush}"
-                        BorderBrush="{StaticResource ShellBorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="4">
-                    <TextBlock Text="{Binding StatusBadgeText}"
-                               Margin="0"
-                               FontSize="10"
-                               FontWeight="SemiBold"
-                               Foreground="{StaticResource ShellMutedTextBrush}"/>
-                </Border>
-            </StackPanel>
-        </HierarchicalDataTemplate>
-        <DataTemplate DataType="{x:Type viewModels:ProjectBrowserNamedViewItemViewModel}">
-            <TextBlock Text="{Binding DisplayName}" Margin="2,0,0,0"/>
-        </DataTemplate>
         <Style x:Key="MobileTopActionButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Height" Value="44"/>
             <Setter Property="MinWidth" Value="44"/>
@@ -84,80 +54,6 @@
             <Setter Property="Foreground" Value="{StaticResource MobileMutedTextBrush}"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
-        </Style>
-        <Style x:Key="QuickActionButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Margin" Value="4"/>
-            <Setter Property="Padding" Value="10,6"/>
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="HorizontalAlignment" Value="Stretch"/>
-            <Setter Property="Background" Value="{StaticResource ShellCardBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-        </Style>
-        <Style x:Key="CommandSurfaceCardStyle" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource ShellCardBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="8"/>
-            <Setter Property="Margin" Value="0,0,10,0"/>
-            <Setter Property="Padding" Value="10"/>
-        </Style>
-        <Style x:Key="CommandSurfaceHeaderStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="Foreground" Value="{StaticResource ShellMutedTextBrush}"/>
-            <Setter Property="Margin" Value="0"/>
-        </Style>
-        <Style x:Key="InspectorHeaderCardStyle" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource ShellSurfaceBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}"/>
-            <Setter Property="BorderThickness" Value="0,0,0,1"/>
-            <Setter Property="Padding" Value="12,10"/>
-        </Style>
-        <Style x:Key="InspectorModeButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Margin" Value="0,0,8,0"/>
-            <Setter Property="Padding" Value="10,5"/>
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="Background" Value="{StaticResource ShellCardBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-        </Style>
-        <Style x:Key="InspectorTaskCardStyle" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource ShellCardBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="8"/>
-            <Setter Property="Padding" Value="10"/>
-        </Style>
-        <Style x:Key="InspectorTaskActionButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Margin" Value="0,8,8,0"/>
-            <Setter Property="Padding" Value="10,6"/>
-            <Setter Property="FontSize" Value="11"/>
-        </Style>
-        <Style x:Key="CanvasGuidanceCardStyle" TargetType="Border">
-            <Setter Property="Background" Value="#F7FFFFFF"/>
-            <Setter Property="BorderBrush" Value="{StaticResource ShellBorderBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="12"/>
-            <Setter Property="Padding" Value="16"/>
-            <Setter Property="MaxWidth" Value="400"/>
-        </Style>
-        <Style x:Key="CanvasGuidanceTitleStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="18"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="{StaticResource ShellPrimaryTextBrush}"/>
-            <Setter Property="Margin" Value="0"/>
-            <Setter Property="TextWrapping" Value="Wrap"/>
-        </Style>
-        <Style x:Key="CanvasGuidanceBodyStyle" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource ShellMutedTextBrush}"/>
-            <Setter Property="Margin" Value="0,6,0,0"/>
-            <Setter Property="TextWrapping" Value="Wrap"/>
-        </Style>
-        <Style x:Key="CanvasGuidanceActionButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Margin" Value="0,8,8,0"/>
-            <Setter Property="Padding" Value="10,6"/>
-            <Setter Property="FontSize" Value="11"/>
         </Style>
     </Window.Resources>
     
@@ -257,6 +153,7 @@
                 </MenuItem>
                 <Separator/>
                 <MenuItem Header="Delete Last Bend Point" Click="DeleteLastBendPoint_Click"/>
+                <Separator/>
                 <MenuItem Header="Bulk Edit Properties..." Click="BulkEditProperties_Click"/>
             </MenuItem>
             <MenuItem Header="View">
@@ -283,6 +180,7 @@
                     <Separator/>
                     <MenuItem x:Name="NamedViewsListMenuItem" Header="(none saved)" IsEnabled="False"/>
                 </MenuItem>
+                <Separator/>
                 <Separator/>
                 <MenuItem Header="Zoom Extents" Click="ZoomExtents_Click" InputGestureText="Ctrl+Shift+E"/>
                 <MenuItem Header="Zoom Selection" Click="ZoomSelection_Click"/>
@@ -339,7 +237,6 @@
                 <MenuItem Header="Add Annotation">
                     <MenuItem Header="Add Callout..." Click="AddCallout_Click"/>
                     <MenuItem Header="Add Leader Note..." Click="AddLeaderNote_Click"/>
-                    <MenuItem Header="Add Parameter Tag..." Click="AddComponentParameterTag_Click"/>
                     <MenuItem Header="Add Revision Cloud..." Click="AddRevisionCloud_Click"/>
                     <MenuItem Header="Add Stamp..." Click="AddStamp_Click"/>
                 </MenuItem>
@@ -347,122 +244,66 @@
                     <MenuItem Header="Approve Selected" Click="ApproveMarkup_Click"/>
                     <MenuItem Header="Reject Selected" Click="RejectMarkup_Click"/>
                     <MenuItem Header="Resolve Selected" Click="ResolveMarkup_Click"/>
-                    <MenuItem Header="Assign Selected..." Click="AssignSelectedMarkup_Click"/>
-                    <MenuItem Header="Assign Visible..." Click="AssignVisibleMarkups_Click"/>
-                    <MenuItem Header="Reply To Selected..." Click="AddMarkupReply_Click"/>
                 </MenuItem>
                 <MenuItem Header="Markup Summary..." Click="MarkupSummary_Click"/>
             </MenuItem>
         </Menu>
         
-        <!-- Desktop command surface -->
-        <Border x:Name="DesktopToolBar" DockPanel.Dock="Top" Background="{StaticResource ShellSurfaceBrush}" BorderBrush="{StaticResource ShellBorderBrush}" BorderThickness="0,0,0,1" Padding="12,8,12,10">
-            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                <StackPanel Orientation="Horizontal">
-                    <Border Style="{StaticResource CommandSurfaceCardStyle}">
-                        <StackPanel>
-                            <TextBlock Text="Project" Style="{StaticResource CommandSurfaceHeaderStyle}"/>
-                            <TextBlock Text="Open files, switch layouts, and undo mistakes." Foreground="{StaticResource ShellMutedTextBrush}" TextWrapping="Wrap" Margin="0,4,0,8"/>
-                            <Grid Margin="0,0,0,8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="220"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Name" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{StaticResource ShellMutedTextBrush}"/>
-                                <TextBox x:Name="ProjectNameTextBox"
-                                         Grid.Column="1"
-                                         MinWidth="220"
-                                         Text="{Binding DataContext.ProjectName, ElementName=RootWindow, UpdateSourceTrigger=PropertyChanged}"
-                                         ToolTip="Project name used for live title blocks and exports."
-                                         AutomationProperties.AutomationId="ProjectNameTextBox"/>
-                            </Grid>
-                            <WrapPanel>
-                                <Button Content="Undo" Click="Undo_Click" ToolTip="Undo (Ctrl+Z)"/>
-                                <Button Content="Redo" Click="Redo_Click" ToolTip="Redo (Ctrl+Y)"/>
-                                <Button x:Name="MobileViewButton" Content="Mobile View" Click="MobileViewButton_Click" ToolTip="Switch to Mobile (iPhone) View"/>
-                            </WrapPanel>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Style="{StaticResource CommandSurfaceCardStyle}">
-                        <StackPanel>
-                            <TextBlock Text="Add Parts" Style="{StaticResource CommandSurfaceHeaderStyle}"/>
-                            <TextBlock Text="Drop common electrical parts into the drawing." Foreground="{StaticResource ShellMutedTextBrush}" TextWrapping="Wrap" Margin="0,4,0,8"/>
-                            <WrapPanel>
-                                <Button Content="Conduit" Click="AddConduit_Click" AutomationProperties.AutomationId="AddConduitButton"/>
-                                <Button Content="Box" Click="AddBox_Click" AutomationProperties.AutomationId="AddBoxButton"/>
-                                <Button Content="Panel" Click="AddPanel_Click" AutomationProperties.AutomationId="AddPanelButton"/>
-                                <Button Content="Support" Click="AddSupport_Click" AutomationProperties.AutomationId="AddSupportButton"/>
-                                <Button Content="Cable Tray" Click="AddCableTray_Click" AutomationProperties.AutomationId="AddCableTrayButton"/>
-                                <Button Content="Hanger" Click="AddHanger_Click" AutomationProperties.AutomationId="AddHangerButton"/>
-                            </WrapPanel>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Style="{StaticResource CommandSurfaceCardStyle}">
-                        <StackPanel>
-                            <TextBlock Text="Layout &amp; Route" Style="{StaticResource CommandSurfaceHeaderStyle}"/>
-                            <TextBlock Text="Sketch geometry, edit conduit paths, and generate routed runs." Foreground="{StaticResource ShellMutedTextBrush}" TextWrapping="Wrap" Margin="0,4,0,8"/>
-                            <WrapPanel>
-                                <Button x:Name="DrawConduitButton" Content="Draw Conduit" Click="DrawConduit_Click" ToolTip="Click to place conduit vertices. Shift constrains to 0°/45°/90°. Double-click to finish." AutomationProperties.AutomationId="DrawConduitButton"/>
-                                <Button x:Name="EditConduitPathButton" Content="Edit Conduit Path" Click="ToggleEditConduitPath_Click" AutomationProperties.AutomationId="EditConduitPathButton"/>
-                                <Button x:Name="SketchLineButton" Content="Sketch Line" Click="SketchLine_Click" ToolTip="Draw a straight or multi-segment sketch line." AutomationProperties.AutomationId="SketchLineButton"/>
-                                <Button x:Name="SketchRectangleButton" Content="Sketch Rectangle" Click="SketchRectangle_Click" ToolTip="Draw a sketch rectangle for box/panel conversion." AutomationProperties.AutomationId="SketchRectangleButton"/>
-                                <Button x:Name="ConvertSketchButton" Content="Convert Sketch" Click="ConvertSketch_Click" ToolTip="Convert selected sketch into components." AutomationProperties.AutomationId="ConvertSketchButton"/>
-                                <Button x:Name="FreehandConduitButton" Content="Freehand Conduit" Click="FreehandConduit_Click" ToolTip="Freehand sketch conduit path." AutomationProperties.AutomationId="FreehandConduitButton"/>
-                                <Button x:Name="AutoRouteButton" Content="Auto-Route" Click="AutoRoute_Click" ToolTip="Generate a conduit run from the selected path or a default route." AutomationProperties.AutomationId="AutoRouteButton"/>
-                            </WrapPanel>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Style="{StaticResource CommandSurfaceCardStyle}">
-                        <StackPanel>
-                            <TextBlock Text="Run Settings" Style="{StaticResource CommandSurfaceHeaderStyle}"/>
-                            <TextBlock Text="Adjust drawing scale, trade size, and unit context before routing." Foreground="{StaticResource ShellMutedTextBrush}" TextWrapping="Wrap" Margin="0,4,0,8"/>
-                            <WrapPanel>
-                                <TextBlock Text="Detail" VerticalAlignment="Center" Margin="5,8,2,0"/>
-                                <ComboBox x:Name="DetailLevelCombo" Width="75" SelectionChanged="DetailLevel_Changed" SelectedIndex="0" Margin="4">
-                                    <ComboBoxItem Content="Coarse"/>
-                                    <ComboBoxItem Content="Medium"/>
-                                    <ComboBoxItem Content="Fine"/>
-                                </ComboBox>
-                                <TextBlock Text="Size" VerticalAlignment="Center" Margin="5,8,2,0"/>
-                                <ComboBox x:Name="TradeSizeCombo" Width="60" SelectionChanged="TradeSize_Changed" SelectedIndex="0" Margin="4">
-                                    <ComboBoxItem Content="1/2"/>
-                                    <ComboBoxItem Content="3/4"/>
-                                    <ComboBoxItem Content="1"/>
-                                    <ComboBoxItem Content="1-1/4"/>
-                                    <ComboBoxItem Content="1-1/2"/>
-                                    <ComboBoxItem Content="2"/>
-                                </ComboBox>
-                                <TextBlock Text="Grid" VerticalAlignment="Center" Margin="5,8,2,0"/>
-                                <TextBox Text="{Binding GridSize}" Width="50" Margin="4"/>
-                                <TextBlock Text="Units" VerticalAlignment="Center" Margin="5,8,2,0"/>
-                                <ComboBox x:Name="UnitSystemCombo" Width="80" SelectionChanged="UnitSystem_Changed" Margin="4">
-                                    <ComboBoxItem Content="Imperial" IsSelected="True"/>
-                                    <ComboBoxItem Content="Metric"/>
-                                </ComboBox>
-                            </WrapPanel>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Style="{StaticResource CommandSurfaceCardStyle}" Margin="0">
-                        <StackPanel>
-                            <TextBlock Text="Export" Style="{StaticResource CommandSurfaceHeaderStyle}"/>
-                            <TextBlock Text="Send routed conduit data out once runs exist." Foreground="{StaticResource ShellMutedTextBrush}" TextWrapping="Wrap" Margin="0,4,0,8"/>
-                            <WrapPanel>
-                                <Button x:Name="ExportRunsCsvButton" Content="Export Runs CSV" Click="ExportRunSchedule_Click" IsEnabled="False"
-                                        AutomationProperties.AutomationId="ExportRunsCsvButton"
-                                        ToolTip="Disabled until at least one conduit run exists. Use Auto-Route or Freehand Conduit first."/>
-                                <Button x:Name="ExportConduitJsonButton" Content="Export Conduit JSON" Click="ExportConduitJson_Click" IsEnabled="False"
-                                        AutomationProperties.AutomationId="ExportConduitJsonButton"
-                                        ToolTip="Disabled until at least one conduit run exists. Use Auto-Route or Freehand Conduit first."/>
-                            </WrapPanel>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-            </ScrollViewer>
-        </Border>
+        <!-- Toolbar -->
+        <ToolBar x:Name="DesktopToolBar" DockPanel.Dock="Top">
+            <Button Content="Undo" Click="Undo_Click" ToolTip="Undo (Ctrl+Z)"/>
+            <Button Content="Redo" Click="Redo_Click" ToolTip="Redo (Ctrl+Y)"/>
+            <Separator/>
+            <Button x:Name="MobileViewButton" Content="Mobile View" Click="MobileViewButton_Click" ToolTip="Switch to Mobile (iPhone) View"/>
+            <Separator/>
+            <Button Content="Conduit" Click="AddConduit_Click" AutomationProperties.AutomationId="AddConduitButton"/>
+            <Button Content="Box" Click="AddBox_Click" AutomationProperties.AutomationId="AddBoxButton"/>
+            <Button Content="Panel" Click="AddPanel_Click" AutomationProperties.AutomationId="AddPanelButton"/>
+            <Button Content="Support" Click="AddSupport_Click" AutomationProperties.AutomationId="AddSupportButton"/>
+            <Button Content="Cable Tray" Click="AddCableTray_Click" AutomationProperties.AutomationId="AddCableTrayButton"/>
+            <Button Content="Hanger" Click="AddHanger_Click" AutomationProperties.AutomationId="AddHangerButton"/>
+            <Separator/>
+            <Button x:Name="DrawConduitButton" Content="Draw Conduit" Click="DrawConduit_Click" ToolTip="Click to place conduit vertices. Shift constrains to 0°/45°/90°. Double-click to finish." AutomationProperties.AutomationId="DrawConduitButton"/>
+            <Button x:Name="EditConduitPathButton" Content="Edit Conduit Path" Click="ToggleEditConduitPath_Click" AutomationProperties.AutomationId="EditConduitPathButton"/>
+            <Button x:Name="SketchLineButton" Content="Sketch Line" Click="SketchLine_Click" ToolTip="Draw a straight or multi-segment sketch line." AutomationProperties.AutomationId="SketchLineButton"/>
+            <Button x:Name="SketchRectangleButton" Content="Sketch Rectangle" Click="SketchRectangle_Click" ToolTip="Draw a sketch rectangle for box/panel conversion." AutomationProperties.AutomationId="SketchRectangleButton"/>
+            <Button x:Name="ConvertSketchButton" Content="Convert Sketch" Click="ConvertSketch_Click" ToolTip="Convert selected sketch into components." AutomationProperties.AutomationId="ConvertSketchButton"/>
+            <Separator/>
+            <Button x:Name="FreehandConduitButton" Content="Freehand Conduit" Click="FreehandConduit_Click" ToolTip="Freehand sketch conduit path." AutomationProperties.AutomationId="FreehandConduitButton"/>
+            <Separator/>
+            <Button x:Name="AutoRouteButton" Content="Auto-Route" Click="AutoRoute_Click" ToolTip="Generate a conduit run from the selected path or a default route." AutomationProperties.AutomationId="AutoRouteButton"/>
+            <Button x:Name="ExportRunsCsvButton" Content="Export Runs CSV" Click="ExportRunSchedule_Click" IsEnabled="False"
+                    AutomationProperties.AutomationId="ExportRunsCsvButton"
+                    ToolTip="Disabled until at least one conduit run exists. Use Auto-Route or Freehand Conduit first."/>
+            <Button x:Name="ExportConduitJsonButton" Content="Export Conduit JSON" Click="ExportConduitJson_Click" IsEnabled="False"
+                    AutomationProperties.AutomationId="ExportConduitJsonButton"
+                    ToolTip="Disabled until at least one conduit run exists. Use Auto-Route or Freehand Conduit first."/>
+            <Separator/>
+            <TextBlock Text="Detail:" VerticalAlignment="Center" Margin="5,0,2,0"/>
+            <ComboBox x:Name="DetailLevelCombo" Width="75" SelectionChanged="DetailLevel_Changed" SelectedIndex="0">
+                <ComboBoxItem Content="Coarse"/>
+                <ComboBoxItem Content="Medium"/>
+                <ComboBoxItem Content="Fine"/>
+            </ComboBox>
+            <TextBlock Text="Size:" VerticalAlignment="Center" Margin="5,0,2,0"/>
+            <ComboBox x:Name="TradeSizeCombo" Width="60" SelectionChanged="TradeSize_Changed" SelectedIndex="0">
+                <ComboBoxItem Content="1/2"/>
+                <ComboBoxItem Content="3/4"/>
+                <ComboBoxItem Content="1"/>
+                <ComboBoxItem Content="1-1/4"/>
+                <ComboBoxItem Content="1-1/2"/>
+                <ComboBoxItem Content="2"/>
+            </ComboBox>
+            <Separator/>
+            <TextBlock Text="Grid Size:" VerticalAlignment="Center"/>
+            <TextBox Text="{Binding GridSize}" Width="50"/>
+            <Separator/>
+            <TextBlock Text="Units:" VerticalAlignment="Center"/>
+            <ComboBox x:Name="UnitSystemCombo" Width="80" SelectionChanged="UnitSystem_Changed">
+                <ComboBoxItem Content="Imperial" IsSelected="True"/>
+                <ComboBoxItem Content="Metric"/>
+            </ComboBox>
+        </ToolBar>
 
         <!-- OSNAP / Tracking status bar -->
         <ToolBar x:Name="OsnapToolBar" DockPanel.Dock="Top" Height="26">
@@ -510,129 +351,90 @@
                 BorderBrush="{StaticResource MobileBorderBrush}"
                 BorderThickness="0,0,0,1"
                 Visibility="Collapsed">
-            <Grid x:Name="MobileTopBarGrid" Margin="8,4">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-                <Grid x:Name="MobileTopBarHeaderGrid" Grid.Row="0" Height="52">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Grid.Column="0">
-                        <Button x:Name="MobileUndoButton" Content="Undo" Click="Undo_Click" Style="{StaticResource MobileTopActionButtonStyle}"/>
-                        <Button x:Name="MobileRedoButton" Content="Redo" Click="Redo_Click" Style="{StaticResource MobileTopActionButtonStyle}"/>
-                    </StackPanel>
-                    <TextBlock x:Name="MobileSectionTitleText"
-                               Grid.Column="1"
-                               Text="Canvas"
-                               FontSize="17"
-                               FontWeight="SemiBold"
-                               VerticalAlignment="Center"
-                               HorizontalAlignment="Center"
-                               Margin="0,-10,0,0"/>
-                    <TextBlock x:Name="MobileTaskSummaryText"
-                               Grid.Column="1"
-                               Text="Import a reference or place the first part to start the layout."
-                               FontSize="11"
-                               Foreground="{StaticResource ShellMutedTextBrush}"
-                               VerticalAlignment="Center"
-                               HorizontalAlignment="Center"
-                               TextAlignment="Center"
-                               TextWrapping="Wrap"
-                               Margin="18,18,18,-2"/>
-                    <StackPanel Orientation="Horizontal" Grid.Column="2" VerticalAlignment="Center">
-                        <Button x:Name="MobileAddTopButton"
-                                Content="Add"
-                                Click="MobileAddTopButton_Click"
-                                Style="{StaticResource MobileTopActionButtonStyle}">
-                            <Button.ContextMenu>
-                                <ContextMenu x:Name="MobileAddMenu"/>
-                            </Button.ContextMenu>
-                        </Button>
-                        <Button x:Name="MobileMoreButton"
-                                Content="More"
-                                Click="MobileMoreButton_Click"
-                                Style="{StaticResource MobileTopActionButtonStyle}">
-                            <Button.ContextMenu>
-                                <ContextMenu x:Name="MobileMoreMenu">
-                                    <MenuItem x:Name="MobileThemeIosMenuItem" Header="Theme: iOS" IsCheckable="True" Click="MobileThemeIosMenuItem_Click"/>
-                                    <MenuItem x:Name="MobileThemeAndroidMenuItem" Header="Theme: Android" IsCheckable="True" Click="MobileThemeAndroidMenuItem_Click"/>
-                                </ContextMenu>
-                            </Button.ContextMenu>
-                        </Button>
-                    </StackPanel>
-                </Grid>
-                <Border x:Name="MobileProjectNameBar"
-                        Grid.Row="1"
-                        Margin="10,0,10,4"
-                        Padding="8,6"
-                        Background="{StaticResource MobileSurfaceAltBrush}"
-                        BorderBrush="{StaticResource MobileBorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="10">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="MobileProjectNameLabelText"
-                                   Text="Project"
-                                   VerticalAlignment="Center"
-                                   Foreground="{StaticResource ShellMutedTextBrush}"
-                                   FontSize="11"
-                                   Margin="0,0,8,0"/>
-                        <TextBox x:Name="MobileProjectNameTextBox"
-                                 Grid.Column="1"
-                                 MinWidth="160"
-                                 Height="30"
-                                 Padding="8,4"
-                                 FontSize="13"
-                                 Text="{Binding DataContext.ProjectName, ElementName=RootWindow, UpdateSourceTrigger=PropertyChanged}"
-                                 ToolTip="Project name used for live title blocks and exports."
-                                 AutomationProperties.AutomationId="MobileProjectNameTextBox"/>
-                    </Grid>
-                </Border>
-                <Border x:Name="MobileOnboardingActionBar"
-                        Grid.Row="2"
-                        Margin="10,2,10,6"
-                        Padding="10,8"
-                        Background="{StaticResource ShellCardBrush}"
-                        BorderBrush="{StaticResource MobileBorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="10"
-                        Visibility="Collapsed">
-                    <StackPanel>
-                        <TextBlock x:Name="MobileOnboardingProgressText"
-                                   FontSize="10"
-                                   FontWeight="SemiBold"
-                                   Foreground="{StaticResource ShellMutedTextBrush}"/>
-                        <TextBlock x:Name="MobileOnboardingActionTitleText"
-                                   Margin="0,2,0,0"
-                                   FontSize="12"
-                                   FontWeight="SemiBold"
-                                   Foreground="{StaticResource ShellPrimaryTextBrush}"
-                                   TextWrapping="Wrap"/>
-                        <WrapPanel x:Name="MobileOnboardingActionButtonsPanel" Margin="0,8,0,0">
-                            <Button x:Name="MobileOnboardingPrimaryActionButton"
-                                    MinWidth="96"
-                                    Click="WorkspaceOnboardingAction_Click"
-                                    Style="{StaticResource QuickActionButtonStyle}"/>
-                            <Button x:Name="MobileOnboardingSecondaryActionButton"
-                                    MinWidth="96"
-                                    Click="WorkspaceOnboardingAction_Click"
-                                    Style="{StaticResource QuickActionButtonStyle}"/>
-                            <Button x:Name="MobileOnboardingDismissButton"
-                                    Content="Later"
-                                    Click="DismissWorkspaceOnboarding_Click"
-                                    Foreground="{StaticResource MobileMutedTextBrush}"
-                                    Style="{StaticResource MobileTopActionButtonStyle}"/>
-                        </WrapPanel>
-                    </StackPanel>
-                </Border>
+            <Grid x:Name="MobileTopBarGrid" Height="52" Margin="8,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Grid.Column="0">
+                    <Button x:Name="MobileUndoButton" Content="Undo" Click="Undo_Click" Style="{StaticResource MobileTopActionButtonStyle}"/>
+                    <Button x:Name="MobileRedoButton" Content="Redo" Click="Redo_Click" Style="{StaticResource MobileTopActionButtonStyle}"/>
+                </StackPanel>
+                <TextBlock x:Name="MobileSectionTitleText"
+                           Grid.Column="1"
+                           Text="Canvas"
+                           FontSize="17"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal" Grid.Column="2" VerticalAlignment="Center">
+                    <Button x:Name="MobileAddTopButton"
+                            Content="Add"
+                            Click="MobileAddTopButton_Click"
+                            Style="{StaticResource MobileTopActionButtonStyle}">
+                        <Button.ContextMenu>
+                            <ContextMenu x:Name="MobileAddMenu">
+                                <MenuItem Header="Conduit" Click="AddConduit_Click"/>
+                                <MenuItem Header="Box" Click="AddBox_Click"/>
+                                <MenuItem Header="Panel" Click="AddPanel_Click"/>
+                                <MenuItem Header="Support" Click="AddSupport_Click"/>
+                                <MenuItem Header="Cable Tray" Click="AddCableTray_Click"/>
+                                <MenuItem Header="Hanger" Click="AddHanger_Click"/>
+                                <Separator/>
+                                <MenuItem Header="Sketch Line" Click="SketchLine_Click"/>
+                                <MenuItem Header="Sketch Rectangle" Click="SketchRectangle_Click"/>
+                                <MenuItem Header="Convert Sketch" Click="ConvertSketch_Click"/>
+                                <Separator/>
+                                <MenuItem Header="Draw Conduit" Click="DrawConduit_Click"/>
+                                <MenuItem Header="Freehand Conduit" Click="FreehandConduit_Click"/>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                    <Button x:Name="MobileMoreButton"
+                            Content="More"
+                            Click="MobileMoreButton_Click"
+                            Style="{StaticResource MobileTopActionButtonStyle}">
+                        <Button.ContextMenu>
+                            <ContextMenu x:Name="MobileMoreMenu">
+                                <MenuItem Header="Open Project..." Click="OpenProject_Click"/>
+                                <MenuItem Header="Save Project" Click="SaveProject_Click"/>
+                                <MenuItem Header="Import PDF Underlay..." Click="ImportPdf_Click"/>
+                                <Separator/>
+                                <MenuItem Header="2D Plan View" Click="Show2DView_Click"/>
+                                <MenuItem Header="3D Viewport" Click="Show3DView_Click"/>
+                                <Separator/>
+                                <MenuItem Header="Convert Sketch" Click="ConvertSketch_Click"/>
+                                <Separator/>
+                                <MenuItem Header="Delete Selected" Click="DeleteComponent_Click"/>
+                                <MenuItem Header="Edit Selected Geometry..."
+                                          Click="EditSelectedMarkupGeometry_Click"
+                                          IsEnabled="{Binding MarkupTool.HasGeometryEditableSelection}"
+                                          ToolTip="{Binding MarkupTool.SelectedMarkupGeometryEditSummary}"/>
+                                <MenuItem Header="Edit Selected Annotation Text..."
+                                          Click="EditSelectedStructuredMarkup_Click"
+                                          IsEnabled="{Binding MarkupTool.HasTextEditableSelection}"
+                                          ToolTip="{Binding MarkupTool.SelectedMarkupTextEditSummary}"/>
+                                <MenuItem Header="Edit Selected Appearance..."
+                                          Click="EditSelectedMarkupAppearance_Click"
+                                          IsEnabled="{Binding MarkupTool.HasAppearanceEditableSelection}"
+                                          ToolTip="{Binding MarkupTool.SelectedMarkupAppearanceEditSummary}"/>
+                                <MenuItem Header="Insert Vertex"
+                                          Click="InsertSelectedMarkupVertex_Click"
+                                          IsEnabled="{Binding MarkupTool.HasPathVertexInsertCandidate}"
+                                          ToolTip="{Binding MarkupTool.SelectedMarkupPathInsertSummary}"/>
+                                <MenuItem Header="Delete Active Vertex"
+                                          Click="DeleteSelectedMarkupVertex_Click"
+                                          IsEnabled="{Binding MarkupTool.HasPathVertexDeleteCandidate}"
+                                          ToolTip="{Binding MarkupTool.SelectedMarkupPathDeleteSummary}"/>
+                                <Separator/>
+                                <MenuItem x:Name="MobileThemeIosMenuItem" Header="Theme: iOS" IsCheckable="True" Click="MobileThemeIosMenuItem_Click"/>
+                                <MenuItem x:Name="MobileThemeAndroidMenuItem" Header="Theme: Android" IsCheckable="True" Click="MobileThemeAndroidMenuItem_Click"/>
+                                <MenuItem Header="Desktop View" Click="MobileViewButton_Click"/>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                </StackPanel>
             </Grid>
         </Border>
 
@@ -644,167 +446,10 @@
                 BorderThickness="0,1,0,0"
                 Visibility="Collapsed">
             <UniformGrid Columns="3" Rows="1">
-                <Button x:Name="MobileCanvasButton" Content="Draw&#10;Plan" Click="MobileCanvasButton_Click" Style="{StaticResource MobileNavButtonStyle}"/>
-                <Button x:Name="MobileLibraryButton" Content="Add&#10;Parts" Click="MobileLibraryButton_Click" Style="{StaticResource MobileNavButtonStyle}"/>
-                <Button x:Name="MobilePropertiesButton" Content="Inspect&#10;Next" Click="MobilePropertiesButton_Click" Style="{StaticResource MobileNavButtonStyle}"/>
+                <Button x:Name="MobileCanvasButton" Content="Canvas&#10;Plan" Click="MobileCanvasButton_Click" Style="{StaticResource MobileNavButtonStyle}"/>
+                <Button x:Name="MobileLibraryButton" Content="Library&#10;Parts" Click="MobileLibraryButton_Click" Style="{StaticResource MobileNavButtonStyle}"/>
+                <Button x:Name="MobilePropertiesButton" Content="Properties&#10;Edit" Click="MobilePropertiesButton_Click" Style="{StaticResource MobileNavButtonStyle}"/>
             </UniformGrid>
-        </Border>
-
-        <Border x:Name="DesktopWorkspaceOverview"
-                DockPanel.Dock="Top"
-                Margin="12,12,12,8"
-                Padding="14"
-                Background="{StaticResource ShellSurfaceBrush}"
-                BorderBrush="{StaticResource ShellBorderBrush}"
-                BorderThickness="1"
-                CornerRadius="10">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="1.2*"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" Margin="0,0,14,0">
-                    <TextBlock Text="Guided Workspace"
-                               FontSize="20"
-                               FontWeight="SemiBold"
-                               Foreground="{StaticResource ShellPrimaryTextBrush}"
-                               Margin="0"/>
-                    <TextBlock Text="Key project context, current focus, and the next likely action stay visible here so first-time users do not need to decode every menu first."
-                               TextWrapping="Wrap"
-                               Foreground="{StaticResource ShellMutedTextBrush}"
-                               Margin="0,6,0,0"/>
-                    <Border x:Name="WorkspaceOnboardingCard"
-                            Margin="0,12,0,0"
-                            Padding="12"
-                            Background="{StaticResource ShellCardBrush}"
-                            BorderBrush="{StaticResource ShellBorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="8"
-                            Visibility="Collapsed">
-                        <StackPanel>
-                            <TextBlock x:Name="WorkspaceOnboardingProgressTextBlock"
-                                       Text="Step 1 of 3"
-                                       FontSize="11"
-                                       FontWeight="Bold"
-                                       Foreground="{StaticResource ShellMutedTextBrush}"
-                                       Margin="0"/>
-                            <TextBlock x:Name="WorkspaceOnboardingTitleTextBlock"
-                                       Text="Bring in project context"
-                                       FontSize="15"
-                                       FontWeight="SemiBold"
-                                       Foreground="{StaticResource ShellPrimaryTextBrush}"
-                                       TextWrapping="Wrap"
-                                       Margin="0,6,0,0"/>
-                            <TextBlock x:Name="WorkspaceOnboardingSummaryTextBlock"
-                                       Text="Import a reference drawing or open an existing project so the plan starts from real geometry instead of a blank canvas."
-                                       TextWrapping="Wrap"
-                                       Foreground="{StaticResource ShellMutedTextBrush}"
-                                       Margin="0,6,0,0"/>
-                            <TextBlock x:Name="WorkspaceOnboardingChecklistTextBlock"
-                                       Text="Reference: next&#10;Layout: later&#10;Inspect: later"
-                                       TextWrapping="Wrap"
-                                       Foreground="{StaticResource ShellPrimaryTextBrush}"
-                                       Margin="0,8,0,0"/>
-                            <WrapPanel Margin="0,10,0,0">
-                                <Button x:Name="WorkspaceOnboardingPrimaryActionButton"
-                                        Content="Import Reference"
-                                        Style="{StaticResource InspectorTaskActionButtonStyle}"
-                                        Click="WorkspaceOnboardingAction_Click"/>
-                                <Button x:Name="WorkspaceOnboardingSecondaryActionButton"
-                                        Content="Open Project"
-                                        Style="{StaticResource InspectorTaskActionButtonStyle}"
-                                        Click="WorkspaceOnboardingAction_Click"/>
-                                <Button x:Name="WorkspaceOnboardingDismissButton"
-                                        Content="Hide Walkthrough"
-                                        Style="{StaticResource InspectorTaskActionButtonStyle}"
-                                        Click="DismissWorkspaceOnboarding_Click"/>
-                            </WrapPanel>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-                <Border Grid.Column="1"
-                        Margin="0,0,10,0"
-                        Padding="12"
-                        Background="{StaticResource ShellCardBrush}"
-                        BorderBrush="{StaticResource ShellBorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="8">
-                    <StackPanel>
-                        <TextBlock Text="Workspace"
-                                   FontSize="11"
-                                   FontWeight="Bold"
-                                   Foreground="{StaticResource ShellMutedTextBrush}"
-                                   Margin="0"/>
-                        <TextBlock x:Name="WorkspaceOverviewTitleTextBlock"
-                                   Text="No active drawing sheet"
-                                   FontSize="15"
-                                   FontWeight="SemiBold"
-                                   Foreground="{StaticResource ShellPrimaryTextBrush}"
-                                   TextWrapping="Wrap"
-                                   Margin="0,6,0,0"/>
-                        <TextBlock x:Name="WorkspaceOverviewDetailTextBlock"
-                                   Text="Add a sheet or open a project to begin."
-                                   TextWrapping="Wrap"
-                                   Foreground="{StaticResource ShellMutedTextBrush}"
-                                   Margin="0,4,0,0"/>
-                    </StackPanel>
-                </Border>
-                <Border Grid.Column="2"
-                        Margin="0,0,10,0"
-                        Padding="12"
-                        Background="{StaticResource ShellCardBrush}"
-                        BorderBrush="{StaticResource ShellBorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="8">
-                    <StackPanel>
-                        <TextBlock Text="Focus"
-                                   FontSize="11"
-                                   FontWeight="Bold"
-                                   Foreground="{StaticResource ShellMutedTextBrush}"
-                                   Margin="0"/>
-                        <TextBlock x:Name="WorkspaceFocusTextBlock"
-                                   Text="Nothing is selected yet."
-                                   FontSize="14"
-                                   FontWeight="SemiBold"
-                                   Foreground="{StaticResource ShellPrimaryTextBrush}"
-                                   TextWrapping="Wrap"
-                                   Margin="0,6,0,0"/>
-                    </StackPanel>
-                </Border>
-                <Border Grid.Column="3"
-                        Padding="12"
-                        Background="{StaticResource ShellCardBrush}"
-                        BorderBrush="{StaticResource ShellBorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="8">
-                    <StackPanel>
-                        <TextBlock Text="Next Best Step"
-                                   FontSize="11"
-                                   FontWeight="Bold"
-                                   Foreground="{StaticResource ShellMutedTextBrush}"
-                                   Margin="0"/>
-                        <TextBlock x:Name="WorkspaceNextStepTextBlock"
-                                   Text="Import a reference drawing or add the first component."
-                                   FontSize="14"
-                                   FontWeight="SemiBold"
-                                   Foreground="{StaticResource ShellPrimaryTextBrush}"
-                                   TextWrapping="Wrap"
-                                   Margin="0,6,0,0"/>
-                        <TextBlock Text="Review Snapshot"
-                                   FontSize="11"
-                                   FontWeight="Bold"
-                                   Foreground="{StaticResource ShellMutedTextBrush}"
-                                   Margin="0,10,0,0"/>
-                        <TextBlock x:Name="WorkspaceReviewTextBlock"
-                                   Text="No review issues yet."
-                                   TextWrapping="Wrap"
-                                   Foreground="{StaticResource ShellMutedTextBrush}"
-                                   Margin="0,6,0,0"/>
-                    </StackPanel>
-                </Border>
-            </Grid>
         </Border>
         
         <!-- Main Content -->
@@ -818,147 +463,7 @@
             <!-- Library Browser + Layers -->
             <Border x:Name="LibraryPanelContainer" Grid.Column="0" BorderBrush="Gray" BorderThickness="0,0,1,0">
                 <DockPanel>
-                    <Border DockPanel.Dock="Top"
-                            Margin="8,8,8,4"
-                            Padding="10"
-                            Background="{StaticResource ShellSurfaceBrush}"
-                            BorderBrush="{StaticResource ShellBorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="8">
-                        <StackPanel>
-                            <TextBlock Text="Start Here"
-                                       FontSize="15"
-                                       FontWeight="SemiBold"
-                                       Foreground="{StaticResource ShellPrimaryTextBrush}"
-                                       Margin="0"/>
-                            <TextBlock x:Name="WorkspaceGuidanceTextBlock"
-                                       Text="Start with a reference drawing, then place a few parts or sketch a conduit run."
-                                       TextWrapping="Wrap"
-                                       Foreground="{StaticResource ShellMutedTextBrush}"
-                                       Margin="0,6,0,0"/>
-                            <UniformGrid Columns="2" Margin="0,8,0,0">
-                                <Button Style="{StaticResource QuickActionButtonStyle}" Content="Import Drawing" Click="ImportPdf_Click"/>
-                                <Button Style="{StaticResource QuickActionButtonStyle}" Content="Add Conduit" Click="AddConduit_Click"/>
-                                <Button Style="{StaticResource QuickActionButtonStyle}" Content="Draw Route" Click="DrawConduit_Click"/>
-                                <Button Style="{StaticResource QuickActionButtonStyle}" Content="Add Review Note" Click="AddCallout_Click"/>
-                            </UniformGrid>
-                            <TextBlock x:Name="WorkspaceHintTextBlock"
-                                       Text="Recommended path: import a sheet, add or route components, then review issues in the Markups tab."
-                                       TextWrapping="Wrap"
-                                       Foreground="{StaticResource ShellMutedTextBrush}"
-                                       Margin="0,8,0,0"/>
-                        </StackPanel>
-                    </Border>
-                    <TextBlock DockPanel.Dock="Top" Text="Project &amp; Sheets" 
-                             FontWeight="Bold" FontSize="14" 
-                             Padding="10" Background="LightGray"/>
-                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="5">
-                        <Button x:Name="AddSheetButton" Content="Add Sheet" Click="AddSheet_Click" Padding="5,2" Margin="2"/>
-                        <Button x:Name="RenameSheetButton" Content="Rename" Click="RenameSheet_Click" Padding="5,2" Margin="2"/>
-                        <Button x:Name="DeleteSheetButton" Content="Delete" Click="DeleteSheet_Click" Padding="5,2" Margin="2"/>
-                    </StackPanel>
-                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="5,0,5,5">
-                        <Button x:Name="MoveSheetUpButton" Content="Up" Click="MoveSheetUp_Click" Padding="5,2" Margin="2"/>
-                        <Button x:Name="MoveSheetDownButton" Content="Down" Click="MoveSheetDown_Click" Padding="5,2" Margin="2"/>
-                        <TextBlock x:Name="ActiveSheetSummaryTextBlock" VerticalAlignment="Center" Margin="8,0,0,0" Text="1 sheet"/>
-                    </StackPanel>
-                    <Border DockPanel.Dock="Top"
-                            Margin="5,0,5,5"
-                            Padding="8"
-                            Background="{StaticResource ShellSurfaceBrush}"
-                            BorderBrush="{StaticResource ShellBorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="6">
-                        <StackPanel>
-                            <TextBlock Text="Sheet Details"
-                                       FontWeight="SemiBold"
-                                       Foreground="{StaticResource ShellPrimaryTextBrush}"/>
-                            <TextBlock x:Name="SheetRevisionSummaryTextBlock"
-                                       Margin="0,4,0,0"
-                                       Text="Select a sheet to manage revisions and approval state."
-                                       TextWrapping="Wrap"
-                                       Foreground="{StaticResource ShellMutedTextBrush}"/>
-                            <TextBlock Text="Status"
-                                       Margin="0,8,0,0"
-                                       FontWeight="SemiBold"
-                                       Foreground="{StaticResource ShellPrimaryTextBrush}"/>
-                            <ComboBox x:Name="SheetStatusComboBox"
-                                      Margin="0,4,0,6"
-                                      SelectionChanged="SheetStatusComboBox_SelectionChanged">
-                                <ComboBoxItem Tag="Draft" Content="Draft"/>
-                                <ComboBoxItem Tag="InReview" Content="In Review"/>
-                                <ComboBoxItem Tag="Approved" Content="Approved"/>
-                                <ComboBoxItem Tag="Archived" Content="Archived"/>
-                            </ComboBox>
-                            <TextBlock Text="Revision History"
-                                       FontWeight="SemiBold"
-                                       Foreground="{StaticResource ShellPrimaryTextBrush}"/>
-                            <ListBox x:Name="SheetRevisionListBox"
-                                     Height="118"
-                                     Margin="0,4,0,0"
-                                     DisplayMemberPath="DisplayText"
-                                     SelectionChanged="SheetRevisionListBox_SelectionChanged"/>
-                                <TextBlock Text="Revision Number"
-                                       Margin="0,8,0,0"
-                                       FontWeight="SemiBold"
-                                       Foreground="{StaticResource ShellPrimaryTextBrush}"/>
-                                <TextBox x:Name="SheetRevisionNumberTextBox"
-                                     Margin="0,4,0,0"
-                                     TextChanged="SheetRevisionEditor_TextChanged"/>
-                                <TextBlock Text="Revision Date"
-                                       Margin="0,8,0,0"
-                                       FontWeight="SemiBold"
-                                       Foreground="{StaticResource ShellPrimaryTextBrush}"/>
-                                <TextBox x:Name="SheetRevisionDateTextBox"
-                                     Margin="0,4,0,0"
-                                     TextChanged="SheetRevisionEditor_TextChanged"/>
-                                <TextBlock Text="Author"
-                                       Margin="0,8,0,0"
-                                       FontWeight="SemiBold"
-                                       Foreground="{StaticResource ShellPrimaryTextBrush}"/>
-                                <TextBox x:Name="SheetRevisionAuthorTextBox"
-                                     Margin="0,4,0,0"
-                                     TextChanged="SheetRevisionEditor_TextChanged"/>
-                                <TextBlock Text="Description"
-                                       Margin="0,8,0,0"
-                                       FontWeight="SemiBold"
-                                       Foreground="{StaticResource ShellPrimaryTextBrush}"/>
-                                <TextBox x:Name="SheetRevisionDescriptionTextBox"
-                                     Margin="0,4,0,0"
-                                     MinLines="3"
-                                     AcceptsReturn="True"
-                                     TextWrapping="Wrap"
-                                     VerticalScrollBarVisibility="Auto"
-                                     TextChanged="SheetRevisionEditor_TextChanged"/>
-                                <TextBlock x:Name="SheetRevisionValidationTextBlock"
-                                       Margin="0,6,0,0"
-                                       Foreground="Firebrick"
-                                       Visibility="Collapsed"
-                                       TextWrapping="Wrap"/>
-                                <WrapPanel Margin="0,8,0,0">
-                                <Button x:Name="AddSheetRevisionButton"
-                                    Content="New Revision"
-                                    Click="AddSheetRevision_Click"
-                                    Margin="0,0,6,0"/>
-                                <Button x:Name="SaveSheetRevisionButton"
-                                    Content="Add Revision"
-                                    Click="SaveSheetRevision_Click"
-                                    Margin="0,0,6,0"/>
-                                <Button x:Name="RemoveSheetRevisionButton"
-                                    Content="Remove Revision"
-                                    Click="RemoveSheetRevision_Click"/>
-                                </WrapPanel>
-                        </StackPanel>
-                    </Border>
-                          <TreeView x:Name="ProjectBrowserTreeView"
-                              DockPanel.Dock="Top"
-                              Height="170"
-                              Margin="5,0,5,5"
-                              ItemsSource="{Binding ProjectBrowserItems}"
-                              ItemContainerStyle="{StaticResource ProjectBrowserTreeItemStyle}"
-                              SelectedItemChanged="ProjectBrowserTreeView_SelectedItemChanged"/>
-
-                    <TextBlock DockPanel.Dock="Top" Text="Parts Catalog" 
+                    <TextBlock DockPanel.Dock="Top" Text="Component Library" 
                              FontWeight="Bold" FontSize="14" 
                              Padding="10" Background="LightGray"/>
                     <ListBox x:Name="LibraryListBox" DockPanel.Dock="Top" Height="200"
@@ -968,7 +473,7 @@
                            MouseDoubleClick="LibraryItem_DoubleClick"/>
                     
                     <!-- Layers Panel -->
-                    <TextBlock DockPanel.Dock="Top" Text="Visibility &amp; Layers" 
+                    <TextBlock DockPanel.Dock="Top" Text="Layers" 
                              FontWeight="Bold" FontSize="14" 
                              Padding="10" Background="LightGray"/>
                     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="5">
@@ -1024,9 +529,9 @@
                     <TabControl x:Name="ViewTabs" DockPanel.Dock="Top">
                         <!-- 3D Viewport Tab -->
                         <TabItem Header="3D Viewport">
-                            <Grid>
+                            <DockPanel>
                                 <!-- Section cut slider -->
-                                <StackPanel VerticalAlignment="Bottom" Orientation="Horizontal" 
+                                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" 
                                            Background="#F0F0F0" Margin="0">
                                     <TextBlock Text="Section Cut:" VerticalAlignment="Center" Margin="6,3"/>
                                     <CheckBox x:Name="SectionCutEnabled" Content="Enable" 
@@ -1060,33 +565,7 @@
                                                         Thickness="0.01"
                                                         Fill="LightGray"/>
                                 </h:HelixViewport3D>
-                                <Border x:Name="ViewportGuidanceCard"
-                                        Grid.ZIndex="20"
-                                        Style="{StaticResource CanvasGuidanceCardStyle}"
-                                        HorizontalAlignment="Center"
-                                        VerticalAlignment="Center"
-                                        Visibility="Collapsed">
-                                    <StackPanel>
-                                        <TextBlock x:Name="ViewportGuidanceTitleTextBlock"
-                                                   Text="3D workspace is empty"
-                                                   Style="{StaticResource CanvasGuidanceTitleStyle}"/>
-                                        <TextBlock x:Name="ViewportGuidanceSummaryTextBlock"
-                                                   Text="Place the first part to begin shaping the model in 3D."
-                                                   Style="{StaticResource CanvasGuidanceBodyStyle}"/>
-                                        <TextBlock x:Name="ViewportGuidanceHintTextBlock"
-                                                   Text="You can start in 2D to trace a reference drawing, then return here to verify elevation and fit."
-                                                   Style="{StaticResource CanvasGuidanceBodyStyle}"/>
-                                        <WrapPanel Margin="0,8,0,0">
-                                            <Button Content="Add Equipment"
-                                                    Style="{StaticResource CanvasGuidanceActionButtonStyle}"
-                                                    Click="AddBox_Click"/>
-                                            <Button Content="Open 2D Plan"
-                                                    Style="{StaticResource CanvasGuidanceActionButtonStyle}"
-                                                    Click="Show2DView_Click"/>
-                                        </WrapPanel>
-                                    </StackPanel>
-                                </Border>
-                            </Grid>
+                            </DockPanel>
                         </TabItem>
                         
                         <!-- 2D Plan View Tab -->
@@ -1179,34 +658,6 @@
                                                 </Canvas.LayoutTransform>
                                             </Canvas>
                                         </ScrollViewer>
-                                        <Border x:Name="PlanCanvasGuidanceCard"
-                                                Grid.ZIndex="20"
-                                                Style="{StaticResource CanvasGuidanceCardStyle}"
-                                                HorizontalAlignment="Center"
-                                                VerticalAlignment="Center"
-                                                Visibility="Collapsed">
-                                            <StackPanel>
-                                                <TextBlock x:Name="PlanCanvasGuidanceTitleTextBlock"
-                                                           Text="Start the 2D plan"
-                                                           Style="{StaticResource CanvasGuidanceTitleStyle}"/>
-                                                <TextBlock x:Name="PlanCanvasGuidanceSummaryTextBlock"
-                                                           Text="Import a drawing underlay or place the first conduit run to begin layout work."
-                                                           Style="{StaticResource CanvasGuidanceBodyStyle}"/>
-                                                <TextBlock x:Name="PlanCanvasGuidanceHintTextBlock"
-                                                           Text="2D is the fastest place to trace, place, and review before checking the model in 3D."
-                                                           Style="{StaticResource CanvasGuidanceBodyStyle}"/>
-                                                <WrapPanel Margin="0,8,0,0">
-                                                    <Button x:Name="PlanCanvasGuidancePrimaryActionButton"
-                                                        Content="Import Reference"
-                                                            Style="{StaticResource CanvasGuidanceActionButtonStyle}"
-                                                        Click="PlanCanvasGuidanceAction_Click"/>
-                                                    <Button x:Name="PlanCanvasGuidanceSecondaryActionButton"
-                                                        Content="Add Conduit"
-                                                            Style="{StaticResource CanvasGuidanceActionButtonStyle}"
-                                                        Click="PlanCanvasGuidanceAction_Click"/>
-                                                </WrapPanel>
-                                            </StackPanel>
-                                        </Border>
                                     </Grid>
                                 </DockPanel>
                             </Grid>
@@ -1217,75 +668,12 @@
             
             <!-- Properties Panel -->
             <Border x:Name="PropertiesPanelContainer" Grid.Column="2" BorderBrush="Gray" BorderThickness="0">
-                <DockPanel>
-                    <Border DockPanel.Dock="Top" Style="{StaticResource InspectorHeaderCardStyle}">
-                        <StackPanel>
-                            <TextBlock x:Name="InspectorTitleTextBlock"
-                                       Text="Contextual Inspector"
-                                       FontSize="16"
-                                       FontWeight="Bold"
-                                       Foreground="{StaticResource ShellPrimaryTextBrush}"
-                                       Margin="0"/>
-                            <TextBlock x:Name="InspectorSummaryTextBlock"
-                                       Text="Select a component or markup to focus the inspector."
-                                       TextWrapping="Wrap"
-                                       Foreground="{StaticResource ShellPrimaryTextBrush}"
-                                       Margin="0,4,0,0"/>
-                            <TextBlock x:Name="InspectorHintTextBlock"
-                                       Text="Component details stay on the left tab. Review threads, status, and replies stay on the right tab."
-                                       TextWrapping="Wrap"
-                                       Foreground="{StaticResource ShellMutedTextBrush}"
-                                       Margin="0,4,0,0"/>
-                            <WrapPanel Margin="0,8,0,0">
-                                <Button x:Name="InspectorComponentModeButton"
-                                        Content="Component Details"
-                                        Style="{StaticResource InspectorModeButtonStyle}"
-                                        Click="ShowInspectorComponentMode_Click"/>
-                                <Button x:Name="InspectorMarkupModeButton"
-                                        Content="Review &amp; Markups"
-                                        Style="{StaticResource InspectorModeButtonStyle}"
-                                        Click="ShowInspectorMarkupMode_Click"/>
-                            </WrapPanel>
-                                <Border x:Name="InspectorTaskPanel"
-                                    Margin="0,10,0,0"
-                                    Style="{StaticResource InspectorTaskCardStyle}">
-                                <StackPanel>
-                                    <TextBlock x:Name="InspectorTaskTitleTextBlock"
-                                           Text="Start Here"
-                                           FontSize="12"
-                                           FontWeight="Bold"
-                                           Foreground="{StaticResource ShellMutedTextBrush}"
-                                           Margin="0"/>
-                                    <TextBlock x:Name="InspectorTaskSummaryTextBlock"
-                                           Text="Bring in a reference, place the first conduit run, or jump into markup review."
-                                           TextWrapping="Wrap"
-                                           Foreground="{StaticResource ShellPrimaryTextBrush}"
-                                           Margin="0,6,0,0"/>
-                                    <WrapPanel Margin="0,8,0,0">
-                                    <Button x:Name="InspectorPrimaryActionButton"
-                                        Content="Import Reference"
-                                        Style="{StaticResource InspectorTaskActionButtonStyle}"
-                                        Click="InspectorActionButton_Click"/>
-                                    <Button x:Name="InspectorSecondaryActionButton"
-                                        Content="Add Conduit"
-                                        Style="{StaticResource InspectorTaskActionButtonStyle}"
-                                        Click="InspectorActionButton_Click"/>
-                                    <Button x:Name="InspectorTertiaryActionButton"
-                                        Content="Review Markups"
-                                        Style="{StaticResource InspectorTaskActionButtonStyle}"
-                                        Click="InspectorActionButton_Click"/>
-                                    </WrapPanel>
-                                </StackPanel>
-                                </Border>
-                        </StackPanel>
-                    </Border>
-
-                    <TabControl x:Name="RightPanelTabs" SelectionChanged="RightPanelTabs_SelectionChanged">
+                <TabControl x:Name="RightPanelTabs" SelectionChanged="RightPanelTabs_SelectionChanged">
 
                     <!-- Properties tab (existing content) -->
                     <TabItem x:Name="PropertiesInspectorTab" Header="Component Details">
                         <DockPanel>
-                            <TextBlock DockPanel.Dock="Top" Text="Component Details" 
+                            <TextBlock DockPanel.Dock="Top" Text="Properties" 
                                      FontWeight="Bold" FontSize="14" 
                                      Padding="10" Background="LightGray"/>
                     
@@ -1299,13 +687,6 @@
                             <StackPanel x:Name="ComponentProperties" 
                                       Visibility="{Binding SelectedComponent, 
                                       Converter={StaticResource NotNullToVisibilityConverter}}">
-                                  <TextBlock x:Name="MultiSelectionSummaryTextBlock"
-                                         Visibility="Collapsed"
-                                         Text=""
-                                         TextWrapping="Wrap"
-                                         Foreground="Gray"
-                                         FontStyle="Italic"
-                                         Margin="0,0,0,8"/>
                                 
                                 <!-- Basic Properties -->
                                 <TextBlock Text="Basic Properties" FontWeight="Bold"/>
@@ -1404,126 +785,9 @@
                                            Foreground="Gray"
                                            FontStyle="Italic"
                                            Margin="0,0,0,6"/>
-
-                                <TextBlock Text="Project Parameter Bindings" FontWeight="Bold" Margin="0,10,0,0"/>
-                                <TextBlock x:Name="ProjectParameterBindingSummaryTextBlock"
-                                       Text="No project parameters are defined yet."
-                                       TextWrapping="Wrap"
-                                       Foreground="Gray"
-                                       FontStyle="Italic"
-                                       Margin="0,0,0,6"/>
-                                <Button x:Name="ManageProjectParametersButton"
-                                    Content="Manage Project Parameters..."
-                                    Click="ManageProjectParameters_Click"
-                                    Margin="0,0,0,8"/>
-
-                                <Border x:Name="ProjectParameterEditorPanel"
-                                    Visibility="Collapsed"
-                                    Margin="0,0,0,8"
-                                    Padding="8"
-                                    Background="{StaticResource ShellSurfaceBrush}"
-                                    BorderBrush="{StaticResource ShellBorderBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="6">
-                                    <StackPanel>
-                                    <TextBlock Text="Project Parameter Editor" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                                    <TextBlock Text="Search:" Margin="0,0,0,0"/>
-                                    <TextBox x:Name="ProjectParameterSearchTextBox"
-                                         TextChanged="ProjectParameterSearchTextBox_TextChanged"
-                                         Margin="0,0,0,6"/>
-                                    <ListBox x:Name="ProjectParameterListBox"
-                                         Height="110"
-                                         DisplayMemberPath="DisplayName"
-                                         SelectionChanged="ProjectParameterListBox_SelectionChanged"
-                                         Margin="0,0,0,6"/>
-                                    <TextBlock x:Name="ProjectParameterUsageTextBlock"
-                                           Text="No project parameters exist yet. Create one to reuse the same dimensional value across multiple components."
-                                           TextWrapping="Wrap"
-                                           Foreground="Gray"
-                                           FontStyle="Italic"
-                                           Margin="0,0,0,6"/>
-                                    <TextBlock Text="Name:" Margin="0,0,0,0"/>
-                                    <TextBox x:Name="ProjectParameterNameEditorTextBox"
-                                         TextChanged="ProjectParameterNameEditorTextBox_TextChanged"
-                                         Margin="0,0,0,6"/>
-                                     <TextBlock Text="Type:" Margin="0,0,0,0"/>
-                                     <ComboBox x:Name="ProjectParameterValueKindComboBox"
-                                             Margin="0,0,0,6"
-                                             SelectionChanged="ProjectParameterValueKindComboBox_SelectionChanged">
-                                        <ComboBoxItem Tag="Length" Content="Length"/>
-                                        <ComboBoxItem Tag="Text" Content="Text"/>
-                                     </ComboBox>
-                                    <TextBlock Text="Value:" Margin="0,0,0,0"/>
-                                    <TextBox x:Name="ProjectParameterValueEditorTextBox"
-                                         TextChanged="ProjectParameterValueEditorTextBox_TextChanged"
-                                         Margin="0,0,0,6"/>
-                                        <TextBlock Text="Formula (optional):" Margin="0,0,0,0"/>
-                                        <TextBox x:Name="ProjectParameterFormulaEditorTextBox"
-                                                 Margin="0,0,0,4"
-                                                 TextChanged="ProjectParameterFormulaEditorTextBox_TextChanged"/>
-                                        <TextBlock Text="Length parameters support [Parameter Name] references with decimal arithmetic, for example [Base Width] * 2 + 0.5. Text parameters store direct values only."
-                                                   TextWrapping="Wrap"
-                                                   Foreground="Gray"
-                                                   FontStyle="Italic"
-                                                   Margin="0,0,0,6"/>
-                                        <TextBlock x:Name="ProjectParameterPreviewTextBlock"
-                                                   Visibility="Collapsed"
-                                                   Foreground="SeaGreen"
-                                                   Margin="0,0,0,4"
-                                                   TextWrapping="Wrap"/>
-                                        <TextBlock x:Name="ProjectParameterValidationTextBlock"
-                                                   Visibility="Collapsed"
-                                                   Foreground="Firebrick"
-                                                   Margin="0,0,0,6"
-                                                   TextWrapping="Wrap"/>
-                                    <WrapPanel Margin="0,0,0,0">
-                                        <Button x:Name="ProjectParameterNewButton"
-                                            Content="New"
-                                            Click="NewProjectParameter_Click"
-                                            Margin="0,0,6,0"/>
-                                        <Button x:Name="ProjectParameterSaveButton"
-                                            Content="Add Parameter"
-                                            Click="SaveProjectParameter_Click"
-                                            Margin="0,0,6,0"/>
-                                        <Button x:Name="ProjectParameterDeleteButton"
-                                            Content="Delete"
-                                            Click="DeleteProjectParameter_Click"
-                                            IsEnabled="False"
-                                            Margin="0,0,6,0"/>
-                                        <Button x:Name="ProjectParameterCloseButton"
-                                            Content="Close"
-                                            Click="CloseProjectParameterEditor_Click"
-                                            Margin="0"/>
-                                    </WrapPanel>
-                                    </StackPanel>
-                                </Border>
-
-                                <TextBlock Text="Width Parameter:"/>
-                                <ComboBox x:Name="WidthParameterBindingComboBox"
-                                      DisplayMemberPath="DisplayName"
-                                      SelectedValuePath="ParameterId"/>
-
-                                <TextBlock Text="Height Parameter:" Margin="0,6,0,0"/>
-                                <ComboBox x:Name="HeightParameterBindingComboBox"
-                                      DisplayMemberPath="DisplayName"
-                                      SelectedValuePath="ParameterId"/>
-
-                                <TextBlock Text="Depth Parameter:" Margin="0,6,0,0"/>
-                                <ComboBox x:Name="DepthParameterBindingComboBox"
-                                      DisplayMemberPath="DisplayName"
-                                      SelectedValuePath="ParameterId"/>
-
-                                <TextBlock Text="Elevation Parameter:" Margin="0,6,0,0"/>
-                                <ComboBox x:Name="ElevationParameterBindingComboBox"
-                                      DisplayMemberPath="DisplayName"
-                                      SelectedValuePath="ParameterId"/>
                                 
                                 <TextBlock Text="Material:"/>
                                 <TextBox x:Name="MaterialTextBox"/>
-                                  <TextBlock Text="Material Parameter:" Margin="0,4,0,0"/>
-                                  <ComboBox x:Name="MaterialParameterBindingComboBox"
-                                      DisplayMemberPath="DisplayName"
-                                      SelectedValuePath="ParameterId"/>
                                 
                                 <TextBlock Text="Elevation:"/>
                                 <TextBox x:Name="ElevationTextBox"/>
@@ -1533,32 +797,13 @@
 
                                 <TextBlock Text="Manufacturer:"/>
                                 <TextBox x:Name="ManufacturerTextBox"/>
-                                  <TextBlock Text="Manufacturer Parameter:" Margin="0,4,0,0"/>
-                                  <ComboBox x:Name="ManufacturerParameterBindingComboBox"
-                                      DisplayMemberPath="DisplayName"
-                                      SelectedValuePath="ParameterId"/>
 
                                 <TextBlock Text="Part Number:"/>
                                 <TextBox x:Name="PartNumberTextBox"/>
-                                  <TextBlock Text="Part Number Parameter:" Margin="0,4,0,0"/>
-                                  <ComboBox x:Name="PartNumberParameterBindingComboBox"
-                                      DisplayMemberPath="DisplayName"
-                                      SelectedValuePath="ParameterId"/>
 
                                 <TextBlock Text="Reference URL:"/>
                                 <TextBox x:Name="ReferenceUrlTextBox"/>
-                                  <TextBlock Text="Reference URL Parameter:" Margin="0,4,0,0"/>
-                                  <ComboBox x:Name="ReferenceUrlParameterBindingComboBox"
-                                      DisplayMemberPath="DisplayName"
-                                      SelectedValuePath="ParameterId"/>
-                                <Button x:Name="OpenReferenceButton" Content="Open Reference" Click="OpenReference_Click" Margin="0,4,0,0"/>
-                                <TextBlock x:Name="ReferenceRootStatusTextBlock" Foreground="Gray" FontStyle="Italic" Text="Reference root: (auto)"/>
-                                <TextBlock Text="Curated References:"/>
-                                <ComboBox x:Name="ReferenceCatalogComboBox" DisplayMemberPath="DisplayName" SelectedValuePath="RelativePath"/>
-                                <WrapPanel Margin="0,4,0,0">
-                                    <Button x:Name="AssignReferenceButton" Content="Use Selected Reference" Click="AssignSelectedReference_Click" Margin="0,0,6,0"/>
-                                    <Button x:Name="SuggestedReferenceButton" Content="Use Suggested Reference" Click="ApplySuggestedReference_Click"/>
-                                </WrapPanel>
+                                <Button Content="Open Reference" Click="OpenReference_Click" Margin="0,4,0,0"/>
                                 
                                 <!-- Conduit-specific Properties -->
                                 <StackPanel x:Name="ConduitProperties" Visibility="Collapsed">
@@ -1572,7 +817,7 @@
                                 </StackPanel>
                                 
                                 <!-- Actions -->
-                                <Button x:Name="ApplyPropertiesButton" Content="Apply Changes" Click="ApplyProperties_Click" Margin="0,10,0,0"/>
+                                <Button Content="Apply Changes" Click="ApplyProperties_Click" Margin="0,10,0,0"/>
                             </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
@@ -1584,11 +829,6 @@
                         <DockPanel>
                             <!-- Filter bar -->
                             <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4,4,4,0" VerticalAlignment="Center">
-                                <TextBlock Text="Scope:" VerticalAlignment="Center" FontSize="11"/>
-                                <ComboBox x:Name="MarkupReviewScopeCombo" Width="110" FontSize="11" Margin="3,0,8,0"
-                                          ItemsSource="{Binding MarkupTool.ReviewScopeOptions}"
-                                          SelectedItem="{Binding MarkupTool.ReviewScope, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                          SelectionChanged="MarkupReviewScope_Changed"/>
                                 <TextBlock Text="Status:" VerticalAlignment="Center" FontSize="11"/>
                                 <ComboBox x:Name="MarkupStatusFilterCombo" Width="92" FontSize="11" Margin="3,0,8,0"
                                           ItemsSource="{Binding MarkupTool.StatusFilterOptions}"
@@ -1605,13 +845,9 @@
                                           ItemsSource="{Binding MarkupTool.LayerFilterOptions}"
                                           SelectedItem="{Binding MarkupTool.LayerFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                           SelectionChanged="MarkupLayerFilter_Changed"/>
-                                <TextBlock Text="Assignee:" VerticalAlignment="Center" FontSize="11"/>
-                                <ComboBox x:Name="MarkupAssigneeFilterCombo" Width="118" FontSize="11" Margin="3,0,8,0"
-                                          ItemsSource="{Binding MarkupTool.AssigneeFilterOptions}"
-                                          SelectedItem="{Binding MarkupTool.AssigneeFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                 <TextBlock Text="Search:" VerticalAlignment="Center" FontSize="11"/>
                                 <TextBox x:Name="MarkupSearchBox" Width="122" FontSize="11" Margin="3,0,8,0"
-                                         ToolTip="Search labels, subjects, layers, assignees, authors, and reply text"
+                                         ToolTip="Search labels, subjects, layers, and authors"
                                          TextChanged="MarkupSearch_Changed"/>
                             </StackPanel>
                             <!-- Counts -->
@@ -1629,87 +865,6 @@
                                 <TextBlock FontSize="10" Foreground="Gray" Margin="8,0,0,0"
                                            Text="{Binding MarkupTool.FilteredCount, StringFormat='Filtered: {0}'}"/>
                             </StackPanel>
-                            <Border DockPanel.Dock="Top"
-                                    Margin="4,0,4,6"
-                                    Padding="8"
-                                    Background="#FFF7F7F8"
-                                    BorderBrush="#FFD0D7DE"
-                                    BorderThickness="1">
-                                <DockPanel>
-                                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="Issue Buckets:" FontWeight="Bold" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                        <TextBlock Text="Group By:" VerticalAlignment="Center" FontSize="11"/>
-                                        <ComboBox x:Name="MarkupIssueGroupModeCombo"
-                                                  Width="108"
-                                                  FontSize="11"
-                                                  Margin="3,0,8,0"
-                                                  ItemsSource="{Binding MarkupTool.IssueGroupModeOptions}"
-                                                  SelectedItem="{Binding MarkupTool.IssueGroupMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-                                        <Button Content="All Buckets"
-                                                Padding="8,2"
-                                                Margin="0,0,8,0"
-                                            Command="{Binding MarkupTool.ClearIssueGroupCommand}"/>
-                                        <TextBlock Text="{Binding MarkupTool.SelectedIssueGroupSummary}" FontSize="11" Foreground="Gray" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                    <ListView x:Name="MarkupIssueGroupListView"
-                                              Margin="0,8,0,0"
-                                              Height="108"
-                                              ItemsSource="{Binding MarkupTool.IssueGroups}"
-                                              SelectedItem="{Binding MarkupTool.SelectedIssueGroup, Mode=TwoWay}">
-                                        <ListView.View>
-                                            <GridView>
-                                                <GridViewColumn Header="Bucket" DisplayMemberBinding="{Binding DisplayName}" Width="138"/>
-                                                <GridViewColumn Header="Details" DisplayMemberBinding="{Binding SecondaryText}" Width="118"/>
-                                                <GridViewColumn Header="Mix" DisplayMemberBinding="{Binding BreakdownText}" Width="218"/>
-                                                <GridViewColumn Header="Count" DisplayMemberBinding="{Binding Count}" Width="48"/>
-                                                <GridViewColumn Header="Open" DisplayMemberBinding="{Binding OpenCount}" Width="48"/>
-                                            </GridView>
-                                        </ListView.View>
-                                    </ListView>
-                                    <WrapPanel Margin="0,8,0,0">
-                                        <Button Content="Assign Bucket"
-                                                Click="AssignSelectedIssueGroup_Click"
-                                                Padding="8,2"
-                                                Margin="0,0,6,4"
-                                                IsEnabled="{Binding MarkupTool.HasSelectedIssueGroup}"
-                                                ToolTip="Assign every issue in the selected bucket"/>
-                                        <Button Content="Approve Bucket"
-                                            Click="ApproveSelectedIssueGroup_Click"
-                                            Padding="8,2"
-                                            Margin="0,0,6,4"
-                                            IsEnabled="{Binding MarkupTool.HasSelectedIssueGroup}"
-                                            ToolTip="Approve every eligible issue in the selected bucket"/>
-                                        <Button Content="Reject Bucket"
-                                            Click="RejectSelectedIssueGroup_Click"
-                                            Padding="8,2"
-                                            Margin="0,0,6,4"
-                                            IsEnabled="{Binding MarkupTool.HasSelectedIssueGroup}"
-                                            ToolTip="Reject every eligible issue in the selected bucket"/>
-                                        <Button Content="Resolve Bucket"
-                                                Click="ResolveSelectedIssueGroup_Click"
-                                                Padding="8,2"
-                                                Margin="0,0,6,4"
-                                                IsEnabled="{Binding MarkupTool.HasSelectedIssueGroup}"
-                                                ToolTip="Resolve every eligible issue in the selected bucket"/>
-                                        <Button Content="Void Bucket"
-                                                Click="VoidSelectedIssueGroup_Click"
-                                                Padding="8,2"
-                                                Margin="0,0,6,4"
-                                                IsEnabled="{Binding MarkupTool.HasSelectedIssueGroup}"
-                                                ToolTip="Void every eligible issue in the selected bucket"/>
-                                    </WrapPanel>
-                                    <TextBlock Margin="0,2,0,0"
-                                               FontSize="10"
-                                               Foreground="Gray"
-                                               TextWrapping="Wrap"
-                                               Text="{Binding MarkupTool.SelectedIssueGroupActionSummary}"/>
-                                    <TextBlock Margin="0,2,0,0"
-                                               FontSize="10"
-                                               Foreground="Gray"
-                                               TextWrapping="Wrap"
-                                               Text="{Binding MarkupTool.SelectedIssueGroupBreakdown}"/>
-                                </DockPanel>
-                            </Border>
                             <!-- Actions -->
                             <WrapPanel DockPanel.Dock="Top" Margin="4,4,4,6">
                                 <Button Content="Edit Geometry"
@@ -1742,128 +897,11 @@
                                         Margin="0,0,6,4"
                                         IsEnabled="{Binding MarkupTool.HasPathVertexDeleteCandidate}"
                                         ToolTip="{Binding MarkupTool.SelectedMarkupPathDeleteSummary}"/>
-                                <Button Content="Add Reply"
-                                        Click="AddMarkupReply_Click"
-                                        Padding="8,2"
-                                        Margin="0,0,6,4"
-                                        IsEnabled="{Binding MarkupTool.HasSelectedMarkup}"
-                                        ToolTip="Add a threaded review reply to the selected markup"/>
-                                <Button Content="Assign"
-                                        Click="AssignSelectedMarkup_Click"
-                                        Padding="8,2"
-                                        Margin="0,0,6,4"
-                                        IsEnabled="{Binding MarkupTool.HasSelectedMarkup}"
-                                        ToolTip="Assign the selected markup to a reviewer"/>
-                                <Button Content="Assign Visible"
-                                        Click="AssignVisibleMarkups_Click"
-                                        Padding="8,2"
-                                        Margin="0,0,6,4"
-                                        ToolTip="Assign all currently visible markups to a reviewer"/>
-                                <Button Content="Approve" Click="ApproveMarkup_Click" Padding="8,2" Margin="0,0,6,4"/>
-                                <Button Content="Reject" Click="RejectMarkup_Click" Padding="8,2" Margin="0,0,6,4"/>
-                                <Button Content="Resolve" Click="ResolveMarkup_Click" Padding="8,2" Margin="0,0,6,4"/>
-                                <Button Content="Resolve Visible" Click="ResolveVisibleMarkups_Click" Padding="8,2" Margin="0,0,6,4"/>
-                                <Button Content="Void Visible" Click="VoidVisibleMarkups_Click" Padding="8,2" Margin="0,0,6,4"/>
+                                <Button Content="Resolve" Command="{Binding MarkupTool.ApproveSelectedCommand}" Padding="8,2" Margin="0,0,6,4"/>
+                                <Button Content="Void" Command="{Binding MarkupTool.RejectSelectedCommand}" Padding="8,2" Margin="0,0,6,4"/>
                                 <Button Content="Delete" Click="DeleteComponent_Click" Padding="8,2" Margin="0,0,6,4"/>
                                 <Button Content="Clear Filters" Command="{Binding MarkupTool.ClearFiltersCommand}" Padding="8,2" Margin="0,0,6,4"/>
                             </WrapPanel>
-                            <Border DockPanel.Dock="Top"
-                                    Margin="4,0,4,6"
-                                    Padding="8"
-                                    Background="#FFF7F7F8"
-                                    BorderBrush="#FFD0D7DE"
-                                    BorderThickness="1"
-                                    Visibility="{Binding MarkupTool.SelectedMarkup, Converter={StaticResource NotNullToVisibilityConverter}}">
-                                <StackPanel>
-                                    <TextBlock Text="Assignment" FontWeight="Bold" FontSize="11" Margin="0,0,0,4"/>
-                                    <TextBlock Text="{Binding MarkupTool.SelectedMarkupAssignmentSummary}" TextWrapping="Wrap"/>
-                                    <TextBlock Margin="0,6,0,0">
-                                        <Run Text="Current Assignee: " FontWeight="SemiBold"/>
-                                        <Run Text="{Binding MarkupTool.SelectedMarkupAssignedTo}"/>
-                                    </TextBlock>
-                                </StackPanel>
-                            </Border>
-                            <Border DockPanel.Dock="Top"
-                                    Margin="4,0,4,6"
-                                    Padding="8"
-                                    Background="#FFF7F7F8"
-                                    BorderBrush="#FFD0D7DE"
-                                    BorderThickness="1"
-                                    Visibility="{Binding MarkupTool.SelectedMarkup, Converter={StaticResource NotNullToVisibilityConverter}}">
-                                <StackPanel>
-                                    <TextBlock Text="Review Thread" FontWeight="Bold" FontSize="11" Margin="0,0,0,4"/>
-                                    <TextBlock Text="{Binding MarkupTool.SelectedMarkupReplySummary}" TextWrapping="Wrap"/>
-                                    <TextBlock Text="{Binding MarkupTool.SelectedMarkupReplySearchSummary}" Foreground="Gray" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                                    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="164" Margin="0,8,0,0">
-                                        <ItemsControl ItemsSource="{Binding MarkupTool.SelectedMarkupReplies}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border Margin="0,0,0,6" Padding="6" Background="#FFFFFFFF" BorderBrush="#FFD8DEE4" BorderThickness="1">
-                                                        <Border.Style>
-                                                            <Style TargetType="Border">
-                                                                <Setter Property="Background" Value="#FFFFFFFF"/>
-                                                                <Setter Property="BorderBrush" Value="#FFD8DEE4"/>
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding EntryKindKey}" Value="audit">
-                                                                        <Setter Property="Background" Value="#FFF4F7FA"/>
-                                                                        <Setter Property="BorderBrush" Value="#FFB8C2CC"/>
-                                                                    </DataTrigger>
-                                                                    <DataTrigger Binding="{Binding EntryKindKey}" Value="status-audit">
-                                                                        <Setter Property="Background" Value="#FFF2F8F2"/>
-                                                                        <Setter Property="BorderBrush" Value="#FFB6D4B6"/>
-                                                                    </DataTrigger>
-                                                                    <DataTrigger Binding="{Binding EntryKindKey}" Value="assignment-audit">
-                                                                        <Setter Property="Background" Value="#FFF9F4EC"/>
-                                                                        <Setter Property="BorderBrush" Value="#FFD9C4A5"/>
-                                                                    </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </Border.Style>
-                                                        <StackPanel>
-                                                            <DockPanel Margin="0,0,0,4" LastChildFill="False">
-                                                                <Border Padding="6,1"
-                                                                        CornerRadius="3"
-                                                                        Background="#FFEAF2FF"
-                                                                        BorderBrush="#FFBDD3FF"
-                                                                        BorderThickness="1"
-                                                                        DockPanel.Dock="Left">
-                                                                    <Border.Style>
-                                                                        <Style TargetType="Border">
-                                                                            <Setter Property="Background" Value="#FFEAF2FF"/>
-                                                                            <Setter Property="BorderBrush" Value="#FFBDD3FF"/>
-                                                                            <Style.Triggers>
-                                                                                <DataTrigger Binding="{Binding EntryKindKey}" Value="audit">
-                                                                                    <Setter Property="Background" Value="#FFE9EEF3"/>
-                                                                                    <Setter Property="BorderBrush" Value="#FFBCC7D2"/>
-                                                                                </DataTrigger>
-                                                                                <DataTrigger Binding="{Binding EntryKindKey}" Value="status-audit">
-                                                                                    <Setter Property="Background" Value="#FFE7F4E7"/>
-                                                                                    <Setter Property="BorderBrush" Value="#FFB1CFAF"/>
-                                                                                </DataTrigger>
-                                                                                <DataTrigger Binding="{Binding EntryKindKey}" Value="assignment-audit">
-                                                                                    <Setter Property="Background" Value="#FFFCE9D6"/>
-                                                                                    <Setter Property="BorderBrush" Value="#FFDDBA88"/>
-                                                                                </DataTrigger>
-                                                                            </Style.Triggers>
-                                                                        </Style>
-                                                                    </Border.Style>
-                                                                    <TextBlock Text="{Binding EntryTypeDisplayText}" FontSize="10" FontWeight="SemiBold" Foreground="#FF22303C"/>
-                                                                </Border>
-                                                                <TextBlock Margin="8,0,0,0" VerticalAlignment="Center">
-                                                                    <Run Text="{Binding Author}" FontWeight="SemiBold"/>
-                                                                    <Run Text="  "/>
-                                                                    <Run Text="{Binding CreatedDisplayText}" Foreground="Gray"/>
-                                                                </TextBlock>
-                                                            </DockPanel>
-                                                            <TextBlock Text="{Binding Text}" TextWrapping="Wrap"/>
-                                                        </StackPanel>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </ScrollViewer>
-                                </StackPanel>
-                            </Border>
                             <Border DockPanel.Dock="Top"
                                     Margin="4,0,4,6"
                                     Padding="8"
@@ -2087,20 +1125,16 @@
                             <ListView x:Name="MarkupListView"
                                       ItemsSource="{Binding MarkupTool.FilteredMarkups}"
                                       SelectedItem="{Binding MarkupTool.SelectedMarkup}"
-                                                                            SelectionChanged="MarkupListView_SelectionChanged"
                                       MouseDoubleClick="MarkupListView_MouseDoubleClick"
                                       FontSize="11">
                                 <ListView.View>
                                     <GridView>
-                                                                                <GridViewColumn Header="Sheet" DisplayMemberBinding="{Binding ReviewSheetDisplayText}" Width="132"/>
                                         <GridViewColumn Header="Status" DisplayMemberBinding="{Binding StatusDisplayText}" Width="84"/>
                                         <GridViewColumn Header="Type" DisplayMemberBinding="{Binding TypeDisplayText}" Width="96"/>
                                         <GridViewColumn Header="Label" DisplayMemberBinding="{Binding Metadata.Label}" Width="130"/>
                                         <GridViewColumn Header="Subject" DisplayMemberBinding="{Binding Metadata.Subject}" Width="118"/>
                                         <GridViewColumn Header="Layer" DisplayMemberBinding="{Binding LayerDisplayText}" Width="102"/>
                                         <GridViewColumn Header="Author" DisplayMemberBinding="{Binding Metadata.Author}" Width="92"/>
-                                        <GridViewColumn Header="Assignee" DisplayMemberBinding="{Binding AssignedToDisplayText}" Width="96"/>
-                                        <GridViewColumn Header="Replies" DisplayMemberBinding="{Binding ReplyCountDisplayText}" Width="52"/>
                                         <GridViewColumn Header="Modified" DisplayMemberBinding="{Binding ModifiedDisplayText}" Width="118"/>
                                     </GridView>
                                 </ListView.View>
@@ -2108,8 +1142,7 @@
                         </DockPanel>
                     </TabItem>
 
-                    </TabControl>
-                </DockPanel>
+                </TabControl>
             </Border>
 
             <GridSplitter x:Name="PropertiesGridSplitter"
@@ -2125,6 +1158,126 @@
                           Background="#22000000"
                           DragCompleted="PropertiesGridSplitter_DragCompleted"/>
 
+        </Grid>
+
+        <Grid x:Name="CompatibilityControlHost" Visibility="Collapsed" IsHitTestVisible="False">
+            <StackPanel>
+                <Border x:Name="DesktopWorkspaceOverview"/>
+                <TextBlock x:Name="WorkspaceOverviewTitleTextBlock"/>
+                <TextBlock x:Name="WorkspaceOverviewDetailTextBlock"/>
+                <TextBlock x:Name="WorkspaceFocusTextBlock"/>
+                <TextBlock x:Name="WorkspaceNextStepTextBlock"/>
+                <TextBlock x:Name="WorkspaceReviewTextBlock"/>
+                <TextBlock x:Name="WorkspaceGuidanceTextBlock"/>
+                <TextBlock x:Name="WorkspaceHintTextBlock"/>
+                <Border x:Name="WorkspaceOnboardingCard"/>
+                <TextBlock x:Name="WorkspaceOnboardingProgressTextBlock"/>
+                <TextBlock x:Name="WorkspaceOnboardingTitleTextBlock"/>
+                <TextBlock x:Name="WorkspaceOnboardingSummaryTextBlock"/>
+                <TextBlock x:Name="WorkspaceOnboardingChecklistTextBlock"/>
+                <Button x:Name="WorkspaceOnboardingPrimaryActionButton" Click="WorkspaceOnboardingAction_Click"/>
+                <Button x:Name="WorkspaceOnboardingSecondaryActionButton" Click="WorkspaceOnboardingAction_Click"/>
+                <Button x:Name="WorkspaceOnboardingDismissButton" Click="DismissWorkspaceOnboarding_Click"/>
+
+                <TextBox x:Name="ProjectNameTextBox"
+                         Text="{Binding DataContext.ProjectName, ElementName=RootWindow, UpdateSourceTrigger=PropertyChanged}"/>
+
+                <Border x:Name="ViewportGuidanceCard"/>
+                <TextBlock x:Name="ViewportGuidanceTitleTextBlock"/>
+                <TextBlock x:Name="ViewportGuidanceSummaryTextBlock"/>
+                <TextBlock x:Name="ViewportGuidanceHintTextBlock"/>
+
+                <Border x:Name="PlanCanvasGuidanceCard"/>
+                <TextBlock x:Name="PlanCanvasGuidanceTitleTextBlock"/>
+                <TextBlock x:Name="PlanCanvasGuidanceSummaryTextBlock"/>
+                <TextBlock x:Name="PlanCanvasGuidanceHintTextBlock"/>
+                <Button x:Name="PlanCanvasGuidancePrimaryActionButton" Click="PlanCanvasGuidanceAction_Click"/>
+                <Button x:Name="PlanCanvasGuidanceSecondaryActionButton" Click="PlanCanvasGuidanceAction_Click"/>
+
+                <Grid x:Name="MobileTopBarHeaderGrid"/>
+                <TextBlock x:Name="MobileTaskSummaryText"/>
+                <Border x:Name="MobileProjectNameBar"/>
+                <TextBlock x:Name="MobileProjectNameLabelText"/>
+                <TextBox x:Name="MobileProjectNameTextBox"
+                         Text="{Binding DataContext.ProjectName, ElementName=RootWindow, UpdateSourceTrigger=PropertyChanged}"/>
+                <Border x:Name="MobileOnboardingActionBar"/>
+                <WrapPanel x:Name="MobileOnboardingActionButtonsPanel"/>
+                <TextBlock x:Name="MobileOnboardingProgressText"/>
+                <TextBlock x:Name="MobileOnboardingActionTitleText"/>
+                <Button x:Name="MobileOnboardingPrimaryActionButton" Click="WorkspaceOnboardingAction_Click"/>
+                <Button x:Name="MobileOnboardingSecondaryActionButton" Click="WorkspaceOnboardingAction_Click"/>
+                <Button x:Name="MobileOnboardingDismissButton" Click="DismissWorkspaceOnboarding_Click"/>
+
+                <TextBlock x:Name="InspectorTitleTextBlock"/>
+                <TextBlock x:Name="InspectorSummaryTextBlock"/>
+                <TextBlock x:Name="InspectorHintTextBlock"/>
+                <Button x:Name="InspectorComponentModeButton" Click="ShowInspectorComponentMode_Click"/>
+                <Button x:Name="InspectorMarkupModeButton" Click="ShowInspectorMarkupMode_Click"/>
+                <TextBlock x:Name="InspectorTaskTitleTextBlock"/>
+                <TextBlock x:Name="InspectorTaskSummaryTextBlock"/>
+                <Button x:Name="InspectorPrimaryActionButton" Click="InspectorActionButton_Click"/>
+                <Button x:Name="InspectorSecondaryActionButton" Click="InspectorActionButton_Click"/>
+                <Button x:Name="InspectorTertiaryActionButton" Click="InspectorActionButton_Click"/>
+
+                <TextBlock x:Name="ActiveSheetSummaryTextBlock"/>
+                <Button x:Name="RenameSheetButton"/>
+                <Button x:Name="DeleteSheetButton"/>
+                <Button x:Name="MoveSheetUpButton"/>
+                <Button x:Name="MoveSheetDownButton"/>
+                <TreeView x:Name="ProjectBrowserTreeView" SelectedItemChanged="ProjectBrowserTreeView_SelectedItemChanged"/>
+                <TextBlock x:Name="SheetRevisionSummaryTextBlock"/>
+                <ComboBox x:Name="SheetStatusComboBox" SelectionChanged="SheetStatusComboBox_SelectionChanged">
+                    <ComboBoxItem Tag="Draft" Content="Draft"/>
+                    <ComboBoxItem Tag="InReview" Content="In Review"/>
+                    <ComboBoxItem Tag="Approved" Content="Approved"/>
+                    <ComboBoxItem Tag="Archived" Content="Archived"/>
+                </ComboBox>
+                <ListBox x:Name="SheetRevisionListBox" SelectionChanged="SheetRevisionListBox_SelectionChanged"/>
+                <TextBox x:Name="SheetRevisionNumberTextBox" TextChanged="SheetRevisionEditor_TextChanged"/>
+                <TextBox x:Name="SheetRevisionDateTextBox" TextChanged="SheetRevisionEditor_TextChanged"/>
+                <TextBox x:Name="SheetRevisionDescriptionTextBox" TextChanged="SheetRevisionEditor_TextChanged"/>
+                <TextBox x:Name="SheetRevisionAuthorTextBox" TextChanged="SheetRevisionEditor_TextChanged"/>
+                <TextBlock x:Name="SheetRevisionValidationTextBlock"/>
+                <Button x:Name="AddSheetRevisionButton" Click="AddSheetRevision_Click"/>
+                <Button x:Name="SaveSheetRevisionButton" Click="SaveSheetRevision_Click"/>
+                <Button x:Name="RemoveSheetRevisionButton" Click="RemoveSheetRevision_Click"/>
+
+                <TextBlock x:Name="MultiSelectionSummaryTextBlock"/>
+                <Button x:Name="ApplyPropertiesButton"/>
+                <Button x:Name="OpenReferenceButton"/>
+                <TextBlock x:Name="ProjectParameterBindingSummaryTextBlock"/>
+                <Button x:Name="ManageProjectParametersButton" Click="ManageProjectParameters_Click"/>
+                <Border x:Name="ProjectParameterEditorPanel"/>
+                <TextBox x:Name="ProjectParameterSearchTextBox" TextChanged="ProjectParameterSearchTextBox_TextChanged"/>
+                <ListBox x:Name="ProjectParameterListBox" SelectionChanged="ProjectParameterListBox_SelectionChanged"/>
+                <TextBlock x:Name="ProjectParameterUsageTextBlock"/>
+                <TextBox x:Name="ProjectParameterNameEditorTextBox" TextChanged="ProjectParameterNameEditorTextBox_TextChanged"/>
+                <ComboBox x:Name="ProjectParameterValueKindComboBox" SelectionChanged="ProjectParameterValueKindComboBox_SelectionChanged">
+                    <ComboBoxItem Tag="Length" Content="Length" IsSelected="True"/>
+                    <ComboBoxItem Tag="Text" Content="Text"/>
+                </ComboBox>
+                <TextBox x:Name="ProjectParameterValueEditorTextBox" TextChanged="ProjectParameterValueEditorTextBox_TextChanged"/>
+                <TextBox x:Name="ProjectParameterFormulaEditorTextBox" TextChanged="ProjectParameterFormulaEditorTextBox_TextChanged"/>
+                <TextBlock x:Name="ProjectParameterPreviewTextBlock"/>
+                <TextBlock x:Name="ProjectParameterValidationTextBlock"/>
+                <Button x:Name="ProjectParameterSaveButton" Click="SaveProjectParameter_Click"/>
+                <Button x:Name="ProjectParameterDeleteButton" Click="DeleteProjectParameter_Click"/>
+                <ComboBox x:Name="WidthParameterBindingComboBox" DisplayMemberPath="DisplayName" SelectedValuePath="ParameterId"/>
+                <ComboBox x:Name="HeightParameterBindingComboBox" DisplayMemberPath="DisplayName" SelectedValuePath="ParameterId"/>
+                <ComboBox x:Name="DepthParameterBindingComboBox" DisplayMemberPath="DisplayName" SelectedValuePath="ParameterId"/>
+                <ComboBox x:Name="ElevationParameterBindingComboBox" DisplayMemberPath="DisplayName" SelectedValuePath="ParameterId"/>
+                <ComboBox x:Name="MaterialParameterBindingComboBox" DisplayMemberPath="DisplayName" SelectedValuePath="ParameterId"/>
+                <ComboBox x:Name="ManufacturerParameterBindingComboBox" DisplayMemberPath="DisplayName" SelectedValuePath="ParameterId"/>
+                <ComboBox x:Name="PartNumberParameterBindingComboBox" DisplayMemberPath="DisplayName" SelectedValuePath="ParameterId"/>
+                <ComboBox x:Name="ReferenceUrlParameterBindingComboBox" DisplayMemberPath="DisplayName" SelectedValuePath="ParameterId"/>
+
+                <ComboBox x:Name="MarkupReviewScopeCombo"/>
+
+                <ComboBox x:Name="ReferenceCatalogComboBox"/>
+                <Button x:Name="AssignReferenceButton"/>
+                <Button x:Name="SuggestedReferenceButton"/>
+                <TextBlock x:Name="ReferenceRootStatusTextBlock"/>
+            </StackPanel>
         </Grid>
 
         <!-- Status Bar -->
