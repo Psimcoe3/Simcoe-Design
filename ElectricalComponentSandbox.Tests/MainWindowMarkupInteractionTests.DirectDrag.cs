@@ -650,6 +650,103 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void BeginSelectedMarkupRadiusDragForTesting_WithoutHandleHit_ReturnsFalseAndLeavesGeometryUnchanged()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Circle,
+                Vertices = { new Point(0, 0) },
+                Radius = 10
+            },
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupRadiusDragForTesting(new Point(0, 0));
+                window.UpdateDraggedMarkupRadiusPreviewForTesting(new Point(12, 0));
+                window.FinishMarkupRadiusDragForTesting();
+                return (began, radius: markup.Radius, canUndo: viewModel.UndoRedo.CanUndo);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.False(outcome.began);
+        Assert.Equal(10, outcome.radius, 6);
+        Assert.False(outcome.canUndo);
+    }
+
+    [Fact]
+    public void BeginSelectedMarkupRadiusDragForTesting_GroupedSelection_ReturnsFalse()
+    {
+        var selectedMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Vertices = { new Point(0, 0) },
+            Radius = 10
+        };
+        selectedMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = "group-1";
+
+        var peerMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Vertices = { new Point(20, 20) },
+            Radius = 8
+        };
+        peerMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = "group-1";
+
+        var outcome = RunWithSelectedMarkupWindow(
+            selectedMarkup,
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupRadiusDragForTesting(new Point(10, 0));
+                window.UpdateDraggedMarkupRadiusPreviewForTesting(new Point(12, 0));
+                window.FinishMarkupRadiusDragForTesting();
+                return (began, radius: markup.Radius, peerRadius: peerMarkup.Radius, canUndo: viewModel.UndoRedo.CanUndo);
+            },
+            viewModel =>
+            {
+                viewModel.Markups.Add(peerMarkup);
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.False(outcome.began);
+        Assert.Equal(10, outcome.radius, 6);
+        Assert.Equal(8, outcome.peerRadius, 6);
+        Assert.False(outcome.canUndo);
+    }
+
+    [Fact]
+    public void DirectRadiusDragForTesting_WithoutPreviewChange_DoesNotCreateUndoAction()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Circle,
+                Vertices = { new Point(0, 0) },
+                Radius = 10
+            },
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupRadiusDragForTesting(new Point(10, 0));
+                var beforeFinish = (markup.Radius, viewModel.UndoRedo.CanUndo);
+                window.FinishMarkupRadiusDragForTesting();
+                var afterFinish = (markup.Radius, viewModel.UndoRedo.CanUndo);
+                return (began, beforeFinish, afterFinish);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.True(outcome.began);
+        Assert.Equal(10, outcome.beforeFinish.Item1, 6);
+        Assert.False(outcome.beforeFinish.Item2);
+        Assert.Equal(10, outcome.afterFinish.Item1, 6);
+        Assert.False(outcome.afterFinish.Item2);
+    }
+
+    [Fact]
     public void DirectRadiusDragForTesting_Circle_UsesGridSnapAndSupportsUndo()
     {
         var outcome = RunWithSelectedMarkupWindow(
@@ -715,6 +812,111 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(10, outcome.cancelledRadius, 6);
         Assert.Equal(10, outcome.postCancelRadius, 6);
         Assert.Equal(10, outcome.finalRadius, 6);
+    }
+
+    [Fact]
+    public void BeginSelectedMarkupArcAngleDragForTesting_WithoutHandleHit_ReturnsFalseAndLeavesGeometryUnchanged()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Arc,
+                Vertices = { new Point(0, 0) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90
+            },
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 0));
+                window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(-10, 0));
+                window.FinishMarkupArcAngleDragForTesting();
+                return (began, state: (markup.ArcStartDeg, markup.ArcSweepDeg), canUndo: viewModel.UndoRedo.CanUndo);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.False(outcome.began);
+        Assert.Equal((0d, 90d), outcome.state);
+        Assert.False(outcome.canUndo);
+    }
+
+    [Fact]
+    public void BeginSelectedMarkupArcAngleDragForTesting_GroupedSelection_ReturnsFalse()
+    {
+        var selectedMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Vertices = { new Point(0, 0) },
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90
+        };
+        selectedMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = "group-1";
+
+        var peerMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Vertices = { new Point(20, 20) },
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90
+        };
+        peerMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = "group-1";
+
+        var outcome = RunWithSelectedMarkupWindow(
+            selectedMarkup,
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
+                window.UpdateDraggedMarkupArcAnglePreviewForTesting(new Point(-10, 0));
+                window.FinishMarkupArcAngleDragForTesting();
+                return (began, state: (markup.ArcStartDeg, markup.ArcSweepDeg), peerState: (peerMarkup.ArcStartDeg, peerMarkup.ArcSweepDeg), canUndo: viewModel.UndoRedo.CanUndo);
+            },
+            viewModel =>
+            {
+                viewModel.Markups.Add(peerMarkup);
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.False(outcome.began);
+        Assert.Equal((0d, 90d), outcome.state);
+        Assert.Equal((0d, 90d), outcome.peerState);
+        Assert.False(outcome.canUndo);
+    }
+
+    [Fact]
+    public void DirectArcAngleDragForTesting_WithoutPreviewChange_DoesNotCreateUndoAction()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Arc,
+                Vertices = { new Point(0, 0) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90
+            },
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupArcAngleDragForTesting(new Point(0, 10));
+                var beforeFinish = ((markup.ArcStartDeg, markup.ArcSweepDeg), viewModel.UndoRedo.CanUndo);
+                window.FinishMarkupArcAngleDragForTesting();
+                var afterFinish = ((markup.ArcStartDeg, markup.ArcSweepDeg), viewModel.UndoRedo.CanUndo);
+                return (began, beforeFinish, afterFinish);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.True(outcome.began);
+        Assert.Equal((0d, 90d), outcome.beforeFinish.Item1);
+        Assert.False(outcome.beforeFinish.Item2);
+        Assert.Equal((0d, 90d), outcome.afterFinish.Item1);
+        Assert.False(outcome.afterFinish.Item2);
     }
 
     [Fact]
