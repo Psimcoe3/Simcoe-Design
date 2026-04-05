@@ -350,6 +350,147 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ExecuteEditMarkupAppearanceCommandForTesting_MalformedAssignment_DoesNotChangeAppearance()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var markup = new MarkupRecord
+            {
+                Type = MarkupType.Text,
+                TextContent = "NOTE",
+                BoundingRect = new Rect(10, 20, 30, 12),
+                Appearance = new MarkupAppearance
+                {
+                    StrokeColor = "#FF0000",
+                    StrokeWidth = 2,
+                    FillColor = "#20FF0000",
+                    Opacity = 1,
+                    FontFamily = "Arial",
+                    FontSize = 10
+                }
+            };
+            markup.Vertices.Add(new Point(10, 32));
+            viewModel.Markups.Add(markup);
+            viewModel.MarkupTool.SelectedMarkup = markup;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var handled = window.ExecuteEditMarkupAppearanceCommandForTesting("stroke");
+                return (
+                    handled,
+                    StrokeColor: markup.Appearance.StrokeColor,
+                    StrokeWidth: markup.Appearance.StrokeWidth,
+                    CanUndo: viewModel.UndoRedo.CanUndo);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.handled);
+        Assert.Equal("#FF0000", outcome.StrokeColor);
+        Assert.Equal(2, outcome.StrokeWidth, 3);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupAppearanceCommandForTesting_InvalidOpacity_DoesNotChangeAppearance()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var markup = new MarkupRecord
+            {
+                Type = MarkupType.Text,
+                TextContent = "NOTE",
+                BoundingRect = new Rect(10, 20, 30, 12),
+                Appearance = new MarkupAppearance
+                {
+                    StrokeColor = "#FF0000",
+                    StrokeWidth = 2,
+                    FillColor = "#20FF0000",
+                    Opacity = 1,
+                    FontFamily = "Arial",
+                    FontSize = 10
+                }
+            };
+            markup.Vertices.Add(new Point(10, 32));
+            viewModel.Markups.Add(markup);
+            viewModel.MarkupTool.SelectedMarkup = markup;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var handled = window.ExecuteEditMarkupAppearanceCommandForTesting("opacity=200");
+                return (
+                    handled,
+                    Opacity: markup.Appearance.Opacity,
+                    StrokeColor: markup.Appearance.StrokeColor,
+                    CanUndo: viewModel.UndoRedo.CanUndo);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.handled);
+        Assert.Equal(1, outcome.Opacity, 3);
+        Assert.Equal("#FF0000", outcome.StrokeColor);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupAppearanceCommandForTesting_InvalidFontSize_DoesNotChangeAppearance()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var markup = new MarkupRecord
+            {
+                Type = MarkupType.Text,
+                TextContent = "NOTE",
+                BoundingRect = new Rect(10, 20, 30, 12),
+                Appearance = new MarkupAppearance
+                {
+                    StrokeColor = "#FF0000",
+                    StrokeWidth = 2,
+                    FillColor = "#20FF0000",
+                    Opacity = 1,
+                    FontFamily = "Arial",
+                    FontSize = 10
+                }
+            };
+            markup.Vertices.Add(new Point(10, 32));
+            viewModel.Markups.Add(markup);
+            viewModel.MarkupTool.SelectedMarkup = markup;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var handled = window.ExecuteEditMarkupAppearanceCommandForTesting("fontsize=0");
+                return (
+                    handled,
+                    FontSize: markup.Appearance.FontSize,
+                    Bounds: markup.BoundingRect,
+                    CanUndo: viewModel.UndoRedo.CanUndo);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.handled);
+        Assert.Equal(10, outcome.FontSize, 3);
+        Assert.Equal(new Rect(10, 20, 30, 12), outcome.Bounds);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
     public void ExecuteEditMarkupGeometryCommandForTesting_Rectangle_SameDimensions_IsHandledAsNoOp()
     {
         var outcome = RunWithSelectedMarkupWindow(
