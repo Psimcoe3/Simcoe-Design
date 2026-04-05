@@ -128,4 +128,53 @@ public partial class MarkupInteractionServiceTests
         Assert.False(secondDelete);
         Assert.Equal(2, markup.Vertices.Count);
     }
+
+    [Fact]
+    public void SetPolylineGeometry_Polyline_ReplacesVerticesAndUpdatesBounds()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Polyline,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(10, 10) }
+        };
+        markup.UpdateBoundingRect();
+
+        var result = _sut.SetPolylineGeometry(markup, new List<Point>
+        {
+            new(5, 5),
+            new(15, 5),
+            new(20, 10)
+        });
+
+        Assert.True(result);
+        Assert.Equal(3, markup.Vertices.Count);
+        Assert.Equal(new Point(5, 5), markup.Vertices[0]);
+        Assert.Equal(new Point(15, 5), markup.Vertices[1]);
+        Assert.Equal(new Point(20, 10), markup.Vertices[2]);
+        Assert.Equal(new Rect(5, 5, 15, 5), markup.BoundingRect);
+    }
+
+    [Fact]
+    public void SetPolylineGeometry_PolygonWithTooFewVertices_ReturnsFalseAndPreservesExistingGeometry()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Polygon,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(5, 8) }
+        };
+        markup.UpdateBoundingRect();
+
+        var result = _sut.SetPolylineGeometry(markup, new List<Point>
+        {
+            new(1, 1),
+            new(9, 1)
+        });
+
+        Assert.False(result);
+        Assert.Equal(3, markup.Vertices.Count);
+        Assert.Equal(new Point(0, 0), markup.Vertices[0]);
+        Assert.Equal(new Point(10, 0), markup.Vertices[1]);
+        Assert.Equal(new Point(5, 8), markup.Vertices[2]);
+        Assert.Equal(new Rect(0, 0, 10, 8), markup.BoundingRect);
+    }
 }

@@ -44,6 +44,40 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void SetBoundsGeometry_UsesVertexBoundsWhenBoundingRectIsEmpty()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Panel,
+            BoundingRect = Rect.Empty,
+            Vertices = { new Point(100, 200), new Point(220, 230) }
+        };
+
+        var result = _sut.SetBoundsGeometry(markup, 150, 40);
+
+        Assert.True(result);
+        Assert.Equal(new Rect(100, 200, 150, 40), markup.BoundingRect);
+        Assert.Equal(new Point(100, 200), markup.Vertices[0]);
+        Assert.Equal(new Point(250, 240), markup.Vertices[1]);
+    }
+
+    [Fact]
+    public void SetBoundsGeometry_WithoutStoredOrVertexBounds_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Hyperlink,
+            BoundingRect = Rect.Empty
+        };
+
+        var result = _sut.SetBoundsGeometry(markup, 150, 40);
+
+        Assert.False(result);
+        Assert.Equal(Rect.Empty, markup.BoundingRect);
+        Assert.Empty(markup.Vertices);
+    }
+
+    [Fact]
     public void SetLineGeometry_UpdatesDimensionEndPointAndBounds()
     {
         var markup = new MarkupRecord
