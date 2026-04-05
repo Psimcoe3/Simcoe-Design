@@ -25,6 +25,25 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void GetSelectionSet_UngroupedMarkup_ReturnsOnlySelectedMarkup()
+    {
+        var selected = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            BoundingRect = new Rect(0, 0, 10, 10)
+        };
+        selected.Vertices.Add(selected.BoundingRect.TopLeft);
+        selected.Vertices.Add(selected.BoundingRect.BottomRight);
+
+        var other = CreateMarkup(new Rect(20, 0, 10, 10), "group-1");
+
+        var selection = _sut.GetSelectionSet(selected, new[] { selected, other });
+
+        Assert.Single(selection);
+        Assert.Same(selected, selection[0]);
+    }
+
+    [Fact]
     public void Translate_TextMarkup_ShiftsVertexAndBounds()
     {
         var markup = new MarkupRecord
@@ -50,6 +69,29 @@ public partial class MarkupInteractionServiceTests
         var bounds = _sut.GetAggregateBounds(new[] { first, second });
 
         Assert.Equal(new Rect(0, 0, 30, 20), bounds);
+    }
+
+    [Fact]
+    public void GetAggregateBounds_EmptyMarkupSet_ReturnsEmpty()
+    {
+        var bounds = _sut.GetAggregateBounds(Array.Empty<MarkupRecord>());
+
+        Assert.Equal(Rect.Empty, bounds);
+    }
+
+    [Fact]
+    public void GetAggregateBounds_SkipsMarkupsWithoutUsableBounds()
+    {
+        var empty = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            BoundingRect = Rect.Empty
+        };
+        var rectangle = CreateMarkup(new Rect(20, 5, 10, 15), "group-1");
+
+        var bounds = _sut.GetAggregateBounds(new[] { empty, rectangle });
+
+        Assert.Equal(new Rect(20, 5, 10, 15), bounds);
     }
 
     [Fact]
@@ -248,6 +290,82 @@ public partial class MarkupInteractionServiceTests
         polygon.UpdateBoundingRect();
 
         Assert.True(_sut.CanResize(new[] { rectangle, polygon }));
+    }
+
+    [Fact]
+    public void CanResize_EmptyMarkupSet_ReturnsFalse()
+    {
+        Assert.False(_sut.CanResize(Array.Empty<MarkupRecord>()));
+    }
+
+    [Fact]
+    public void Apply_TextMarkup_RestoresGeometryAppearanceAndTimestamp()
+    {
+        var originalModifiedUtc = new DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            TextContent = "NOTE",
+            BoundingRect = new Rect(10, 20, 40, 12),
+            Radius = 2.5,
+            ArcStartDeg = 12,
+            ArcSweepDeg = -27,
+            Metadata = new MarkupMetadata { ModifiedUtc = originalModifiedUtc }
+        };
+        markup.Vertices.Add(new Point(10, 32));
+        markup.Appearance.StrokeColor = "#112233";
+        markup.Appearance.StrokeWidth = 1.5;
+        markup.Appearance.FillColor = "#445566";
+        markup.Appearance.Opacity = 0.75;
+        markup.Appearance.FontFamily = "Consolas";
+        markup.Appearance.FontSize = 14;
+        markup.Appearance.DashArray = "5,3";
+
+        var snapshot = _sut.Capture(markup);
+
+        markup.Vertices[0] = new Point(99, 88);
+        markup.BoundingRect = new Rect(90, 80, 10, 5);
+        markup.Radius = 7;
+        markup.ArcStartDeg = 45;
+        markup.ArcSweepDeg = 90;
+        markup.Appearance.StrokeColor = "#ABCDEF";
+        markup.Appearance.StrokeWidth = 9;
+        markup.Appearance.FillColor = "#FEDCBA";
+        markup.Appearance.Opacity = 0.2;
+        markup.Appearance.FontFamily = "Courier New";
+        markup.Appearance.FontSize = 30;
+        markup.Appearance.DashArray = "1,1";
+        markup.Metadata.ModifiedUtc = originalModifiedUtc.AddDays(1);
+
+        _sut.Apply(markup, snapshot);
+
+        Assert.Equal(new Point(10, 32), markup.Vertices[0]);
+        Assert.Equal(new Rect(10, 20, 40, 12), markup.BoundingRect);
+        Assert.Equal(2.5, markup.Radius, 6);
+        Assert.Equal(12, markup.ArcStartDeg, 6);
+        Assert.Equal(-27, markup.ArcSweepDeg, 6);
+        Assert.Equal("#112233", markup.Appearance.StrokeColor);
+        Assert.Equal(1.5, markup.Appearance.StrokeWidth, 6);
+        Assert.Equal("#445566", markup.Appearance.FillColor);
+        Assert.Equal(0.75, markup.Appearance.Opacity, 6);
+        Assert.Equal("Consolas", markup.Appearance.FontFamily);
+        Assert.Equal(14, markup.Appearance.FontSize, 6);
+        Assert.Equal("5,3", markup.Appearance.DashArray);
+        Assert.Equal(originalModifiedUtc, markup.Metadata.ModifiedUtc);
+    }
+
+    [Fact]
+    public void GetGroupId_WithoutAnnotationGroup_ReturnsNull()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            BoundingRect = new Rect(0, 0, 10, 10)
+        };
+
+        var groupId = _sut.GetGroupId(markup);
+
+        Assert.Null(groupId);
     }
 
     private static MarkupRecord CreateMarkup(Rect rect, string groupId)
