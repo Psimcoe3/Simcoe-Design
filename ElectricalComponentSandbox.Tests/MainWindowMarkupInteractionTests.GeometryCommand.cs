@@ -645,6 +645,31 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_LineMeasurement_InvalidAngle_DoesNotChangeGeometry()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Measurement,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(5, 3) }
+            },
+            (window, viewModel, markup) =>
+            {
+                var handled = window.ExecuteEditMarkupGeometryCommandForTesting("length=24\nangle=abc");
+                return (
+                    handled,
+                    End: markup.Vertices[1],
+                    Anchor: markup.Vertices[2],
+                    CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.True(outcome.handled);
+        Assert.Equal(new Point(10, 0), outcome.End);
+        Assert.Equal(new Point(5, 3), outcome.Anchor);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
     public void ExecuteEditMarkupGeometryCommandForTesting_RadialMeasurement_UpdatesGeometryAndSupportsUndo()
     {
         var outcome = RunWithSelectedMarkupWindow(
@@ -975,6 +1000,39 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_AngularDimension_InvalidRadius_DoesNotChangeGeometry()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Dimension,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 12), new Point(10, 10) },
+                Radius = 8,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90,
+                Metadata = new MarkupMetadata { Subject = "Angular" }
+            },
+            (window, viewModel, markup) =>
+            {
+                var handled = window.ExecuteEditMarkupGeometryCommandForTesting("angle=60\nradius=0");
+                return (
+                    handled,
+                    Vertex2: markup.Vertices[2],
+                    Vertex3: markup.Vertices[3],
+                    Radius: markup.Radius,
+                    Sweep: markup.ArcSweepDeg,
+                    CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.True(outcome.handled);
+        Assert.Equal(new Point(0, 12), outcome.Vertex2);
+        Assert.Equal(new Point(10, 10), outcome.Vertex3);
+        Assert.Equal(8, outcome.Radius, 6);
+        Assert.Equal(90, outcome.Sweep, 6);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
     public void ExecuteEditMarkupGeometryCommandForTesting_ArcLengthMeasurement_UpdatesGeometryAndSupportsUndo()
     {
         var outcome = RunWithSelectedMarkupWindow(
@@ -1030,6 +1088,45 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(10, outcome.undoneState.Item4, 6);
         Assert.Equal(0, outcome.undoneState.Item5, 6);
         Assert.Equal(90, outcome.undoneState.Item6, 6);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_ArcLengthMeasurement_InvalidArcLength_DoesNotChangeGeometry()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Measurement,
+                Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90,
+                Metadata = new MarkupMetadata { Subject = "ArcLength" }
+            },
+            (window, viewModel, markup) =>
+            {
+                var handled = window.ExecuteEditMarkupGeometryCommandForTesting("arclength=0\nradius=12");
+                return (
+                    handled,
+                    Start: markup.Vertices[0],
+                    End: markup.Vertices[1],
+                    Label: markup.Vertices[2],
+                    Radius: markup.Radius,
+                    Sweep: markup.ArcSweepDeg,
+                    CanUndo: viewModel.UndoRedo.CanUndo);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.True(outcome.handled);
+        Assert.Equal(new Point(10, 0), outcome.Start);
+        Assert.Equal(new Point(0, 10), outcome.End);
+        Assert.Equal(new Point(7.0710678118654755, 7.0710678118654755), outcome.Label);
+        Assert.Equal(10, outcome.Radius, 6);
+        Assert.Equal(90, outcome.Sweep, 6);
+        Assert.False(outcome.CanUndo);
     }
 
     [Fact]
