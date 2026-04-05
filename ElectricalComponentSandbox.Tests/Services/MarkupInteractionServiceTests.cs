@@ -76,6 +76,22 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void GetResizeHandlePoint_ReturnsExpectedPointsForAllHandles()
+    {
+        var bounds = new Rect(10, 20, 30, 40);
+
+        Assert.Equal(new Point(10, 20), _sut.GetResizeHandlePoint(bounds, MarkupResizeHandle.TopLeft));
+        Assert.Equal(new Point(25, 20), _sut.GetResizeHandlePoint(bounds, MarkupResizeHandle.Top));
+        Assert.Equal(new Point(40, 20), _sut.GetResizeHandlePoint(bounds, MarkupResizeHandle.TopRight));
+        Assert.Equal(new Point(40, 40), _sut.GetResizeHandlePoint(bounds, MarkupResizeHandle.Right));
+        Assert.Equal(new Point(40, 60), _sut.GetResizeHandlePoint(bounds, MarkupResizeHandle.BottomRight));
+        Assert.Equal(new Point(25, 60), _sut.GetResizeHandlePoint(bounds, MarkupResizeHandle.Bottom));
+        Assert.Equal(new Point(10, 60), _sut.GetResizeHandlePoint(bounds, MarkupResizeHandle.BottomLeft));
+        Assert.Equal(new Point(10, 40), _sut.GetResizeHandlePoint(bounds, MarkupResizeHandle.Left));
+        Assert.Equal(new Point(25, 40), _sut.GetResizeHandlePoint(bounds, MarkupResizeHandle.None));
+    }
+
+    [Fact]
     public void BuildResizedBounds_TopHandle_ResizesHeightOnly()
     {
         var resized = _sut.BuildResizedBounds(

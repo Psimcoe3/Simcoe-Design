@@ -18,6 +18,85 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void CanInsertVertices_Polyline_ReturnsTrue()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Polyline,
+            Vertices = { new Point(0, 0), new Point(10, 0) }
+        };
+
+        Assert.True(_sut.CanInsertVertices(markup));
+    }
+
+    [Fact]
+    public void CanInsertVertices_Dimension_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(5, 3) }
+        };
+
+        Assert.False(_sut.CanInsertVertices(markup));
+    }
+
+    [Fact]
+    public void CanDeleteVertex_PolygonAtMinimumCount_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Polygon,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(5, 8) }
+        };
+
+        Assert.False(_sut.CanDeleteVertex(markup));
+    }
+
+    [Fact]
+    public void CanDeleteVertex_DimensionWithThreeVertices_ReturnsTrue()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(5, 3) }
+        };
+
+        Assert.True(_sut.CanDeleteVertex(markup));
+    }
+
+    [Fact]
+    public void GetVertexHandlePoints_Callout_ReturnsAllVertices()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Callout,
+            Vertices = { new Point(0, 0), new Point(10, 5), new Point(20, 10) }
+        };
+
+        var points = _sut.GetVertexHandlePoints(markup);
+
+        Assert.Equal(3, points.Count);
+        Assert.Equal(new Point(0, 0), points[0]);
+        Assert.Equal(new Point(10, 5), points[1]);
+        Assert.Equal(new Point(20, 10), points[2]);
+    }
+
+    [Fact]
+    public void GetVertexHandlePoints_Text_ReturnsEmpty()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            Vertices = { new Point(10, 20) }
+        };
+
+        var points = _sut.GetVertexHandlePoints(markup);
+
+        Assert.Empty(points);
+    }
+
+    [Fact]
     public void HitTestVertexHandle_ReturnsMatchingIndex()
     {
         var markup = new MarkupRecord
