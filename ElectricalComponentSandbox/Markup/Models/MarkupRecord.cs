@@ -209,7 +209,7 @@ public class MarkupRecord
     public List<Point> Vertices { get; set; } = new();
 
     /// <summary>Bounding rectangle in Document coordinates</summary>
-    public Rect BoundingRect { get; set; }
+    public Rect BoundingRect { get; set; } = Rect.Empty;
 
     /// <summary>Radius for circle / arc markups (Document units)</summary>
     public double Radius { get; set; }

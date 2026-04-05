@@ -140,7 +140,7 @@ public class XfdfExportService
         w.WriteAttributeString("opacity", F(m.Appearance.Opacity));
 
         // Rect attribute (bounding box)
-        var r = m.BoundingRect;
+        var r = GetExportRect(m);
         w.WriteAttributeString("rect",
             $"{F(r.Left)},{F(r.Top)},{F(r.Right)},{F(r.Bottom)}");
 
@@ -264,7 +264,8 @@ public class XfdfExportService
                 double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out double r2) &&
                 double.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out double b))
             {
-                record.BoundingRect = new Rect(l, t, r2 - l, b - t);
+                if (TryCreateNormalizedRect(l, t, r2, b, out var rect))
+                    record.BoundingRect = rect;
             }
         }
 
@@ -353,6 +354,54 @@ public class XfdfExportService
 
         record.UpdateBoundingRect();
         return record;
+    }
+
+    private static Rect GetExportRect(MarkupRecord markup)
+    {
+        if (markup.BoundingRect != Rect.Empty)
+            return markup.BoundingRect;
+
+        if ((markup.Type == MarkupType.Circle || markup.Type == MarkupType.Arc) && markup.Vertices.Count >= 1)
+        {
+            var center = markup.Vertices[0];
+            return new Rect(center.X - markup.Radius, center.Y - markup.Radius, markup.Radius * 2, markup.Radius * 2);
+        }
+
+        if (markup.Vertices.Count == 0)
+            return new Rect(0, 0, 0, 0);
+
+        double minX = double.MaxValue;
+        double minY = double.MaxValue;
+        double maxX = double.MinValue;
+        double maxY = double.MinValue;
+
+        foreach (var point in markup.Vertices)
+        {
+            if (point.X < minX)
+                minX = point.X;
+            if (point.Y < minY)
+                minY = point.Y;
+            if (point.X > maxX)
+                maxX = point.X;
+            if (point.Y > maxY)
+                maxY = point.Y;
+        }
+
+        return new Rect(minX, minY, maxX - minX, maxY - minY);
+    }
+
+    private static bool TryCreateNormalizedRect(double left, double top, double right, double bottom, out Rect rect)
+    {
+        rect = Rect.Empty;
+        if (!double.IsFinite(left) || !double.IsFinite(top) || !double.IsFinite(right) || !double.IsFinite(bottom))
+            return false;
+
+        var minX = Math.Min(left, right);
+        var minY = Math.Min(top, bottom);
+        var maxX = Math.Max(left, right);
+        var maxY = Math.Max(top, bottom);
+        rect = new Rect(minX, minY, maxX - minX, maxY - minY);
+        return true;
     }
 
     private static string F(double v) =>

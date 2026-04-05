@@ -158,6 +158,56 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void Resize_EmptyOriginalBounds_RestoresSnapshot()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            TextContent = "NOTE",
+            BoundingRect = new Rect(10, 20, 40, 12)
+        };
+        markup.Vertices.Add(new Point(10, 32));
+        markup.Appearance.FontSize = 10;
+        markup.Appearance.StrokeWidth = 1.2;
+
+        var snapshot = _sut.Capture(markup);
+
+        markup.Vertices[0] = new Point(99, 99);
+        markup.BoundingRect = new Rect(90, 90, 10, 10);
+        markup.Appearance.FontSize = 24;
+        markup.Appearance.StrokeWidth = 4.5;
+
+        _sut.Resize(markup, snapshot, Rect.Empty, new Rect(0, 0, 200, 200));
+
+        Assert.Equal(new Point(10, 32), markup.Vertices[0]);
+        Assert.Equal(new Rect(10, 20, 40, 12), markup.BoundingRect);
+        Assert.Equal(10, markup.Appearance.FontSize);
+        Assert.Equal(1.2, markup.Appearance.StrokeWidth, 3);
+    }
+
+    [Fact]
+    public void Resize_PolylineWithoutBoundingRect_RecomputesBoundsFromScaledVertices()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Polyline,
+            Vertices = { new Point(0, 0), new Point(10, 10), new Point(20, 5) }
+        };
+        markup.Appearance.FontSize = 10;
+        markup.Appearance.StrokeWidth = 1.2;
+
+        var snapshot = _sut.Capture(markup);
+        _sut.Resize(markup, snapshot, new Rect(0, 0, 20, 10), new Rect(10, 20, 40, 30));
+
+        Assert.Equal(new Point(10, 20), markup.Vertices[0]);
+        Assert.Equal(new Point(30, 50), markup.Vertices[1]);
+        Assert.Equal(new Point(50, 35), markup.Vertices[2]);
+        Assert.Equal(new Rect(10, 20, 40, 30), markup.BoundingRect);
+        Assert.Equal(20, markup.Appearance.FontSize);
+        Assert.Equal(2.4, markup.Appearance.StrokeWidth, 3);
+    }
+
+    [Fact]
     public void CanResize_GroupContainingRevisionCloud_ReturnsFalse()
     {
         var resizable = CreateMarkup(new Rect(0, 0, 10, 10), "group-1");
