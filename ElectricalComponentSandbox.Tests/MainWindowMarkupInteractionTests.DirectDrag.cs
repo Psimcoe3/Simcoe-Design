@@ -204,6 +204,92 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void BeginSelectedMarkupResizeDragForTesting_WithoutHandleHit_ReturnsFalseAndLeavesGeometryUnchanged()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            CreateGroupedRectangle(new Rect(0, 0, 100, 100), null),
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupResizeDragForTesting(new Point(50, 50));
+                window.UpdateMarkupResizePreviewForTesting(new Point(140, 160));
+                window.FinishMarkupResizeDragForTesting();
+
+                return (began, bounds: markup.BoundingRect, canUndo: viewModel.UndoRedo.CanUndo);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.False(outcome.began);
+        Assert.Equal(new Rect(0, 0, 100, 100), outcome.bounds);
+        Assert.False(outcome.canUndo);
+    }
+
+    [Fact]
+    public void BeginSelectedMarkupResizeDragForTesting_GroupContainingNonResizableMarkup_ReturnsFalse()
+    {
+        var selectedMarkup = CreateGroupedRectangle(new Rect(0, 0, 10, 10), "group-1");
+        var peerMarkup = new MarkupRecord
+        {
+            Type = MarkupType.RevisionCloud,
+            Vertices = { new Point(20, 20), new Point(30, 20), new Point(30, 30) }
+        };
+        peerMarkup.UpdateBoundingRect();
+        peerMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = "group-1";
+
+        var outcome = RunWithSelectedMarkupWindow(
+            selectedMarkup,
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupResizeDragForTesting(new Point(10, 10));
+                window.UpdateMarkupResizePreviewForTesting(new Point(20, 20));
+                window.FinishMarkupResizeDragForTesting();
+
+                return (began, primaryBounds: markup.BoundingRect, peerBounds: peerMarkup.BoundingRect, canUndo: viewModel.UndoRedo.CanUndo);
+            },
+            viewModel =>
+            {
+                viewModel.Markups.Add(peerMarkup);
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.False(outcome.began);
+        Assert.Equal(new Rect(0, 0, 10, 10), outcome.primaryBounds);
+        Assert.Equal(new Rect(20, 20, 10, 10), outcome.peerBounds);
+        Assert.False(outcome.canUndo);
+    }
+
+    [Fact]
+    public void ResizeDragForTesting_WithoutPreviewChange_DoesNotCreateUndoAction()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            CreateGroupedRectangle(new Rect(0, 0, 10, 10), null),
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupResizeDragForTesting(new Point(10, 10));
+                var beforeFinish = (markup.Vertices[0], markup.Vertices[1], markup.Appearance.StrokeWidth, viewModel.UndoRedo.CanUndo);
+                window.FinishMarkupResizeDragForTesting();
+                var afterFinish = (markup.Vertices[0], markup.Vertices[1], markup.Appearance.StrokeWidth, viewModel.UndoRedo.CanUndo);
+                return (began, beforeFinish, afterFinish);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.True(outcome.began);
+        Assert.Equal(new Point(0, 0), outcome.beforeFinish.Item1);
+        Assert.Equal(new Point(10, 10), outcome.beforeFinish.Item2);
+        Assert.Equal(1.0, outcome.beforeFinish.Item3, 6);
+        Assert.False(outcome.beforeFinish.Item4);
+        Assert.Equal(new Point(0, 0), outcome.afterFinish.Item1);
+        Assert.Equal(new Point(10, 10), outcome.afterFinish.Item2);
+        Assert.Equal(1.0, outcome.afterFinish.Item3, 6);
+        Assert.False(outcome.afterFinish.Item4);
+    }
+
+    [Fact]
     public void DirectVertexDragForTesting_LineStyleDimension_UsesPolarSnapAndSupportsUndo()
     {
         var outcome = RunWithSelectedMarkupWindow(
