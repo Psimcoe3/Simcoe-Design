@@ -123,6 +123,70 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_WithoutSelection_ReturnsFalse()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var handled = window.ExecuteEditMarkupGeometryCommandForTesting("radius=12");
+                return (handled, CanUndo: viewModel.UndoRedo.CanUndo);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.False(outcome.handled);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_GroupedSelection_ReturnsFalseAndLeavesBoundsUnchanged()
+    {
+        var selectedMarkup = CreateGroupedRectangle(new Rect(0, 0, 10, 10), "group-1");
+        var peerMarkup = CreateGroupedRectangle(new Rect(20, 20, 10, 10), "group-1");
+
+        var outcome = RunWithSelectedMarkupWindow(
+            selectedMarkup,
+            (window, viewModel, markup) =>
+            {
+                viewModel.Markups.Add(peerMarkup);
+
+                var handled = window.ExecuteEditMarkupGeometryCommandForTesting("width=18\nheight=14");
+                return (handled, Bounds: markup.BoundingRect, CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.False(outcome.handled);
+        Assert.Equal(new Rect(0, 0, 10, 10), outcome.Bounds);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_UnsupportedMarkupType_ReturnsFalse()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Text,
+                TextContent = "NOTE",
+                BoundingRect = new Rect(10, 20, 30, 12),
+                Vertices = { new Point(10, 32) }
+            },
+            (window, viewModel, _) =>
+            {
+                var handled = window.ExecuteEditMarkupGeometryCommandForTesting("width=18\nheight=14");
+                return (handled, CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.False(outcome.handled);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
     public void ExecuteEditMarkupAppearanceCommandForTesting_TextMarkup_UpdatesAppearanceAndSupportsUndo()
     {
         var outcome = RunOnSta(() =>
@@ -194,6 +258,95 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal("Arial", outcome.undoneState.Item5);
         Assert.Equal(10, outcome.undoneState.Item6, 3);
         Assert.Equal(new Rect(10, 20, 30, 12), outcome.undoneState.Item7);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupAppearanceCommandForTesting_WithoutSelection_ReturnsFalse()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var handled = window.ExecuteEditMarkupAppearanceCommandForTesting("stroke=#112233");
+                return (handled, CanUndo: viewModel.UndoRedo.CanUndo);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.False(outcome.handled);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupAppearanceCommandForTesting_GroupedSelection_ReturnsFalseAndLeavesAppearanceUnchanged()
+    {
+        var selectedMarkup = CreateGroupedRectangle(new Rect(0, 0, 10, 10), "group-1");
+        selectedMarkup.Appearance.StrokeColor = "#FF0000";
+        selectedMarkup.Appearance.StrokeWidth = 2;
+        var peerMarkup = CreateGroupedRectangle(new Rect(20, 20, 10, 10), "group-1");
+
+        var outcome = RunWithSelectedMarkupWindow(
+            selectedMarkup,
+            (window, viewModel, markup) =>
+            {
+                viewModel.Markups.Add(peerMarkup);
+
+                var handled = window.ExecuteEditMarkupAppearanceCommandForTesting("stroke=#112233\nwidth=3.5");
+                return (handled, StrokeColor: markup.Appearance.StrokeColor, StrokeWidth: markup.Appearance.StrokeWidth, CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.False(outcome.handled);
+        Assert.Equal("#FF0000", outcome.StrokeColor);
+        Assert.Equal(2, outcome.StrokeWidth, 3);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupAppearanceCommandForTesting_InvalidWidth_DoesNotChangeAppearance()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var markup = new MarkupRecord
+            {
+                Type = MarkupType.Text,
+                TextContent = "NOTE",
+                BoundingRect = new Rect(10, 20, 30, 12),
+                Appearance = new MarkupAppearance
+                {
+                    StrokeColor = "#FF0000",
+                    StrokeWidth = 2,
+                    FillColor = "#20FF0000",
+                    Opacity = 1,
+                    FontFamily = "Arial",
+                    FontSize = 10
+                }
+            };
+            markup.Vertices.Add(new Point(10, 32));
+            viewModel.Markups.Add(markup);
+            viewModel.MarkupTool.SelectedMarkup = markup;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var handled = window.ExecuteEditMarkupAppearanceCommandForTesting("width=0");
+                return (handled, StrokeColor: markup.Appearance.StrokeColor, StrokeWidth: markup.Appearance.StrokeWidth, CanUndo: viewModel.UndoRedo.CanUndo);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.handled);
+        Assert.Equal("#FF0000", outcome.StrokeColor);
+        Assert.Equal(2, outcome.StrokeWidth, 3);
+        Assert.False(outcome.CanUndo);
     }
 
     [Fact]
