@@ -212,6 +212,66 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void SetLineGeometryByEndpoints_UpdatesDimensionStartEndAndBounds()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(10, 10), new Point(30, 10) }
+        };
+        markup.UpdateBoundingRect();
+
+        var result = _sut.SetLineGeometryByEndpoints(markup, new Point(5, 5), new Point(5, 30));
+
+        Assert.True(result);
+        Assert.Equal(new Point(5, 5), markup.Vertices[0]);
+        Assert.Equal(new Point(5, 30), markup.Vertices[1]);
+        Assert.Equal(5, markup.BoundingRect.X, 6);
+        Assert.Equal(5, markup.BoundingRect.Y, 6);
+        Assert.Equal(0, markup.BoundingRect.Width, 6);
+        Assert.Equal(25, markup.BoundingRect.Height, 6);
+    }
+
+    [Fact]
+    public void SetLineGeometryByEndpoints_ThreePointMeasurement_RotatesAndScalesAnchorAroundMidpoint()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(5, 3) }
+        };
+        markup.UpdateBoundingRect();
+
+        var result = _sut.SetLineGeometryByEndpoints(markup, new Point(10, 10), new Point(10, 30));
+
+        Assert.True(result);
+        Assert.Equal(new Point(10, 10), markup.Vertices[0]);
+        Assert.Equal(new Point(10, 30), markup.Vertices[1]);
+        Assert.Equal(4, markup.Vertices[2].X, 6);
+        Assert.Equal(20, markup.Vertices[2].Y, 6);
+    }
+
+    [Fact]
+    public void SetLineGeometryByEndpoints_ZeroLengthTarget_ClampsToMinimumLengthUsingOriginalAngle()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(5, 3) }
+        };
+        markup.UpdateBoundingRect();
+
+        var result = _sut.SetLineGeometryByEndpoints(markup, new Point(20, 20), new Point(20, 20));
+
+        Assert.True(result);
+        Assert.Equal(new Point(20, 20), markup.Vertices[0]);
+        Assert.Equal(20.1, markup.Vertices[1].X, 6);
+        Assert.Equal(20, markup.Vertices[1].Y, 6);
+        Assert.Equal(20.05, markup.Vertices[2].X, 6);
+        Assert.Equal(20.03, markup.Vertices[2].Y, 6);
+    }
+
+    [Fact]
     public void SetAngularGeometry_AngularDimension_RepositionsSecondRayAndAnchor()
     {
         var markup = new MarkupRecord
