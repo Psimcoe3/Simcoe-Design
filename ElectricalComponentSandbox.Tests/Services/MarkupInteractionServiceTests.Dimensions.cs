@@ -348,6 +348,86 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void SetArcAngleFromPoint_AngularDimension_EndHandle_UsesVertexPivotAndSnap()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10), new Point(8, 8) },
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        _sut.SetArcAngleFromPoint(markup, MarkupArcAngleHandle.End, new Point(9, 10), snapIncrementDeg: 15);
+
+        Assert.Equal(45, markup.ArcSweepDeg, 6);
+        Assert.Equal(7.0710678118654755, markup.Vertices[2].X, 6);
+        Assert.Equal(7.0710678118654755, markup.Vertices[2].Y, 6);
+    }
+
+    [Fact]
+    public void SetArcAngleFromPoint_AngularMeasurement_EndHandle_UsesVertexPivotAndSnap()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10), new Point(8, 8) },
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        _sut.SetArcAngleFromPoint(markup, MarkupArcAngleHandle.End, new Point(9, 10), snapIncrementDeg: 15);
+
+        Assert.Equal(45, markup.ArcSweepDeg, 6);
+        Assert.Equal(7.0710678118654755, markup.Vertices[2].X, 6);
+        Assert.Equal(7.0710678118654755, markup.Vertices[2].Y, 6);
+    }
+
+    [Fact]
+    public void SetArcAngleFromPoint_AngularDimension_StartHandle_DoesNothing()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10), new Point(8, 8) },
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        _sut.SetArcAngleFromPoint(markup, MarkupArcAngleHandle.Start, new Point(10, 10), snapIncrementDeg: 15);
+
+        Assert.Equal(0, markup.ArcStartDeg, 6);
+        Assert.Equal(90, markup.ArcSweepDeg, 6);
+        Assert.Equal(new Point(0, 10), markup.Vertices[2]);
+    }
+
+    [Fact]
+    public void SetArcAngleFromPoint_AngularMeasurement_StartHandle_DoesNothing()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, 10), new Point(8, 8) },
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        _sut.SetArcAngleFromPoint(markup, MarkupArcAngleHandle.Start, new Point(10, 10), snapIncrementDeg: 15);
+
+        Assert.Equal(0, markup.ArcStartDeg, 6);
+        Assert.Equal(90, markup.ArcSweepDeg, 6);
+        Assert.Equal(new Point(0, 10), markup.Vertices[2]);
+    }
+
+    [Fact]
     public void SetRadius_AngularDimension_UpdatesRadiusAndPreservesAngle()
     {
         var markup = new MarkupRecord
@@ -517,6 +597,86 @@ public partial class MarkupInteractionServiceTests
         };
 
         _sut.SetArcAngle(markup, MarkupArcAngleHandle.Start, 180);
+
+        Assert.Equal(0, markup.ArcStartDeg, 6);
+        Assert.Equal(90, markup.ArcSweepDeg, 6);
+        Assert.Equal(new Point(0, 10), markup.Vertices[1]);
+    }
+
+    [Fact]
+    public void SetArcAngleFromPoint_ArcLengthDimension_EndHandle_UsesArcCenterAndSnap()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        _sut.SetArcAngleFromPoint(markup, MarkupArcAngleHandle.End, new Point(-9, 10), snapIncrementDeg: 15);
+
+        Assert.Equal(135, markup.ArcSweepDeg, 6);
+        Assert.Equal(-7.071067811865475, markup.Vertices[1].X, 6);
+        Assert.Equal(7.0710678118654755, markup.Vertices[1].Y, 6);
+    }
+
+    [Fact]
+    public void SetArcAngleFromPoint_ArcLengthMeasurement_EndHandle_UsesArcCenterAndSnap()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        _sut.SetArcAngleFromPoint(markup, MarkupArcAngleHandle.End, new Point(-9, 10), snapIncrementDeg: 15);
+
+        Assert.Equal(135, markup.ArcSweepDeg, 6);
+        Assert.Equal(-7.071067811865475, markup.Vertices[1].X, 6);
+        Assert.Equal(7.0710678118654755, markup.Vertices[1].Y, 6);
+    }
+
+    [Fact]
+    public void SetArcAngleFromPoint_ArcLengthDimension_StartHandle_DoesNothing()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        _sut.SetArcAngleFromPoint(markup, MarkupArcAngleHandle.Start, new Point(-10, 0), snapIncrementDeg: 15);
+
+        Assert.Equal(0, markup.ArcStartDeg, 6);
+        Assert.Equal(90, markup.ArcSweepDeg, 6);
+        Assert.Equal(new Point(0, 10), markup.Vertices[1]);
+    }
+
+    [Fact]
+    public void SetArcAngleFromPoint_ArcLengthMeasurement_StartHandle_DoesNothing()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        _sut.SetArcAngleFromPoint(markup, MarkupArcAngleHandle.Start, new Point(-10, 0), snapIncrementDeg: 15);
 
         Assert.Equal(0, markup.ArcStartDeg, 6);
         Assert.Equal(90, markup.ArcSweepDeg, 6);
