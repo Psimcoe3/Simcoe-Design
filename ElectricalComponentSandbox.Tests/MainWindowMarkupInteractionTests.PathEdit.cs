@@ -10,6 +10,28 @@ namespace ElectricalComponentSandbox.Tests;
 public partial class MainWindowMarkupInteractionTests
 {
     [Fact]
+    public void BeginSelectedMarkupVertexInsertionForTesting_WithoutSelection_ReturnsFalseAndLeavesPendingModeDisabled()
+    {
+        var began = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var result = window.BeginSelectedMarkupVertexInsertionForTesting();
+                return (result, window.IsPendingMarkupVertexInsertionForTesting);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.False(began.result);
+        Assert.False(began.IsPendingMarkupVertexInsertionForTesting);
+    }
+
+    [Fact]
     public void BeginSelectedMarkupVertexInsertionForTesting_InsertableSelection_EntersPendingMode()
     {
         var pending = RunWithSelectedMarkupWindow(
@@ -46,6 +68,47 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void BeginSelectedMarkupVertexInsertionForTesting_GroupedSelection_DoesNotEnterPendingMode()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            const string groupId = "group-1";
+            var selected = new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(20, 0) }
+            };
+            var peer = new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(30, 0), new Point(40, 0), new Point(50, 0) }
+            };
+            selected.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = groupId;
+            peer.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = groupId;
+            selected.UpdateBoundingRect();
+            peer.UpdateBoundingRect();
+            viewModel.Markups.Add(selected);
+            viewModel.Markups.Add(peer);
+            viewModel.MarkupTool.SelectedMarkup = selected;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var began = window.BeginSelectedMarkupVertexInsertionForTesting();
+                return (began, window.IsPendingMarkupVertexInsertionForTesting);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.False(outcome.began);
+        Assert.False(outcome.IsPendingMarkupVertexInsertionForTesting);
+    }
+
+    [Fact]
     public void HandlePendingMarkupVertexInsertionClickForTesting_SegmentHit_InsertsVertexAndClearsPendingMode()
     {
         var outcome = RunWithSelectedMarkupWindow(
@@ -71,6 +134,28 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(3, outcome.Count);
         Assert.Equal(1, outcome.ActiveMarkupVertexIndexForTesting);
         Assert.Equal(new Point(15, 0), outcome.Item6);
+    }
+
+    [Fact]
+    public void HandlePendingMarkupVertexInsertionClickForTesting_WithoutPendingMode_ReturnsFalseAndLeavesGeometryUnchanged()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(30, 0) }
+            },
+            (window, _, markup) =>
+            {
+                var inserted = window.HandlePendingMarkupVertexInsertionClickForTesting(new Point(15, 0));
+                return (inserted, window.IsPendingMarkupVertexInsertionForTesting, markup.Vertices.Count, markup.Vertices[0], markup.Vertices[1]);
+            });
+
+        Assert.False(outcome.inserted);
+        Assert.False(outcome.IsPendingMarkupVertexInsertionForTesting);
+        Assert.Equal(2, outcome.Count);
+        Assert.Equal(new Point(0, 0), outcome.Item4);
+        Assert.Equal(new Point(30, 0), outcome.Item5);
     }
 
     [Fact]
@@ -608,6 +693,27 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ExecuteInsertVertexCommandForTesting_WhenAlreadyPending_ReturnsFalseAndKeepsPendingModeEnabled()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(20, 0) }
+            },
+            (window, _, markup) =>
+            {
+                Assert.True(window.BeginSelectedMarkupVertexInsertionForTesting());
+                var enteredPendingMode = window.ExecuteInsertVertexCommandForTesting();
+                return (enteredPendingMode, window.IsPendingMarkupVertexInsertionForTesting, markup.Vertices.Count);
+            });
+
+        Assert.False(outcome.enteredPendingMode);
+        Assert.True(outcome.IsPendingMarkupVertexInsertionForTesting);
+        Assert.Equal(3, outcome.Count);
+    }
+
+    [Fact]
     public void ExecuteEscapeShortcutForTesting_PendingInsertMode_CancelsPendingInsertion()
     {
         var outcome = RunWithSelectedMarkupWindow(
@@ -671,6 +777,26 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(2, outcome.Item2);
         Assert.Equal(1, outcome.Item3);
         Assert.Equal(new Point(20, 0), outcome.Item4);
+    }
+
+    [Fact]
+    public void TryDeleteSelectedMarkupVertexForTesting_WithoutSelection_ReturnsFalse()
+    {
+        var deleted = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var window = new MainWindow(viewModel);
+            try
+            {
+                return window.TryDeleteSelectedMarkupVertexForTesting();
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.False(deleted);
     }
 
     [Fact]
