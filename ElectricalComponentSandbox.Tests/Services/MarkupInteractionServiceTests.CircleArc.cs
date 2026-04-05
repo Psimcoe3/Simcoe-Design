@@ -503,6 +503,42 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void TryGetArcAnglePivotPoint_ArcLengthMeasurementStartHandle_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        var found = _sut.TryGetArcAnglePivotPoint(markup, MarkupArcAngleHandle.Start, out _);
+
+        Assert.False(found);
+    }
+
+    [Fact]
+    public void TryGetArcAnglePivotPoint_ArcLengthDimensionStartHandle_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        var found = _sut.TryGetArcAnglePivotPoint(markup, MarkupArcAngleHandle.Start, out _);
+
+        Assert.False(found);
+    }
+
+    [Fact]
     public void GetArcAngleHandles_AngularDimension_ReturnsEndOnly()
     {
         var markup = new MarkupRecord
@@ -597,6 +633,24 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void GetArcAngleHandlePoint_AngularMeasurementStartHandle_ReturnsDefault()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(2, 3), new Point(12, 3), new Point(2, 13) },
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        var handle = _sut.GetArcAngleHandlePoint(markup, MarkupArcAngleHandle.Start);
+
+        Assert.Equal(default, handle);
+    }
+
+    [Fact]
     public void GetArcAngleHandlePoint_AngularDimensionEndHandle_ReturnsSecondRayEnd()
     {
         var markup = new MarkupRecord
@@ -612,6 +666,24 @@ public partial class MarkupInteractionServiceTests
         var handle = _sut.GetArcAngleHandlePoint(markup, MarkupArcAngleHandle.End);
 
         Assert.Equal(new Point(2, 13), handle);
+    }
+
+    [Fact]
+    public void GetArcAngleHandlePoint_AngularDimensionStartHandle_ReturnsDefault()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(2, 3), new Point(12, 3), new Point(2, 13) },
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        var handle = _sut.GetArcAngleHandlePoint(markup, MarkupArcAngleHandle.Start);
+
+        Assert.Equal(default, handle);
     }
 
     [Fact]
@@ -633,6 +705,24 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void GetArcAngleHandlePoint_ArcLengthMeasurementStartHandle_ReturnsDefault()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Measurement,
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        var handle = _sut.GetArcAngleHandlePoint(markup, MarkupArcAngleHandle.Start);
+
+        Assert.Equal(default, handle);
+    }
+
+    [Fact]
     public void GetArcAngleHandlePoint_ArcLengthDimensionEndHandle_ReturnsArcEndPoint()
     {
         var markup = new MarkupRecord
@@ -648,6 +738,24 @@ public partial class MarkupInteractionServiceTests
         var handle = _sut.GetArcAngleHandlePoint(markup, MarkupArcAngleHandle.End);
 
         Assert.Equal(new Point(0, 10), handle);
+    }
+
+    [Fact]
+    public void GetArcAngleHandlePoint_ArcLengthDimensionStartHandle_ReturnsDefault()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        var handle = _sut.GetArcAngleHandlePoint(markup, MarkupArcAngleHandle.Start);
+
+        Assert.Equal(default, handle);
     }
 
     [Fact]
