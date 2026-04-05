@@ -290,6 +290,101 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void BeginSelectedMarkupVertexDragForTesting_WithoutHandleHit_ReturnsFalseAndLeavesGeometryUnchanged()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(10, 10) }
+            },
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupVertexDragForTesting(new Point(50, 50));
+                window.UpdateDraggedMarkupVertexPreviewForTesting(new Point(20, 20));
+                window.FinishMarkupVertexDragForTesting();
+                return (began, first: markup.Vertices[0], second: markup.Vertices[1], third: markup.Vertices[2], canUndo: viewModel.UndoRedo.CanUndo);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.False(outcome.began);
+        Assert.Equal(new Point(0, 0), outcome.first);
+        Assert.Equal(new Point(10, 0), outcome.second);
+        Assert.Equal(new Point(10, 10), outcome.third);
+        Assert.False(outcome.canUndo);
+    }
+
+    [Fact]
+    public void BeginSelectedMarkupVertexDragForTesting_GroupedSelection_ReturnsFalse()
+    {
+        var selectedMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Polyline,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(10, 10) }
+        };
+        selectedMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = "group-1";
+
+        var peerMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Polyline,
+            Vertices = { new Point(20, 20), new Point(30, 20), new Point(30, 30) }
+        };
+        peerMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = "group-1";
+
+        var outcome = RunWithSelectedMarkupWindow(
+            selectedMarkup,
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupVertexDragForTesting(new Point(10, 0));
+                window.UpdateDraggedMarkupVertexPreviewForTesting(new Point(20, 20));
+                window.FinishMarkupVertexDragForTesting();
+                return (began, selectedSecond: markup.Vertices[1], peerSecond: peerMarkup.Vertices[1], canUndo: viewModel.UndoRedo.CanUndo);
+            },
+            viewModel =>
+            {
+                viewModel.Markups.Add(peerMarkup);
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.False(outcome.began);
+        Assert.Equal(new Point(10, 0), outcome.selectedSecond);
+        Assert.Equal(new Point(30, 20), outcome.peerSecond);
+        Assert.False(outcome.canUndo);
+    }
+
+    [Fact]
+    public void DirectVertexDragForTesting_WithoutPreviewChange_DoesNotCreateUndoAction()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(10, 10) }
+            },
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupVertexDragForTesting(new Point(10, 0));
+                var beforeFinish = (markup.Vertices[1], viewModel.UndoRedo.CanUndo);
+                window.FinishMarkupVertexDragForTesting();
+                var afterFinish = (markup.Vertices[1], viewModel.UndoRedo.CanUndo);
+                return (began, beforeFinish, afterFinish);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.True(outcome.began);
+        Assert.Equal(new Point(10, 0), outcome.beforeFinish.Item1);
+        Assert.False(outcome.beforeFinish.Item2);
+        Assert.Equal(new Point(10, 0), outcome.afterFinish.Item1);
+        Assert.False(outcome.afterFinish.Item2);
+    }
+
+    [Fact]
     public void DirectVertexDragForTesting_LineStyleDimension_UsesPolarSnapAndSupportsUndo()
     {
         var outcome = RunWithSelectedMarkupWindow(
@@ -534,6 +629,57 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(new Point(45, 20), outcome.editedState.Item2);
         Assert.Equal(new Point(0, 0), outcome.undoneState.Item1);
         Assert.Equal(new Point(10, 0), outcome.undoneState.Item2);
+    }
+
+    [Fact]
+    public void BeginSelectedMarkupSelectionDragForTesting_WithoutSelectedMarkup_ReturnsFalse()
+    {
+        var began = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var window = new MainWindow(viewModel);
+            try
+            {
+                return window.BeginSelectedMarkupSelectionDragForTesting(new Point(5, 0));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.False(began);
+    }
+
+    [Fact]
+    public void DirectSelectionDragForTesting_WithoutPreviewChange_DoesNotCreateUndoAction()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(10, 0) }
+            },
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupSelectionDragForTesting(new Point(5, 0));
+                var beforeFinish = (markup.Vertices[0], markup.Vertices[1], viewModel.UndoRedo.CanUndo);
+                window.FinishMarkupSelectionDragForTesting();
+                var afterFinish = (markup.Vertices[0], markup.Vertices[1], viewModel.UndoRedo.CanUndo);
+                return (began, beforeFinish, afterFinish);
+            },
+            viewModel =>
+            {
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.True(outcome.began);
+        Assert.Equal(new Point(0, 0), outcome.beforeFinish.Item1);
+        Assert.Equal(new Point(10, 0), outcome.beforeFinish.Item2);
+        Assert.False(outcome.beforeFinish.Item3);
+        Assert.Equal(new Point(0, 0), outcome.afterFinish.Item1);
+        Assert.Equal(new Point(10, 0), outcome.afterFinish.Item2);
+        Assert.False(outcome.afterFinish.Item3);
     }
 
     [Fact]
