@@ -350,6 +350,149 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_Rectangle_SameDimensions_IsHandledAsNoOp()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = { new Point(0, 0), new Point(10, 6) },
+                BoundingRect = new Rect(0, 0, 10, 6)
+            },
+            (window, viewModel, markup) =>
+            {
+                var handled = window.ExecuteEditMarkupGeometryCommandForTesting("width=10\nheight=6");
+                return (handled, Bounds: markup.BoundingRect, CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.True(outcome.handled);
+        Assert.Equal(new Rect(0, 0, 10, 6), outcome.Bounds);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_Circle_SameRadius_IsHandledAsNoOp()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Circle,
+                Vertices = { new Point(20, 20) },
+                Radius = 5
+            },
+            (window, viewModel, markup) =>
+            {
+                var handled = window.ExecuteEditMarkupGeometryCommandForTesting("5");
+                return (handled, Radius: markup.Radius, Bounds: markup.BoundingRect, CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.True(outcome.handled);
+        Assert.Equal(5, outcome.Radius, 6);
+        Assert.Equal(new Rect(15, 15, 10, 10), outcome.Bounds);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_Arc_SameGeometry_IsHandledAsNoOp()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Arc,
+                Vertices = { new Point(0, 0) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90
+            },
+            (window, viewModel, markup) =>
+            {
+                var handled = window.ExecuteEditMarkupGeometryCommandForTesting("radius=10\nstart=0\nend=90");
+                return (handled, Radius: markup.Radius, Start: markup.ArcStartDeg, Sweep: markup.ArcSweepDeg, CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.True(outcome.handled);
+        Assert.Equal(10, outcome.Radius, 6);
+        Assert.Equal(0, outcome.Start, 6);
+        Assert.Equal(90, outcome.Sweep, 6);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_Polyline_SameVertices_IsHandledAsNoOp()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(10, 10) }
+            },
+            (window, viewModel, markup) =>
+            {
+                var handled = window.ExecuteEditMarkupGeometryCommandForTesting("x1=0\ny1=0\nx2=10\ny2=0\nx3=10\ny3=10");
+                var vertices = markup.Vertices.ToList();
+                return (handled, vertices, CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.True(outcome.handled);
+        Assert.Equal(3, outcome.vertices.Count);
+        Assert.Equal(new Point(0, 0), outcome.vertices[0]);
+        Assert.Equal(new Point(10, 0), outcome.vertices[1]);
+        Assert.Equal(new Point(10, 10), outcome.vertices[2]);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupAppearanceCommandForTesting_SameValues_IsHandledAsNoOp()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var markup = new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                BoundingRect = new Rect(10, 20, 30, 12),
+                Appearance = new MarkupAppearance
+                {
+                    StrokeColor = "#FFFF0000",
+                    StrokeWidth = 2,
+                    FillColor = "#20FF0000",
+                    Opacity = 1
+                }
+            };
+            markup.Vertices.Add(new Point(10, 20));
+            markup.Vertices.Add(new Point(40, 32));
+            viewModel.Markups.Add(markup);
+            viewModel.MarkupTool.SelectedMarkup = markup;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var handled = window.ExecuteEditMarkupAppearanceCommandForTesting("stroke=#FFFF0000\nwidth=2\nfill=#20FF0000\nopacity=1");
+                return (
+                    handled,
+                    StrokeColor: markup.Appearance.StrokeColor,
+                    StrokeWidth: markup.Appearance.StrokeWidth,
+                    FillColor: markup.Appearance.FillColor,
+                    Opacity: markup.Appearance.Opacity,
+                    Bounds: markup.BoundingRect,
+                    CanUndo: viewModel.UndoRedo.CanUndo);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.handled);
+        Assert.Equal("#FFFF0000", outcome.StrokeColor);
+        Assert.Equal(2, outcome.StrokeWidth, 3);
+        Assert.Equal("#20FF0000", outcome.FillColor);
+        Assert.Equal(1, outcome.Opacity, 3);
+        Assert.Equal(new Rect(10, 20, 30, 12), outcome.Bounds);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
     public void ExecuteEditMarkupGeometryCommandForTesting_AngularDimension_UpdatesGeometryAndSupportsUndo()
     {
         var outcome = RunWithSelectedMarkupWindow(
