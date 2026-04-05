@@ -371,6 +371,27 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_Rectangle_InvalidWidth_DoesNotChangeGeometry()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = { new Point(0, 0), new Point(10, 6) },
+                BoundingRect = new Rect(0, 0, 10, 6)
+            },
+            (window, viewModel, markup) =>
+            {
+                var handled = window.ExecuteEditMarkupGeometryCommandForTesting("width=0\nheight=6");
+                return (handled, Bounds: markup.BoundingRect, CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.True(outcome.handled);
+        Assert.Equal(new Rect(0, 0, 10, 6), outcome.Bounds);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
     public void ExecuteEditMarkupGeometryCommandForTesting_Circle_SameRadius_IsHandledAsNoOp()
     {
         var outcome = RunWithSelectedMarkupWindow(
@@ -383,6 +404,28 @@ public partial class MainWindowMarkupInteractionTests
             (window, viewModel, markup) =>
             {
                 var handled = window.ExecuteEditMarkupGeometryCommandForTesting("5");
+                return (handled, Radius: markup.Radius, Bounds: markup.BoundingRect, CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.True(outcome.handled);
+        Assert.Equal(5, outcome.Radius, 6);
+        Assert.Equal(new Rect(15, 15, 10, 10), outcome.Bounds);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_Circle_NonNumericRadius_DoesNotChangeGeometry()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Circle,
+                Vertices = { new Point(20, 20) },
+                Radius = 5
+            },
+            (window, viewModel, markup) =>
+            {
+                var handled = window.ExecuteEditMarkupGeometryCommandForTesting("radius=abc");
                 return (handled, Radius: markup.Radius, Bounds: markup.BoundingRect, CanUndo: viewModel.UndoRedo.CanUndo);
             });
 
@@ -407,6 +450,31 @@ public partial class MainWindowMarkupInteractionTests
             (window, viewModel, markup) =>
             {
                 var handled = window.ExecuteEditMarkupGeometryCommandForTesting("radius=10\nstart=0\nend=90");
+                return (handled, Radius: markup.Radius, Start: markup.ArcStartDeg, Sweep: markup.ArcSweepDeg, CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.True(outcome.handled);
+        Assert.Equal(10, outcome.Radius, 6);
+        Assert.Equal(0, outcome.Start, 6);
+        Assert.Equal(90, outcome.Sweep, 6);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_Arc_InvalidStartAngle_DoesNotChangeGeometry()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Arc,
+                Vertices = { new Point(0, 0) },
+                Radius = 10,
+                ArcStartDeg = 0,
+                ArcSweepDeg = 90
+            },
+            (window, viewModel, markup) =>
+            {
+                var handled = window.ExecuteEditMarkupGeometryCommandForTesting("radius=10\nstart=abc\nend=90");
                 return (handled, Radius: markup.Radius, Start: markup.ArcStartDeg, Sweep: markup.ArcSweepDeg, CanUndo: viewModel.UndoRedo.CanUndo);
             });
 
