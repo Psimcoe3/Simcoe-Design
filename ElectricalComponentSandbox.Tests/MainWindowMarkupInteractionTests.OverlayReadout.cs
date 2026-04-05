@@ -52,6 +52,120 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_WithoutSelectedMarkup_RendersNothing()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var renderer = new OverlayRecordingRenderer();
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                return (rectCount: renderer.DrawnRects.Count, gripCount: renderer.HotGripPoints.Count, renderer.LastTextBoxText);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.Equal(0, outcome.rectCount);
+        Assert.Equal(0, outcome.gripCount);
+        Assert.Equal(string.Empty, outcome.LastTextBoxText);
+    }
+
+    [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_EmptyBounds_RendersNothing()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var markup = new MarkupRecord
+            {
+                Type = MarkupType.ConduitRun,
+                BoundingRect = Rect.Empty
+            };
+            viewModel.Markups.Add(markup);
+            viewModel.MarkupTool.SelectedMarkup = markup;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var renderer = new OverlayRecordingRenderer();
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                return (rectCount: renderer.DrawnRects.Count, gripCount: renderer.HotGripPoints.Count, renderer.LastTextBoxText);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.Equal(0, outcome.rectCount);
+        Assert.Equal(0, outcome.gripCount);
+        Assert.Equal(string.Empty, outcome.LastTextBoxText);
+    }
+
+    [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_NoHandleMode_DrawsHighlightOnly()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var markup = new MarkupRecord
+            {
+                Type = MarkupType.ConduitRun,
+                BoundingRect = new Rect(0, 0, 10, 10)
+            };
+            viewModel.Markups.Add(markup);
+            viewModel.MarkupTool.SelectedMarkup = markup;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var renderer = new OverlayRecordingRenderer();
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                return (rects: renderer.DrawnRects.ToArray(), gripCount: renderer.HotGripPoints.Count, renderer.LastTextBoxText);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        var rect = Assert.Single(outcome.rects);
+        Assert.Equal(new Rect(0, 0, 10, 10), rect);
+        Assert.Equal(0, outcome.gripCount);
+        Assert.Equal(string.Empty, outcome.LastTextBoxText);
+    }
+
+    [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_PathVertexDrag_MarksHotGripWithoutReadout()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(30, 0), new Point(30, 30) }
+            },
+            (window, _, _) =>
+            {
+                var renderer = new OverlayRecordingRenderer();
+                var began = window.BeginSelectedMarkupVertexDragForTesting(new Point(30, 0));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                window.FinishMarkupVertexDragForTesting();
+                return (began, grips: renderer.HotGripPoints.ToArray(), renderer.LastTextBoxText);
+            });
+
+        Assert.True(outcome.began);
+        var hotGrip = Assert.Single(outcome.grips);
+        Assert.Equal(30, hotGrip.X, 6);
+        Assert.Equal(0, hotGrip.Y, 6);
+        Assert.Equal(string.Empty, outcome.LastTextBoxText);
+    }
+
+    [Fact]
     public void DrawSelectedMarkupOverlayForTesting_LineStyleVertexDrag_RendersGeometryReadout()
     {
         var outcome = RunWithSelectedMarkupWindow(
@@ -952,6 +1066,7 @@ public partial class MainWindowMarkupInteractionTests
     {
         public string LastTextBoxText { get; private set; } = string.Empty;
         public List<Point> HotGripPoints { get; } = new();
+        public List<Rect> DrawnRects { get; } = new();
 
         public Rect ViewportDocRect => Rect.Empty;
         public double Zoom => 1.0;
@@ -964,7 +1079,7 @@ public partial class MainWindowMarkupInteractionTests
         public void DrawLine(Point start, Point end, RenderStyle style) { }
         public void DrawPolyline(IReadOnlyList<Point> points, RenderStyle style) { }
         public void DrawPolygon(IReadOnlyList<Point> points, RenderStyle style) { }
-        public void DrawRect(Rect rect, RenderStyle style) { }
+        public void DrawRect(Rect rect, RenderStyle style) => DrawnRects.Add(rect);
         public void DrawEllipse(Point center, double radiusX, double radiusY, RenderStyle style) { }
         public void DrawArc(Point center, double radiusX, double radiusY, double startAngleDeg, double sweepAngleDeg, RenderStyle style) { }
         public void DrawBezier(IReadOnlyList<Point> controlPoints, RenderStyle style) { }
