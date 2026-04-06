@@ -319,6 +319,24 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void GetRadiusHandlePoint_CannotEdit_ReturnsDefault()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(2, 3), new Point(12, 3) },
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        var handle = _sut.GetRadiusHandlePoint(markup);
+
+        Assert.Equal(default, handle);
+    }
+
+    [Fact]
     public void GetRadiusPivotPoint_AngularMeasurement_ReturnsVertex()
     {
         var markup = new MarkupRecord
@@ -388,6 +406,24 @@ public partial class MarkupInteractionServiceTests
         var pivot = _sut.GetRadiusPivotPoint(markup);
 
         Assert.Equal(new Point(0, 0), pivot);
+    }
+
+    [Fact]
+    public void GetRadiusPivotPoint_CannotEdit_ReturnsDefault()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(2, 3), new Point(12, 3) },
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        var pivot = _sut.GetRadiusPivotPoint(markup);
+
+        Assert.Equal(default, pivot);
     }
 
     [Fact]
