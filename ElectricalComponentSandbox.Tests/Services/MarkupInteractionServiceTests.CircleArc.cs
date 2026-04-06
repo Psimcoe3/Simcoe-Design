@@ -1128,6 +1128,23 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void HitTestRadiusHandle_ArcMiss_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 180,
+            Vertices = { new Point(20, 20) }
+        };
+
+        var hit = _sut.HitTestRadiusHandle(new Point(35, 35), markup, tolerance: 1.0);
+
+        Assert.False(hit);
+    }
+
+    [Fact]
     public void HitTestRadiusHandle_AngularMeasurement_ReturnsTrueNearHandle()
     {
         var markup = new MarkupRecord
@@ -1265,6 +1282,21 @@ public partial class MarkupInteractionServiceTests
         var hit = _sut.HitTestRadiusHandle(new Point(31.5, 20.5), markup, tolerance: 1.0);
 
         Assert.True(hit);
+    }
+
+    [Fact]
+    public void HitTestRadiusHandle_CircleMiss_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Radius = 12,
+            Vertices = { new Point(20, 20) }
+        };
+
+        var hit = _sut.HitTestRadiusHandle(new Point(20, 35), markup, tolerance: 1.0);
+
+        Assert.False(hit);
     }
 
     [Fact]
