@@ -703,6 +703,30 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void SetRadius_AngularDimension_NonPositiveRadius_ClampsMinimumAndPreservesNegativeSweep()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(0, -12), new Point(7.0710678118654755, -7.0710678118654755) },
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = -90,
+            Metadata = new MarkupMetadata { Subject = "Angular" }
+        };
+
+        _sut.SetRadius(markup, 0);
+
+        Assert.Equal(0.1, markup.Radius, 6);
+        Assert.Equal(0, markup.ArcStartDeg, 6);
+        Assert.Equal(-90, markup.ArcSweepDeg, 6);
+        Assert.Equal(0, markup.Vertices[2].X, 6);
+        Assert.Equal(-12, markup.Vertices[2].Y, 6);
+        Assert.Equal(1.48492424049175, markup.Vertices[3].X, 6);
+        Assert.Equal(-1.48492424049175, markup.Vertices[3].Y, 6);
+    }
+
+    [Fact]
     public void SetArcLengthGeometry_ArcLengthDimension_RepositionsEndPointAndAnchor()
     {
         var markup = new MarkupRecord
@@ -1054,6 +1078,30 @@ public partial class MarkupInteractionServiceTests
         Assert.Equal(75, markup.ArcSweepDeg, 6);
         Assert.Equal(3.105828541230249, markup.Vertices[1].X, 6);
         Assert.Equal(11.59110991546882, markup.Vertices[1].Y, 6);
+    }
+
+    [Fact]
+    public void SetRadius_ArcLengthDimension_NonPositiveRadius_ClampsMinimumAndPreservesArcLength()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(10, 0), new Point(0, -10), new Point(7.0710678118654755, -7.0710678118654755) },
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = -90,
+            Metadata = new MarkupMetadata { Subject = "ArcLength" }
+        };
+
+        _sut.SetRadius(markup, 0);
+
+        Assert.Equal(0.1, markup.Radius, 6);
+        Assert.Equal(0, markup.ArcStartDeg, 6);
+        Assert.Equal(-359, markup.ArcSweepDeg, 6);
+        Assert.Equal(0.1, markup.Vertices[0].X, 6);
+        Assert.Equal(0, markup.Vertices[0].Y, 6);
+        Assert.Equal(0.0999847695156391, markup.Vertices[1].X, 6);
+        Assert.Equal(0.00174524064372845, markup.Vertices[1].Y, 6);
     }
 
     [Fact]
