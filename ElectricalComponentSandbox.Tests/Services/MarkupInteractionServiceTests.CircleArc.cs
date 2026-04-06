@@ -20,6 +20,19 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void CanEditRadius_Arc_ReturnsTrue()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 8,
+            Vertices = { new Point(10, 20) }
+        };
+
+        Assert.True(_sut.CanEditRadius(markup));
+    }
+
+    [Fact]
     public void CanEditArcAngles_Arc_ReturnsTrue()
     {
         var markup = new MarkupRecord
@@ -30,6 +43,55 @@ public partial class MarkupInteractionServiceTests
         };
 
         Assert.True(_sut.CanEditArcAngles(markup));
+    }
+
+    [Fact]
+    public void CanEditRadius_CircleWithoutVertices_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Radius = 8
+        };
+
+        Assert.False(_sut.CanEditRadius(markup));
+    }
+
+    [Fact]
+    public void CanEditRadius_ArcWithoutVertices_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 8
+        };
+
+        Assert.False(_sut.CanEditRadius(markup));
+    }
+
+    [Fact]
+    public void CanEditArcAngles_ArcWithoutVertices_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 8
+        };
+
+        Assert.False(_sut.CanEditArcAngles(markup));
+    }
+
+    [Fact]
+    public void CanEditArcAngles_ArcWithMinimumRadius_ReturnsFalse()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 0.1,
+            Vertices = { new Point(10, 20) }
+        };
+
+        Assert.False(_sut.CanEditArcAngles(markup));
     }
 
     [Fact]
