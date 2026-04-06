@@ -1095,6 +1095,24 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void SetArcAngle_NoneHandle_DoesNothing()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 10,
+            ArcStartDeg = 15,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(0, 0) }
+        };
+
+        _sut.SetArcAngle(markup, MarkupArcAngleHandle.None, 300);
+
+        Assert.Equal(15, markup.ArcStartDeg, 6);
+        Assert.Equal(90, markup.ArcSweepDeg, 6);
+    }
+
+    [Fact]
     public void SetArcAngleFromPoint_StartHandle_UsesPointAngle()
     {
         var markup = new MarkupRecord
@@ -1128,6 +1146,24 @@ public partial class MarkupInteractionServiceTests
 
         Assert.Equal(0, markup.ArcStartDeg, 6);
         Assert.Equal(135, markup.ArcSweepDeg, 6);
+    }
+
+    [Fact]
+    public void SetArcAngleFromPoint_NoneHandle_DoesNothing()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 10,
+            ArcStartDeg = 15,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(0, 0) }
+        };
+
+        _sut.SetArcAngleFromPoint(markup, MarkupArcAngleHandle.None, new Point(-9, 10), snapIncrementDeg: 15);
+
+        Assert.Equal(15, markup.ArcStartDeg, 6);
+        Assert.Equal(90, markup.ArcSweepDeg, 6);
     }
 
     [Fact]
