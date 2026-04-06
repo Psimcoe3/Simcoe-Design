@@ -1353,6 +1353,28 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void SetRadius_CannotEdit_DoesNothing()
+    {
+        var modifiedUtc = new DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Polyline,
+            Radius = 8,
+            Vertices = { new Point(20, 20), new Point(30, 20) },
+            Metadata = new MarkupMetadata { ModifiedUtc = modifiedUtc }
+        };
+        markup.UpdateBoundingRect();
+
+        _sut.SetRadius(markup, 12);
+
+        Assert.Equal(8, markup.Radius, 6);
+        Assert.Equal(new Point(20, 20), markup.Vertices[0]);
+        Assert.Equal(new Point(30, 20), markup.Vertices[1]);
+        Assert.Equal(new Rect(20, 20, 10, 0), markup.BoundingRect);
+        Assert.Equal(modifiedUtc, markup.Metadata.ModifiedUtc);
+    }
+
+    [Fact]
     public void HitTestRadiusHandle_Circle_ReturnsTrueNearHandle()
     {
         var markup = new MarkupRecord
@@ -1526,6 +1548,32 @@ public partial class MarkupInteractionServiceTests
         Assert.Equal(18, markup.Radius, 6);
         Assert.Equal(30, markup.ArcStartDeg, 6);
         Assert.Equal(135, markup.ArcSweepDeg, 6);
+    }
+
+    [Fact]
+    public void SetArcGeometry_CannotEdit_ReturnsFalseAndDoesNotMutate()
+    {
+        var modifiedUtc = new DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Radius = 10,
+            ArcStartDeg = 15,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(0, 0) },
+            Metadata = new MarkupMetadata { ModifiedUtc = modifiedUtc }
+        };
+        markup.UpdateBoundingRect();
+
+        var updated = _sut.SetArcGeometry(markup, 18, 30, sweepAngleDeg: 135);
+
+        Assert.False(updated);
+        Assert.Equal(10, markup.Radius, 6);
+        Assert.Equal(15, markup.ArcStartDeg, 6);
+        Assert.Equal(90, markup.ArcSweepDeg, 6);
+        Assert.Equal(new Point(0, 0), markup.Vertices[0]);
+        Assert.Equal(new Rect(-10, -10, 20, 20), markup.BoundingRect);
+        Assert.Equal(modifiedUtc, markup.Metadata.ModifiedUtc);
     }
 
     [Fact]
