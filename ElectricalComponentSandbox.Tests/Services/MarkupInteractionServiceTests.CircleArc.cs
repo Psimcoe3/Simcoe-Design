@@ -993,6 +993,40 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void HitTestArcAngleHandle_ArcEnd_ReturnsEndHandle()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(5, 5) }
+        };
+
+        var hit = _sut.HitTestArcAngleHandle(new Point(5.5, 14.5), markup, tolerance: 1.0);
+
+        Assert.Equal(MarkupArcAngleHandle.End, hit);
+    }
+
+    [Fact]
+    public void HitTestArcAngleHandle_ArcWhenBothHandlesMatch_PrefersEnd()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 10,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(5, 5) }
+        };
+
+        var hit = _sut.HitTestArcAngleHandle(new Point(5, 5), markup, tolerance: 10.1);
+
+        Assert.Equal(MarkupArcAngleHandle.End, hit);
+    }
+
+    [Fact]
     public void HitTestArcAngleHandle_ReturnsStartHandle()
     {
         var markup = new MarkupRecord
