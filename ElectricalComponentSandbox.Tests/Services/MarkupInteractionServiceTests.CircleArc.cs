@@ -1307,4 +1307,14 @@ public partial class MarkupInteractionServiceTests
 
         Assert.Equal(345, snapped);
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-15)]
+    public void SnapAngleDegrees_WithNonPositiveIncrement_ReturnsNormalizedAngle(double incrementDeg)
+    {
+        var snapped = _sut.SnapAngleDegrees(-14, incrementDeg);
+
+        Assert.Equal(346, snapped);
+    }
 }
