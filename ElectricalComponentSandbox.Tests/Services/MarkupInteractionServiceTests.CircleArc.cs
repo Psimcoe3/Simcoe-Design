@@ -243,6 +243,22 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void GetRadiusHandlePoint_Circle_UsesPositiveXAxis()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Radius = 10,
+            Vertices = { new Point(2, 3) }
+        };
+
+        var handle = _sut.GetRadiusHandlePoint(markup);
+
+        Assert.Equal(12, handle.X, 6);
+        Assert.Equal(3, handle.Y, 6);
+    }
+
+    [Fact]
     public void GetRadiusHandlePoint_AngularMeasurement_UsesMidSweepBetweenRays()
     {
         var markup = new MarkupRecord
@@ -406,6 +422,21 @@ public partial class MarkupInteractionServiceTests
         var pivot = _sut.GetRadiusPivotPoint(markup);
 
         Assert.Equal(new Point(0, 0), pivot);
+    }
+
+    [Fact]
+    public void GetRadiusPivotPoint_Circle_ReturnsCenter()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Radius = 10,
+            Vertices = { new Point(2, 3) }
+        };
+
+        var pivot = _sut.GetRadiusPivotPoint(markup);
+
+        Assert.Equal(new Point(2, 3), pivot);
     }
 
     [Fact]
