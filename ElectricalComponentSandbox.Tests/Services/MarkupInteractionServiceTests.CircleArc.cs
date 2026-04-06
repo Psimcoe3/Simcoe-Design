@@ -1189,6 +1189,46 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void SetArcGeometry_WithZeroSweep_ClampsToPositiveMinimumAndRadius()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 10,
+            ArcStartDeg = 45,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(0, 0) }
+        };
+
+        var updated = _sut.SetArcGeometry(markup, 0, -30, sweepAngleDeg: 0);
+
+        Assert.True(updated);
+        Assert.Equal(0.1, markup.Radius, 6);
+        Assert.Equal(330, markup.ArcStartDeg, 6);
+        Assert.Equal(1, markup.ArcSweepDeg, 6);
+    }
+
+    [Fact]
+    public void SetArcGeometry_WithTinyNegativeSweep_ClampsToNegativeMinimumAndRadius()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 10,
+            ArcStartDeg = 45,
+            ArcSweepDeg = -90,
+            Vertices = { new Point(0, 0) }
+        };
+
+        var updated = _sut.SetArcGeometry(markup, 0, 420, sweepAngleDeg: -0.2);
+
+        Assert.True(updated);
+        Assert.Equal(0.1, markup.Radius, 6);
+        Assert.Equal(60, markup.ArcStartDeg, 6);
+        Assert.Equal(-1, markup.ArcSweepDeg, 6);
+    }
+
+    [Fact]
     public void CaptureAndApply_Arc_PreservesAngles()
     {
         var markup = new MarkupRecord
