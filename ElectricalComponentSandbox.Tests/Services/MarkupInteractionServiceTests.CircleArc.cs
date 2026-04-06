@@ -1332,6 +1332,27 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void SetRadius_Arc_ClampsMinimumAndPreservesAngles()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(20, 20) }
+        };
+        markup.UpdateBoundingRect();
+
+        _sut.SetRadius(markup, 0);
+
+        Assert.Equal(0.1, markup.Radius, 6);
+        Assert.Equal(0, markup.ArcStartDeg, 6);
+        Assert.Equal(90, markup.ArcSweepDeg, 6);
+        Assert.Equal(new Rect(19.9, 19.9, 0.2, 0.2), markup.BoundingRect);
+    }
+
+    [Fact]
     public void HitTestRadiusHandle_Circle_ReturnsTrueNearHandle()
     {
         var markup = new MarkupRecord
@@ -1525,6 +1546,26 @@ public partial class MarkupInteractionServiceTests
         Assert.Equal(12, markup.Radius, 6);
         Assert.Equal(60, markup.ArcStartDeg, 6);
         Assert.Equal(-120, markup.ArcSweepDeg, 6);
+    }
+
+    [Fact]
+    public void SetArcGeometry_WithSweepAndEndAngle_PrefersExplicitSweep()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 10,
+            ArcStartDeg = 45,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(0, 0) }
+        };
+
+        var updated = _sut.SetArcGeometry(markup, 12, 60, sweepAngleDeg: 100, endAngleDeg: 10);
+
+        Assert.True(updated);
+        Assert.Equal(12, markup.Radius, 6);
+        Assert.Equal(60, markup.ArcStartDeg, 6);
+        Assert.Equal(100, markup.ArcSweepDeg, 6);
     }
 
     [Fact]
