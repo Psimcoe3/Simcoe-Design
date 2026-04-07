@@ -305,6 +305,24 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void GetRadiusHandlePoint_ArcWithNegativeSweep_UsesMidSweepAngle()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 10,
+            ArcStartDeg = 45,
+            ArcSweepDeg = -90,
+            Vertices = { new Point(0, 0) }
+        };
+
+        var handle = _sut.GetRadiusHandlePoint(markup);
+
+        Assert.Equal(10, handle.X, 6);
+        Assert.Equal(0, handle.Y, 6);
+    }
+
+    [Fact]
     public void GetRadiusHandlePoint_Circle_UsesPositiveXAxis()
     {
         var markup = new MarkupRecord
@@ -958,6 +976,24 @@ public partial class MarkupInteractionServiceTests
 
         Assert.Equal(-7.071067811865475, handle.X, 6);
         Assert.Equal(7.0710678118654755, handle.Y, 6);
+    }
+
+    [Fact]
+    public void GetArcAngleHandlePoint_EndWithNegativeSweep_UsesStartPlusSweep()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 10,
+            ArcStartDeg = 45,
+            ArcSweepDeg = -90,
+            Vertices = { new Point(0, 0) }
+        };
+
+        var handle = _sut.GetArcAngleHandlePoint(markup, MarkupArcAngleHandle.End);
+
+        Assert.Equal(7.0710678118654755, handle.X, 6);
+        Assert.Equal(-7.071067811865475, handle.Y, 6);
     }
 
     [Fact]
