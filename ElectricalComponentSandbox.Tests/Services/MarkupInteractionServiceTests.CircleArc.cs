@@ -1423,6 +1423,24 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void SetArcAngle_StartHandle_KeepsEndFixedForNegativeSweep()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 10,
+            ArcStartDeg = 45,
+            ArcSweepDeg = -90,
+            Vertices = { new Point(0, 0) }
+        };
+
+        _sut.SetArcAngle(markup, MarkupArcAngleHandle.Start, 30);
+
+        Assert.Equal(30, markup.ArcStartDeg, 6);
+        Assert.Equal(-75, markup.ArcSweepDeg, 6);
+    }
+
+    [Fact]
     public void SetArcAngle_StartHandle_ClampsMinimumPositiveSweep()
     {
         var markup = new MarkupRecord
@@ -1456,6 +1474,24 @@ public partial class MarkupInteractionServiceTests
 
         Assert.Equal(45, markup.ArcStartDeg, 6);
         Assert.Equal(1, markup.ArcSweepDeg, 6);
+    }
+
+    [Fact]
+    public void SetArcAngle_EndHandle_KeepsStartFixedForPositiveSweep()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 10,
+            ArcStartDeg = 45,
+            ArcSweepDeg = 90,
+            Vertices = { new Point(0, 0) }
+        };
+
+        _sut.SetArcAngle(markup, MarkupArcAngleHandle.End, 180);
+
+        Assert.Equal(45, markup.ArcStartDeg, 6);
+        Assert.Equal(135, markup.ArcSweepDeg, 6);
     }
 
     [Fact]
