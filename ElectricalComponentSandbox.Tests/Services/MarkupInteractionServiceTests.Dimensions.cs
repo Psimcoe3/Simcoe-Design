@@ -593,6 +593,33 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void SetArcAngle_AngularDimensionWithoutEnoughVertices_DoesNothing()
+    {
+        var modifiedUtc = new DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(0, 0), new Point(10, 0) },
+            Radius = 8,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Metadata = new MarkupMetadata { Subject = "Angular", ModifiedUtc = modifiedUtc }
+        };
+        markup.UpdateBoundingRect();
+        var originalBounds = markup.BoundingRect;
+
+        _sut.SetArcAngle(markup, MarkupArcAngleHandle.End, 45);
+
+        Assert.Equal(8, markup.Radius, 6);
+        Assert.Equal(0, markup.ArcStartDeg, 6);
+        Assert.Equal(90, markup.ArcSweepDeg, 6);
+        Assert.Equal(new Point(0, 0), markup.Vertices[0]);
+        Assert.Equal(new Point(10, 0), markup.Vertices[1]);
+        Assert.Equal(originalBounds, markup.BoundingRect);
+        Assert.Equal(modifiedUtc, markup.Metadata.ModifiedUtc);
+    }
+
+    [Fact]
     public void SetArcAngleFromPoint_AngularDimension_EndHandle_UsesVertexPivotAndSnap()
     {
         var markup = new MarkupRecord
@@ -1222,6 +1249,34 @@ public partial class MarkupInteractionServiceTests
         Assert.Equal(0, markup.ArcStartDeg, 6);
         Assert.Equal(90, markup.ArcSweepDeg, 6);
         Assert.Equal(new Point(0, 10), markup.Vertices[1]);
+    }
+
+    [Fact]
+    public void SetArcAngleFromPoint_ArcLengthDimensionAtMinimumRadius_DoesNothing()
+    {
+        var modifiedUtc = new DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Dimension,
+            Vertices = { new Point(10, 0), new Point(0, 10), new Point(7.0710678118654755, 7.0710678118654755) },
+            Radius = 0.1,
+            ArcStartDeg = 0,
+            ArcSweepDeg = 90,
+            Metadata = new MarkupMetadata { Subject = "ArcLength", ModifiedUtc = modifiedUtc }
+        };
+        markup.UpdateBoundingRect();
+        var originalBounds = markup.BoundingRect;
+
+        _sut.SetArcAngleFromPoint(markup, MarkupArcAngleHandle.End, new Point(-9, 10), snapIncrementDeg: 15);
+
+        Assert.Equal(0.1, markup.Radius, 6);
+        Assert.Equal(0, markup.ArcStartDeg, 6);
+        Assert.Equal(90, markup.ArcSweepDeg, 6);
+        Assert.Equal(new Point(10, 0), markup.Vertices[0]);
+        Assert.Equal(new Point(0, 10), markup.Vertices[1]);
+        Assert.Equal(new Point(7.0710678118654755, 7.0710678118654755), markup.Vertices[2]);
+        Assert.Equal(originalBounds, markup.BoundingRect);
+        Assert.Equal(modifiedUtc, markup.Metadata.ModifiedUtc);
     }
 
     [Fact]
