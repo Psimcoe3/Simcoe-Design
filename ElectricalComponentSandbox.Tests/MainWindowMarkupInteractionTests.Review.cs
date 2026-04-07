@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using ElectricalComponentSandbox.Markup.Models;
 using ElectricalComponentSandbox.ViewModels;
 
@@ -115,6 +116,112 @@ public partial class MainWindowMarkupInteractionTests
         Assert.False(outcome.added);
         Assert.Equal(0, outcome.VisibleReplyCount);
         Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ReviewWorkflowCard_BindsAssignmentSummaryAndReplyThread()
+    {
+        const string rootReplyId = "reply-root";
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                AssignedTo = "Field Crew",
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Panel issue"
+                },
+                Replies =
+                {
+                    new MarkupReply
+                    {
+                        Id = rootReplyId,
+                        Author = "Reviewer A",
+                        Text = "Need revised feeder routing.",
+                        CreatedUtc = new DateTime(2026, 4, 7, 12, 0, 0, DateTimeKind.Utc),
+                        ModifiedUtc = new DateTime(2026, 4, 7, 12, 0, 0, DateTimeKind.Utc)
+                    },
+                    new MarkupReply
+                    {
+                        Id = "reply-child",
+                        ParentReplyId = rootReplyId,
+                        Author = "Reviewer B",
+                        Text = "Confirmed on revised sheet E2.",
+                        Kind = MarkupReplyKind.StatusAudit,
+                        CreatedUtc = new DateTime(2026, 4, 7, 13, 0, 0, DateTimeKind.Utc),
+                        ModifiedUtc = new DateTime(2026, 4, 7, 13, 0, 0, DateTimeKind.Utc)
+                    }
+                }
+            },
+            (window, viewModel, markup) =>
+            {
+                window.UpdateLayout();
+
+                var reviewCard = FindRequired<Border>(window, "SelectedMarkupReviewCard");
+                var assignmentSummary = FindRequired<TextBlock>(window, "SelectedMarkupAssignmentSummaryTextBlock");
+                var replySummary = FindRequired<TextBlock>(window, "SelectedMarkupReplySummaryTextBlock");
+                var addReplyButton = FindRequired<Button>(window, "AddMarkupReplyButton");
+                var assignButton = FindRequired<Button>(window, "AssignSelectedMarkupButton");
+                var replyList = FindRequired<ItemsControl>(window, "SelectedMarkupReplyList");
+                var reviewCardBinding = reviewCard.GetBindingExpression(UIElement.VisibilityProperty);
+                var assignmentSummaryBinding = assignmentSummary.GetBindingExpression(TextBlock.TextProperty);
+                var replySummaryBinding = replySummary.GetBindingExpression(TextBlock.TextProperty);
+                var replyListBinding = replyList.GetBindingExpression(ItemsControl.ItemsSourceProperty);
+
+                return (
+                    ReviewCardVisibilityPath: reviewCardBinding?.ParentBinding.Path.Path,
+                    AssignmentSummaryPath: assignmentSummaryBinding?.ParentBinding.Path.Path,
+                    ReplySummaryPath: replySummaryBinding?.ParentBinding.Path.Path,
+                    ReplyItemsSourcePath: replyListBinding?.ParentBinding.Path.Path,
+                    AddReplyEnabled: addReplyButton.IsEnabled,
+                    AssignEnabled: assignButton.IsEnabled);
+            });
+
+        Assert.Equal("MarkupTool.SelectedMarkup", outcome.ReviewCardVisibilityPath);
+        Assert.Equal("MarkupTool.SelectedMarkupAssignmentSummary", outcome.AssignmentSummaryPath);
+        Assert.Equal("MarkupTool.SelectedMarkupReplySummary", outcome.ReplySummaryPath);
+        Assert.Equal("MarkupTool.SelectedMarkupReplies", outcome.ReplyItemsSourcePath);
+        Assert.True(outcome.AddReplyEnabled);
+        Assert.True(outcome.AssignEnabled);
+    }
+
+    [Fact]
+    public void ReviewWorkflowButtons_ResolveAndVoidApplyMatchingStatuses()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Status = MarkupStatus.Open,
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Panel issue"
+                }
+            },
+            (window, viewModel, markup) =>
+            {
+                window.UpdateLayout();
+
+                var resolveButton = FindRequired<Button>(window, "ResolveSelectedMarkupButton");
+                var voidButton = FindRequired<Button>(window, "VoidSelectedMarkupButton");
+
+                resolveButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var afterResolve = (Status: markup.Status, ReplyText: Assert.Single(markup.Replies).Text);
+
+                viewModel.Undo();
+
+                voidButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var afterVoid = (Status: markup.Status, ReplyText: Assert.Single(markup.Replies).Text);
+
+                return (afterResolve, afterVoid);
+            });
+
+        Assert.Equal(MarkupStatus.Resolved, outcome.afterResolve.Status);
+        Assert.Equal("Status changed: Open -> Resolved", outcome.afterResolve.ReplyText);
+        Assert.Equal(MarkupStatus.Void, outcome.afterVoid.Status);
+        Assert.Equal("Status changed: Open -> Void", outcome.afterVoid.ReplyText);
     }
 
     [Fact]

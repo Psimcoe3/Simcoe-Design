@@ -575,7 +575,7 @@ public class XfdfExportService
                 replyTelemetry.AddedReplyCount,
                 replyTelemetry.AddedManualReplyCount,
                 replyTelemetry.AddedAuditReplyCount,
-                appliedImportedStatusNote: false);
+                false);
         }
 
         existing.UpdateBoundingRect();

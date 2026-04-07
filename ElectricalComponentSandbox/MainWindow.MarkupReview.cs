@@ -100,6 +100,11 @@ public partial class MainWindow
         TrySetSelectedMarkupStatus(MarkupStatus.Resolved, Environment.UserName, showFeedbackIfUnavailable: true);
     }
 
+    private void VoidMarkup_Click(object sender, RoutedEventArgs e)
+    {
+        TrySetSelectedMarkupStatus(MarkupStatus.Void, Environment.UserName, showFeedbackIfUnavailable: true);
+    }
+
     private void AssignSelectedMarkup_Click(object sender, RoutedEventArgs e)
     {
         var defaultValue = _viewModel.MarkupTool.SelectedMarkup?.AssignedTo ?? Environment.UserName;

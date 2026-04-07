@@ -18,6 +18,7 @@
     <!-- Value Converters -->
     <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
     <converters:NotNullToVisibilityConverter x:Key="NotNullToVisibilityConverter"/>
+    <converters:ThreadDepthToMarginConverter x:Key="ThreadDepthToMarginConverter"/>
     <SolidColorBrush x:Key="MobilePrimaryBrush" Color="#007AFF"/>
     <SolidColorBrush x:Key="MobileSurfaceBrush" Color="#FFFFFF"/>
     <SolidColorBrush x:Key="MobileSurfaceAltBrush" Color="#F2F2F7"/>
@@ -242,9 +243,13 @@
                     <MenuItem Header="Add Stamp..." Click="AddStamp_Click"/>
                 </MenuItem>
                 <MenuItem Header="Review Actions">
+                    <MenuItem Header="Add Reply..." Click="AddMarkupReply_Click"/>
+                    <MenuItem Header="Assign Selected..." Click="AssignSelectedMarkup_Click"/>
+                    <Separator/>
                     <MenuItem Header="Approve Selected" Click="ApproveMarkup_Click"/>
                     <MenuItem Header="Reject Selected" Click="RejectMarkup_Click"/>
                     <MenuItem Header="Resolve Selected" Click="ResolveMarkup_Click"/>
+                    <MenuItem Header="Void Selected" Click="VoidMarkup_Click"/>
                 </MenuItem>
                 <MenuItem Header="Markup Summary..." Click="MarkupSummary_Click"/>
             </MenuItem>
@@ -898,11 +903,117 @@
                                         Margin="0,0,6,4"
                                         IsEnabled="{Binding MarkupTool.HasPathVertexDeleteCandidate}"
                                         ToolTip="{Binding MarkupTool.SelectedMarkupPathDeleteSummary}"/>
-                                <Button Content="Resolve" Command="{Binding MarkupTool.ApproveSelectedCommand}" Padding="8,2" Margin="0,0,6,4"/>
-                                <Button Content="Void" Command="{Binding MarkupTool.RejectSelectedCommand}" Padding="8,2" Margin="0,0,6,4"/>
                                 <Button Content="Delete" Click="DeleteComponent_Click" Padding="8,2" Margin="0,0,6,4"/>
                                 <Button Content="Clear Filters" Command="{Binding MarkupTool.ClearFiltersCommand}" Padding="8,2" Margin="0,0,6,4"/>
                             </WrapPanel>
+                            <Border x:Name="SelectedMarkupReviewCard"
+                                    DockPanel.Dock="Top"
+                                    Margin="4,0,4,6"
+                                    Padding="8"
+                                    Background="#FFF7F7F8"
+                                    BorderBrush="#FFD0D7DE"
+                                    BorderThickness="1"
+                                    Visibility="{Binding MarkupTool.SelectedMarkup, Converter={StaticResource NotNullToVisibilityConverter}}">
+                                <StackPanel>
+                                    <TextBlock Text="Review Workflow" FontWeight="Bold" FontSize="11" Margin="0,0,0,4"/>
+                                    <TextBlock x:Name="SelectedMarkupAssignmentSummaryTextBlock"
+                                               Text="{Binding MarkupTool.SelectedMarkupAssignmentSummary}"
+                                               TextWrapping="Wrap"
+                                               Margin="0,0,0,2"/>
+                                    <TextBlock x:Name="SelectedMarkupReplySummaryTextBlock"
+                                               Text="{Binding MarkupTool.SelectedMarkupReplySummary}"
+                                               TextWrapping="Wrap"
+                                               Margin="0,0,0,6"/>
+                                    <WrapPanel Margin="0,0,0,6">
+                                        <Button x:Name="AddMarkupReplyButton"
+                                                Content="Add Reply"
+                                                Click="AddMarkupReply_Click"
+                                                Padding="8,2"
+                                                Margin="0,0,6,4"
+                                                IsEnabled="{Binding MarkupTool.HasSelectedMarkup}"/>
+                                        <Button x:Name="AssignSelectedMarkupButton"
+                                                Content="Assign"
+                                                Click="AssignSelectedMarkup_Click"
+                                                Padding="8,2"
+                                                Margin="0,0,6,4"
+                                                IsEnabled="{Binding MarkupTool.HasSelectedMarkup}"/>
+                                        <Button x:Name="ApproveSelectedMarkupButton"
+                                                Content="Approve"
+                                                Click="ApproveMarkup_Click"
+                                                Padding="8,2"
+                                                Margin="0,0,6,4"
+                                                IsEnabled="{Binding MarkupTool.HasSelectedMarkup}"/>
+                                        <Button x:Name="RejectSelectedMarkupButton"
+                                                Content="Reject"
+                                                Click="RejectMarkup_Click"
+                                                Padding="8,2"
+                                                Margin="0,0,6,4"
+                                                IsEnabled="{Binding MarkupTool.HasSelectedMarkup}"/>
+                                        <Button x:Name="ResolveSelectedMarkupButton"
+                                                Content="Resolve"
+                                                Click="ResolveMarkup_Click"
+                                                Padding="8,2"
+                                                Margin="0,0,6,4"
+                                                IsEnabled="{Binding MarkupTool.HasSelectedMarkup}"/>
+                                        <Button x:Name="VoidSelectedMarkupButton"
+                                                Content="Void"
+                                                Click="VoidMarkup_Click"
+                                                Padding="8,2"
+                                                Margin="0,0,6,4"
+                                                IsEnabled="{Binding MarkupTool.HasSelectedMarkup}"/>
+                                    </WrapPanel>
+                                    <TextBlock Text="Conversation" FontWeight="SemiBold" Margin="0,0,0,2"/>
+                                    <TextBlock Text="No replies yet. Add the first review response for this issue."
+                                               Foreground="Gray"
+                                               TextWrapping="Wrap">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding MarkupTool.HasSelectedMarkupReplies}" Value="False">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <ScrollViewer MaxHeight="190" VerticalScrollBarVisibility="Auto">
+                                        <ScrollViewer.Style>
+                                            <Style TargetType="ScrollViewer">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding MarkupTool.HasSelectedMarkupReplies}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ScrollViewer.Style>
+                                        <ItemsControl x:Name="SelectedMarkupReplyList"
+                                                      ItemsSource="{Binding MarkupTool.SelectedMarkupReplies}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Margin="{Binding ThreadDepth, Converter={StaticResource ThreadDepthToMarginConverter}}"
+                                                            Padding="6"
+                                                            Background="White"
+                                                            BorderBrush="#FFE5E7EB"
+                                                            BorderThickness="1">
+                                                        <StackPanel>
+                                                            <TextBlock TextWrapping="Wrap" Margin="0">
+                                                                <Run Text="{Binding EntryTypeDisplayText}" FontWeight="SemiBold"/>
+                                                                <Run Text="  |  "/>
+                                                                <Run Text="{Binding Author}" FontWeight="SemiBold"/>
+                                                                <Run Text="  |  "/>
+                                                                <Run Text="{Binding ModifiedDisplayText}" Foreground="Gray"/>
+                                                            </TextBlock>
+                                                            <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </StackPanel>
+                            </Border>
                             <Border DockPanel.Dock="Top"
                                     Margin="4,0,4,6"
                                     Padding="8"
