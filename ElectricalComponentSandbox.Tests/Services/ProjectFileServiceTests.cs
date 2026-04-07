@@ -62,6 +62,43 @@ public class ProjectFileServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAndLoad_ProjectWithComponentInteropMetadata_RoundTrips()
+    {
+        var importedUtc = new DateTime(2026, 4, 7, 12, 30, 0, DateTimeKind.Utc);
+        var project = new ProjectModel { Name = "Interop Project" };
+        project.Components.Add(new ConduitComponent
+        {
+            Name = "Imported Conduit",
+            InteropMetadata = new ComponentInteropMetadata
+            {
+                SourceSystem = "Revit",
+                SourceDocumentId = "project-guid-001",
+                SourceDocumentName = "Campus Power.rvt",
+                SourceElementId = "element-12345",
+                SourceFamilyName = "Conduit",
+                SourceTypeName = "EMT 3-4",
+                LastInterchangeFormat = "IFC4",
+                LastImportedUtc = importedUtc
+            }
+        });
+        var filePath = Path.Combine(_tempDir, "interop.ecproj");
+
+        await _service.SaveProjectAsync(project, filePath);
+        var loaded = await _service.LoadProjectAsync(filePath);
+
+        Assert.NotNull(loaded);
+        var loadedConduit = Assert.IsType<ConduitComponent>(Assert.Single(loaded.Components));
+        Assert.Equal("Revit", loadedConduit.InteropMetadata.SourceSystem);
+        Assert.Equal("project-guid-001", loadedConduit.InteropMetadata.SourceDocumentId);
+        Assert.Equal("Campus Power.rvt", loadedConduit.InteropMetadata.SourceDocumentName);
+        Assert.Equal("element-12345", loadedConduit.InteropMetadata.SourceElementId);
+        Assert.Equal("Conduit", loadedConduit.InteropMetadata.SourceFamilyName);
+        Assert.Equal("EMT 3-4", loadedConduit.InteropMetadata.SourceTypeName);
+        Assert.Equal("IFC4", loadedConduit.InteropMetadata.LastInterchangeFormat);
+        Assert.Equal(importedUtc, loadedConduit.InteropMetadata.LastImportedUtc);
+    }
+
+    [Fact]
     public async Task SaveAndLoad_ProjectSettings_Preserved()
     {
         var project = new ProjectModel
@@ -187,6 +224,30 @@ public class ProjectFileServiceTests : IDisposable
         Assert.NotNull(loaded?.PlotLayout);
         Assert.Equal(PaperSize.ANSI_D, loaded.PlotLayout.PaperSize);
         Assert.Equal(24.0, loaded.PlotLayout.PlotScale);
+    }
+
+    [Fact]
+    public async Task SaveAndLoad_SavedPageSetups_RoundTrips()
+    {
+        var project = new ProjectModel();
+        project.SavedPageSetups.Add(new PlotLayout
+        {
+            Name = "Permit Set",
+            PaperSize = PaperSize.ANSI_C,
+            PlotScale = 12.0,
+            PlotStyleTableName = "permit.ctb"
+        });
+        var filePath = Path.Combine(_tempDir, "saved-page-setups.ecproj");
+
+        await _service.SaveProjectAsync(project, filePath);
+        var loaded = await _service.LoadProjectAsync(filePath);
+
+        Assert.NotNull(loaded);
+        Assert.Single(loaded.SavedPageSetups);
+        Assert.Equal("Permit Set", loaded.SavedPageSetups[0].Name);
+        Assert.Equal(PaperSize.ANSI_C, loaded.SavedPageSetups[0].PaperSize);
+        Assert.Equal(12.0, loaded.SavedPageSetups[0].PlotScale);
+        Assert.Equal("permit.ctb", loaded.SavedPageSetups[0].PlotStyleTableName);
     }
 
     [Fact]

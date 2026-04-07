@@ -37,6 +37,9 @@ public class ProjectModel
     /// <summary>Legacy single-sheet layout retained for backward compatibility.</summary>
     public PlotLayout? PlotLayout { get; set; }
 
+    /// <summary>Saved page setup presets for reusable AutoCAD-style layouts.</summary>
+    public List<PlotLayout> SavedPageSetups { get; set; } = new();
+
     /// <summary>Unit system setting: "Imperial" (ft/in) or "Metric" (m/mm)</summary>
     public string UnitSystem { get; set; } = "Imperial";
 

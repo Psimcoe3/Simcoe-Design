@@ -215,6 +215,26 @@ public partial class MainViewModelTests
     }
 
     [Fact]
+    public void ToProjectModel_AndLoadFromProject_PreserveSavedPageSetups()
+    {
+        var vm = new MainViewModel();
+        vm.ActivePlotLayout = new PlotLayout { Name = "Current Layout", PaperSize = PaperSize.ANSI_C, PlotScale = 12.0 };
+        Assert.True(vm.SaveCurrentPageSetup("Permit Set"));
+
+        var project = vm.ToProjectModel();
+
+        Assert.Single(project.SavedPageSetups);
+        Assert.Equal("Permit Set", project.SavedPageSetups[0].Name);
+
+        var vm2 = new MainViewModel();
+        vm2.LoadFromProject(project);
+
+        Assert.Single(vm2.SavedPageSetups);
+        Assert.Equal("Permit Set", vm2.SavedPageSetups[0].Name);
+        Assert.Equal(PaperSize.ANSI_C, vm2.SavedPageSetups[0].PaperSize);
+    }
+
+    [Fact]
     public void UpsertProjectParameter_WithFormula_ComputesDerivedValueAndBoundComponent()
     {
         var vm = new MainViewModel();

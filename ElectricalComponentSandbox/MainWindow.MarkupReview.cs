@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text;
 using System.Windows;
 using ElectricalComponentSandbox.Markup.Models;
+using ElectricalComponentSandbox.Markup.Services;
 using ElectricalComponentSandbox.Services;
 using ElectricalComponentSandbox.ViewModels;
 
@@ -187,6 +188,7 @@ public partial class MainWindow
         var utcNow = DateTime.UtcNow;
         var reply = new MarkupReply
         {
+            ParentReplyId = MarkupThreadingService.GetLatestReplyId(markup.Replies),
             Author = string.IsNullOrWhiteSpace(author) ? Environment.UserName : author,
             Text = replyText.Trim(),
             CreatedUtc = utcNow,

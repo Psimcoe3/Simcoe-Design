@@ -1,8 +1,10 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using Microsoft.Win32;
 using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.Services;
+using ElectricalComponentSandbox.Services.Export;
 using ElectricalComponentSandbox.Services.RevitIntrospection;
 
 namespace ElectricalComponentSandbox;
@@ -178,6 +180,25 @@ public partial class MainWindow
 
     internal void ExportSelectedComponentsToJsonSynchronouslyForTesting(string filePath)
         => ExportSelectedComponentsToJsonForTesting(filePath).GetAwaiter().GetResult();
+
+    internal XfdfImportMergeResult ImportXfdfForTesting(string xfdf, XfdfImportMergeMode mode)
+    {
+        var mergeResult = _viewModel.XfdfService.ImportAndMerge(xfdf, _viewModel.Markups, mode);
+        _viewModel.MarkupTool.RefreshReviewContext();
+        return mergeResult;
+    }
+
+    internal XfdfImportMergeResult PreviewXfdfImportForTesting(string xfdf)
+        => _viewModel.XfdfService.PreviewImportMerge(xfdf, _viewModel.Markups);
+
+    internal static string BuildXfdfImportConflictSummaryForTesting(XfdfImportMergeResult preview)
+        => BuildXfdfImportConflictSummary(preview);
+
+    internal static string BuildXfdfImportResultSummaryForTesting(XfdfImportMergeResult result, XfdfImportMergeMode mode)
+        => BuildXfdfImportResultSummary(result, mode);
+
+    internal static string[] BuildXfdfImportDetailLinesForTesting(XfdfImportMergeResult result)
+        => BuildXfdfImportDetailLines(result).ToArray();
     
     private async void ExportBomCsv_Click(object sender, RoutedEventArgs e)
     {
@@ -346,16 +367,26 @@ public partial class MainWindow
 
         try
         {
-            var imported = _viewModel.XfdfService.ImportFromFile(dlg.FileName);
-            foreach (var markup in imported)
-                _viewModel.Markups.Add(markup);
+            var preview = _viewModel.XfdfService.PreviewImportMergeFromFile(dlg.FileName, _viewModel.Markups);
+            var mergeMode = preview.ConflictCount == 0
+                ? XfdfImportMergeMode.PreferImported
+                : ShowXfdfImportConflictReviewDialog(preview);
+
+            if (!mergeMode.HasValue)
+                return;
+
+            var mergeResult = _viewModel.XfdfService.ImportAndMergeFromFile(
+                dlg.FileName,
+                _viewModel.Markups,
+                mergeMode.Value);
+
+            _viewModel.MarkupTool.RefreshReviewContext();
 
             ActionLogService.Instance.Log(LogCategory.FileOperation, "XFDF imported",
-                $"File: {dlg.FileName}, Imported: {imported.Count}");
-            MessageBox.Show($"Imported {imported.Count} markup(s) from XFDF.",
-                "Import XFDF", MessageBoxButton.OK, MessageBoxImage.Information);
+                $"File: {dlg.FileName}, Mode: {mergeMode.Value}, Imported: {mergeResult.ImportedCount}, Added: {mergeResult.AddedCount}, Merged: {mergeResult.UpdatedCount}, Duplicated: {mergeResult.DuplicatedCount}, Conflicts: {mergeResult.ConflictCount}");
+            ShowXfdfImportResultDialog(mergeResult, mergeMode.Value);
 
-            QueueSceneRefresh(update2D: true, update3D: false, updateProperties: false);
+            QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
         }
         catch (Exception ex)
         {
@@ -363,6 +394,234 @@ public partial class MainWindow
             MessageBox.Show($"XFDF import failed:\n{ex.Message}", "Import XFDF",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    private XfdfImportMergeMode? ShowXfdfImportConflictReviewDialog(XfdfImportMergeResult preview)
+    {
+        var replaceRadio = new RadioButton
+        {
+            Content = "Replace conflicting markups with imported versions",
+            IsChecked = true,
+            Margin = new Thickness(0, 0, 0, 6)
+        };
+        var keepExistingRadio = new RadioButton
+        {
+            Content = "Keep existing markups and only merge new replies/history",
+            Margin = new Thickness(0, 0, 0, 6)
+        };
+        var duplicateRadio = new RadioButton
+        {
+            Content = "Import conflicting markups as duplicates with fresh IDs"
+        };
+
+        var dialog = new Window
+        {
+            Title = "Import XFDF Conflict Review",
+            Width = 760,
+            Height = 560,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Owner = this,
+            ResizeMode = ResizeMode.CanResize,
+            WindowStyle = WindowStyle.ToolWindow
+        };
+
+        var root = new DockPanel { Margin = new Thickness(12) };
+
+        var summary = new TextBlock
+        {
+            Text = BuildXfdfImportConflictSummary(preview),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 12)
+        };
+        DockPanel.SetDock(summary, Dock.Top);
+        root.Children.Add(summary);
+
+        var strategyPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
+        strategyPanel.Children.Add(new TextBlock
+        {
+            Text = "Choose how conflicting markups should be reconciled:",
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 6)
+        });
+        strategyPanel.Children.Add(replaceRadio);
+        strategyPanel.Children.Add(keepExistingRadio);
+        strategyPanel.Children.Add(duplicateRadio);
+        DockPanel.SetDock(strategyPanel, Dock.Top);
+        root.Children.Add(strategyPanel);
+
+        var conflictList = new ListBox
+        {
+            ItemsSource = preview.Conflicts.Select(conflict => conflict.Summary).ToList(),
+            MinHeight = 220,
+            Margin = new Thickness(0, 0, 0, 12)
+        };
+        root.Children.Add(conflictList);
+
+        var buttonPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+        var cancelButton = new Button
+        {
+            Content = "Cancel",
+            Width = 90,
+            IsCancel = true,
+            Margin = new Thickness(0, 0, 8, 0)
+        };
+        var importButton = new Button
+        {
+            Content = "Import",
+            Width = 90,
+            IsDefault = true
+        };
+        buttonPanel.Children.Add(cancelButton);
+        buttonPanel.Children.Add(importButton);
+        DockPanel.SetDock(buttonPanel, Dock.Bottom);
+        root.Children.Add(buttonPanel);
+
+        XfdfImportMergeMode? selectedMode = null;
+        importButton.Click += (_, _) =>
+        {
+            selectedMode = replaceRadio.IsChecked == true
+                ? XfdfImportMergeMode.PreferImported
+                : keepExistingRadio.IsChecked == true
+                    ? XfdfImportMergeMode.PreferExisting
+                    : XfdfImportMergeMode.AddAsNew;
+
+            dialog.DialogResult = true;
+            dialog.Close();
+        };
+
+        dialog.Content = root;
+        return dialog.ShowDialog() == true ? selectedMode : null;
+    }
+
+    private void ShowXfdfImportResultDialog(XfdfImportMergeResult result, XfdfImportMergeMode mode)
+    {
+        var dialog = new Window
+        {
+            Title = "XFDF Import Reconciliation",
+            Width = 760,
+            Height = 520,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Owner = this,
+            ResizeMode = ResizeMode.CanResize,
+            WindowStyle = WindowStyle.ToolWindow
+        };
+
+        var root = new DockPanel { Margin = new Thickness(12) };
+
+        var summary = new TextBlock
+        {
+            Text = BuildXfdfImportResultSummary(result, mode),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 12)
+        };
+        DockPanel.SetDock(summary, Dock.Top);
+        root.Children.Add(summary);
+
+        var detailLines = BuildXfdfImportDetailLines(result).ToList();
+        if (detailLines.Count > 0)
+        {
+            var detailsHeader = new TextBlock
+            {
+                Text = "Reconciliation details",
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 6)
+            };
+            DockPanel.SetDock(detailsHeader, Dock.Top);
+            root.Children.Add(detailsHeader);
+
+            var detailsList = new ListBox
+            {
+                ItemsSource = detailLines,
+                MinHeight = 220,
+                Margin = new Thickness(0, 0, 0, 12)
+            };
+            root.Children.Add(detailsList);
+        }
+
+        var closeButton = new Button
+        {
+            Content = "Close",
+            Width = 90,
+            IsDefault = true,
+            IsCancel = true,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+        closeButton.Click += (_, _) => dialog.Close();
+        DockPanel.SetDock(closeButton, Dock.Bottom);
+        root.Children.Add(closeButton);
+
+        dialog.Content = root;
+        dialog.ShowDialog();
+    }
+
+    private static string BuildXfdfImportConflictSummary(XfdfImportMergeResult preview)
+    {
+        var lines = new List<string>
+        {
+            $"The XFDF import contains {preview.ImportedCount} markup(s) and {preview.ConflictCount} conflicting markup(s).",
+            $"Geometry conflicts: {preview.GeometryConflictCount}. Review-state conflicts: {preview.ReviewStateConflictCount}. Type conflicts: {preview.TypeConflictCount}.",
+        };
+
+        if (preview.ParticipantNames.Count > 0)
+            lines.Add($"Imported reviewers: {string.Join(", ", preview.ParticipantNames.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))}.");
+
+        lines.Add("Review the conflicting issues below and choose how they should be reconciled before the import is applied.");
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string BuildXfdfImportResultSummary(XfdfImportMergeResult result, XfdfImportMergeMode mode)
+    {
+        var lines = new List<string>
+        {
+            $"Imported {result.ImportedCount} markup(s) using {mode}.",
+            $"Added {result.AddedCount}, merged {result.UpdatedCount}, duplicated {result.DuplicatedCount}.",
+        };
+
+        if (result.RepliesAddedCount > 0 || result.StatusNotesAppliedCount > 0)
+        {
+            lines.Add($"Applied {result.RepliesAddedCount} new reply entries ({result.ManualRepliesAddedCount} manual, {result.AuditRepliesAddedCount} audit) and {result.StatusNotesAppliedCount} status note update(s).");
+        }
+
+        if (result.ConflictCount > 0)
+        {
+            lines.Add($"Reviewed {result.ConflictCount} conflict(s): geometry {result.GeometryConflictCount}, review state {result.ReviewStateConflictCount}, type {result.TypeConflictCount}.");
+        }
+
+        if (result.ParticipantNames.Count > 0)
+            lines.Add($"Review participants: {string.Join(", ", result.ParticipantNames.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))}.");
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static IEnumerable<string> BuildXfdfImportDetailLines(XfdfImportMergeResult result)
+    {
+        if (result.AddedMarkupIds.Count > 0)
+            yield return $"Added markups: {BuildIdPreview(result.AddedMarkupIds)}";
+
+        if (result.UpdatedMarkupIds.Count > 0)
+            yield return $"Merged markups: {BuildIdPreview(result.UpdatedMarkupIds)}";
+
+        if (result.DuplicatedMarkupIds.Count > 0)
+            yield return $"Duplicated markups: {BuildIdPreview(result.DuplicatedMarkupIds)}";
+
+        foreach (var conflict in result.Conflicts.Take(6))
+            yield return conflict.Summary;
+
+        if (result.ConflictCount > 6)
+            yield return $"...and {result.ConflictCount - 6} additional conflict summary item(s).";
+    }
+
+    private static string BuildIdPreview(IReadOnlyList<string> ids)
+    {
+        var visible = ids.Take(5).ToList();
+        if (ids.Count <= visible.Count)
+            return string.Join(", ", visible);
+
+        return $"{string.Join(", ", visible)}, +{ids.Count - visible.Count} more";
     }
 
     // ── Plot to Image ────────────────────────────────────────────────────

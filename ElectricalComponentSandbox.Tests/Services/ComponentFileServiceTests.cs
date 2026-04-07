@@ -52,6 +52,44 @@ public class ComponentFileServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAndLoad_ComponentWithInteropMetadata_RoundTrips()
+    {
+        var importedUtc = new DateTime(2026, 4, 7, 12, 30, 0, DateTimeKind.Utc);
+        var exportedUtc = new DateTime(2026, 4, 7, 18, 45, 0, DateTimeKind.Utc);
+        var conduit = new ConduitComponent
+        {
+            Name = "Interop Conduit",
+            InteropMetadata = new ComponentInteropMetadata
+            {
+                SourceSystem = "Revit",
+                SourceDocumentId = "project-guid-001",
+                SourceDocumentName = "Campus Power.rvt",
+                SourceElementId = "element-12345",
+                SourceFamilyName = "Conduit",
+                SourceTypeName = "EMT 3-4",
+                LastInterchangeFormat = "IFC4",
+                LastImportedUtc = importedUtc,
+                LastExportedUtc = exportedUtc
+            }
+        };
+        var filePath = Path.Combine(_tempDir, "interop.ecomp");
+
+        await _service.SaveComponentAsync(conduit, filePath);
+        var loaded = await _service.LoadComponentAsync(filePath);
+
+        var loadedConduit = Assert.IsType<ConduitComponent>(loaded);
+        Assert.Equal("Revit", loadedConduit.InteropMetadata.SourceSystem);
+        Assert.Equal("project-guid-001", loadedConduit.InteropMetadata.SourceDocumentId);
+        Assert.Equal("Campus Power.rvt", loadedConduit.InteropMetadata.SourceDocumentName);
+        Assert.Equal("element-12345", loadedConduit.InteropMetadata.SourceElementId);
+        Assert.Equal("Conduit", loadedConduit.InteropMetadata.SourceFamilyName);
+        Assert.Equal("EMT 3-4", loadedConduit.InteropMetadata.SourceTypeName);
+        Assert.Equal("IFC4", loadedConduit.InteropMetadata.LastInterchangeFormat);
+        Assert.Equal(importedUtc, loadedConduit.InteropMetadata.LastImportedUtc);
+        Assert.Equal(exportedUtc, loadedConduit.InteropMetadata.LastExportedUtc);
+    }
+
+    [Fact]
     public async Task SaveAndLoad_BoxComponent_RoundTrips()
     {
         var box = new BoxComponent
@@ -120,6 +158,25 @@ public class ComponentFileServiceTests : IDisposable
         Assert.Equal(2, array.Count);
         Assert.Equal("Conduit 1", array[0]?["Name"]?.Value<string>());
         Assert.Equal("Box 1", array[1]?["Name"]?.Value<string>());
+    }
+
+    [Fact]
+    public async Task LoadComponent_LegacyFileWithoutInteropMetadata_InitializesEmptyMetadata()
+    {
+        var conduit = new ConduitComponent { Name = "Legacy Component" };
+        var filePath = Path.Combine(_tempDir, "legacy.ecomp");
+
+        await _service.SaveComponentAsync(conduit, filePath);
+
+        var json = JObject.Parse(await File.ReadAllTextAsync(filePath));
+        json.Remove(nameof(ElectricalComponent.InteropMetadata));
+        await File.WriteAllTextAsync(filePath, json.ToString());
+
+        var loaded = await _service.LoadComponentAsync(filePath);
+
+        var loadedConduit = Assert.IsType<ConduitComponent>(loaded);
+        Assert.NotNull(loadedConduit.InteropMetadata);
+        Assert.False(loadedConduit.InteropMetadata.HasAnyValue);
     }
 
     [Fact]

@@ -23,25 +23,75 @@ public partial class MainWindowMarkupInteractionTests
             {
                 var added = window.ExecuteAddMarkupReplyCommandForTesting("Need revised feeder routing.", "Reviewer");
                 var afterAddReplyText = markup.Replies[0].Text;
+                var afterAddParentReplyId = markup.Replies[0].ParentReplyId;
                 var afterAddReplyIsAuditEntry = markup.Replies[0].IsAuditEntry;
                 var afterAddVisibleReplyCount = viewModel.MarkupTool.SelectedMarkupReplies.Count;
+                var afterAddVisibleReplyDepth = viewModel.MarkupTool.SelectedMarkupReplies[0].ThreadDepth;
                 var afterAddVisibleReplyIsAuditEntry = viewModel.MarkupTool.SelectedMarkupReplies[0].IsAuditEntry;
                 var afterAddVisibleReplyType = viewModel.MarkupTool.SelectedMarkupReplies[0].EntryTypeDisplayText;
 
                 viewModel.Undo();
                 var afterUndoReplyCount = markup.Replies.Count;
                 var afterUndoVisibleReplyCount = viewModel.MarkupTool.SelectedMarkupReplies.Count;
-                return (added, afterAddReplyText, afterAddReplyIsAuditEntry, afterAddVisibleReplyCount, afterAddVisibleReplyIsAuditEntry, afterAddVisibleReplyType, afterUndoReplyCount, afterUndoVisibleReplyCount);
+                return (added, afterAddReplyText, afterAddParentReplyId, afterAddReplyIsAuditEntry, afterAddVisibleReplyCount, afterAddVisibleReplyDepth, afterAddVisibleReplyIsAuditEntry, afterAddVisibleReplyType, afterUndoReplyCount, afterUndoVisibleReplyCount);
             });
 
         Assert.True(outcome.added);
         Assert.Equal("Need revised feeder routing.", outcome.afterAddReplyText);
+        Assert.Null(outcome.afterAddParentReplyId);
         Assert.False(outcome.afterAddReplyIsAuditEntry);
         Assert.Equal(1, outcome.afterAddVisibleReplyCount);
+        Assert.Equal(0, outcome.afterAddVisibleReplyDepth);
         Assert.False(outcome.afterAddVisibleReplyIsAuditEntry);
         Assert.Equal("Reply", outcome.afterAddVisibleReplyType);
         Assert.Equal(0, outcome.afterUndoReplyCount);
         Assert.Equal(0, outcome.afterUndoVisibleReplyCount);
+    }
+
+    [Fact]
+    public void ExecuteAddMarkupReplyCommandForTesting_WithExistingReply_ThreadsUnderLatestReply()
+    {
+        const string rootReplyId = "reply-root";
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Panel issue"
+                },
+                Replies =
+                {
+                    new MarkupReply
+                    {
+                        Id = rootReplyId,
+                        Author = "Reviewer A",
+                        Text = "Original note",
+                        CreatedUtc = new DateTime(2026, 4, 7, 12, 0, 0, DateTimeKind.Utc),
+                        ModifiedUtc = new DateTime(2026, 4, 7, 12, 0, 0, DateTimeKind.Utc)
+                    }
+                }
+            },
+            (window, viewModel, markup) =>
+            {
+                var added = window.ExecuteAddMarkupReplyCommandForTesting("Follow-up response", "Reviewer B");
+                var addedReply = markup.Replies.Single(reply => reply.Text == "Follow-up response");
+                return (
+                    added,
+                    AddedReplyParentId: addedReply.ParentReplyId,
+                    VisibleReplyCount: viewModel.MarkupTool.SelectedMarkupReplies.Count,
+                    RootDepth: viewModel.MarkupTool.SelectedMarkupReplies[0].ThreadDepth,
+                    ChildDepth: viewModel.MarkupTool.SelectedMarkupReplies[1].ThreadDepth,
+                    ChildParentId: viewModel.MarkupTool.SelectedMarkupReplies[1].ParentReplyId);
+            });
+
+        Assert.True(outcome.added);
+        Assert.Equal(rootReplyId, outcome.AddedReplyParentId);
+        Assert.Equal(2, outcome.VisibleReplyCount);
+        Assert.Equal(0, outcome.RootDepth);
+        Assert.Equal(1, outcome.ChildDepth);
+        Assert.Equal(rootReplyId, outcome.ChildParentId);
     }
 
     [Fact]
@@ -113,9 +163,11 @@ public partial class MainWindowMarkupInteractionTests
                     Status: markup.Status,
                     StatusNote: markup.StatusNote,
                     ReplyCount: markup.Replies.Count,
+                    AuditParentReplyId: markup.Replies[0].ParentReplyId,
                     VisibleReplyCount: viewModel.MarkupTool.SelectedMarkupReplies.Count,
                     VisibleReplyIsAuditEntry: viewModel.MarkupTool.SelectedMarkupReplies[0].IsAuditEntry,
-                    VisibleReplyType: viewModel.MarkupTool.SelectedMarkupReplies[0].EntryTypeDisplayText);
+                    VisibleReplyType: viewModel.MarkupTool.SelectedMarkupReplies[0].EntryTypeDisplayText,
+                    VisibleReplyDepth: viewModel.MarkupTool.SelectedMarkupReplies[0].ThreadDepth);
 
                 viewModel.Undo();
                 var afterUndo = (
@@ -130,13 +182,60 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(MarkupStatus.Approved, outcome.afterChange.Status);
         Assert.Equal("Status changed: Open -> Approved", outcome.afterChange.StatusNote);
         Assert.Equal(1, outcome.afterChange.ReplyCount);
+        Assert.Null(outcome.afterChange.AuditParentReplyId);
         Assert.Equal(1, outcome.afterChange.VisibleReplyCount);
         Assert.True(outcome.afterChange.VisibleReplyIsAuditEntry);
         Assert.Equal("Status", outcome.afterChange.VisibleReplyType);
+        Assert.Equal(0, outcome.afterChange.VisibleReplyDepth);
         Assert.Equal(MarkupStatus.Open, outcome.afterUndo.Status);
         Assert.Null(outcome.afterUndo.StatusNote);
         Assert.Equal(0, outcome.afterUndo.ReplyCount);
         Assert.Equal(0, outcome.afterUndo.VisibleReplyCount);
+    }
+
+    [Fact]
+    public void ExecuteSetSelectedMarkupStatusForTesting_WithExistingReply_ThreadsAuditUnderLatestReply()
+    {
+        const string rootReplyId = "reply-root";
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Status = MarkupStatus.Open,
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Panel issue"
+                },
+                Replies =
+                {
+                    new MarkupReply
+                    {
+                        Id = rootReplyId,
+                        Author = "Reviewer A",
+                        Text = "Original note",
+                        CreatedUtc = new DateTime(2026, 4, 7, 12, 0, 0, DateTimeKind.Utc),
+                        ModifiedUtc = new DateTime(2026, 4, 7, 12, 0, 0, DateTimeKind.Utc)
+                    }
+                }
+            },
+            (window, viewModel, markup) =>
+            {
+                var changed = window.ExecuteSetSelectedMarkupStatusForTesting(MarkupStatus.Resolved, "Reviewer B");
+                var auditReply = markup.Replies.Single(reply => reply.Kind == MarkupReplyKind.StatusAudit);
+                return (
+                    changed,
+                    AuditParentId: auditReply.ParentReplyId,
+                    VisibleReplyCount: viewModel.MarkupTool.SelectedMarkupReplies.Count,
+                    ChildDepth: viewModel.MarkupTool.SelectedMarkupReplies[1].ThreadDepth,
+                    ChildParentId: viewModel.MarkupTool.SelectedMarkupReplies[1].ParentReplyId);
+            });
+
+        Assert.True(outcome.changed);
+        Assert.Equal(rootReplyId, outcome.AuditParentId);
+        Assert.Equal(2, outcome.VisibleReplyCount);
+        Assert.Equal(1, outcome.ChildDepth);
+        Assert.Equal(rootReplyId, outcome.ChildParentId);
     }
 
     [Fact]

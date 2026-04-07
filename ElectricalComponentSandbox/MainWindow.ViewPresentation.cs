@@ -22,6 +22,21 @@ public partial class MainWindow
         return _viewModel.ActivePlotLayout;
     }
 
+    internal string[] GetSavedPageSetupNamesForTesting()
+        => _viewModel.SavedPageSetups.Select(pageSetup => pageSetup.Name).ToArray();
+
+    internal bool SaveCurrentPageSetupForTesting(string name)
+        => _viewModel.SaveCurrentPageSetup(name);
+
+    internal bool ApplySavedPageSetupForTesting(string name)
+        => ApplySavedPageSetup(name);
+
+    internal bool DeleteSavedPageSetupForTesting(string name)
+        => _viewModel.DeleteSavedPageSetup(name);
+
+    internal static string BuildPlotLayoutSummaryForTesting(Models.PlotLayout layout)
+        => BuildPlotLayoutSummary(layout);
+
     private void VisualStyleRealistic_Click(object sender, RoutedEventArgs e)
     {
         SetVisualStyle3D(VisualStyle3D.Realistic);
@@ -276,9 +291,135 @@ public partial class MainWindow
         if (Enum.TryParse<Models.PaperSize>(input, true, out var paperSize))
         {
             activePlotLayout.PaperSize = paperSize;
+            if (_viewModel.SelectedSheet != null)
+                _viewModel.SelectedSheet.PlotLayout = activePlotLayout;
+
+            UpdateStatusBar();
             ActionLogService.Instance.Log(LogCategory.View, "Page setup changed", $"Paper: {paperSize}");
         }
     }
+
+    private void ManagePageSetups_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Window
+        {
+            Title = "Page Setups",
+            Width = 760,
+            Height = 520,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Owner = this,
+            ResizeMode = ResizeMode.CanResize,
+            WindowStyle = WindowStyle.ToolWindow
+        };
+
+        var root = new DockPanel { Margin = new Thickness(12) };
+
+        var summary = new TextBlock
+        {
+            Text = $"Current layout: {BuildPlotLayoutSummary(GetOrCreateActivePlotLayout())}",
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 12)
+        };
+        DockPanel.SetDock(summary, Dock.Top);
+        root.Children.Add(summary);
+
+        var list = new ListBox { MinHeight = 260, Margin = new Thickness(0, 0, 0, 12) };
+        root.Children.Add(list);
+
+        void RefreshList(int selectedIndex = -1)
+        {
+            list.ItemsSource = _viewModel.SavedPageSetups.Select(BuildPlotLayoutSummary).ToList();
+            if (list.Items.Count == 0)
+                return;
+
+            list.SelectedIndex = selectedIndex >= 0
+                ? Math.Min(selectedIndex, list.Items.Count - 1)
+                : 0;
+        }
+
+        RefreshList();
+
+        var buttonPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+
+        var saveCurrentButton = new Button { Content = "Save Current...", Width = 110, Margin = new Thickness(0, 0, 8, 0) };
+        var applyButton = new Button { Content = "Apply", Width = 90, Margin = new Thickness(0, 0, 8, 0) };
+        var deleteButton = new Button { Content = "Delete", Width = 90, Margin = new Thickness(0, 0, 8, 0) };
+        var closeButton = new Button { Content = "Close", Width = 90, IsCancel = true, IsDefault = true };
+
+        saveCurrentButton.Click += (_, _) =>
+        {
+            var defaultName = _viewModel.SavedPageSetups.Count == 0
+                ? "Page Setup 1"
+                : $"Page Setup {_viewModel.SavedPageSetups.Count + 1}";
+            var name = PromptInput("Save Page Setup", "Enter a name for the current page setup:", defaultName);
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+
+            if (_viewModel.SaveCurrentPageSetup(name))
+            {
+                summary.Text = $"Current layout: {BuildPlotLayoutSummary(GetOrCreateActivePlotLayout())}";
+                RefreshList(_viewModel.SavedPageSetups.Count - 1);
+            }
+        };
+
+        applyButton.Click += (_, _) =>
+        {
+            if (list.SelectedIndex < 0 || list.SelectedIndex >= _viewModel.SavedPageSetups.Count)
+            {
+                MessageBox.Show("Select a saved page setup to apply.", "Page Setups", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var selectedName = _viewModel.SavedPageSetups[list.SelectedIndex].Name;
+            if (ApplySavedPageSetup(selectedName))
+            {
+                summary.Text = $"Current layout: {BuildPlotLayoutSummary(GetOrCreateActivePlotLayout())}";
+                UpdateStatusBar();
+            }
+        };
+
+        deleteButton.Click += (_, _) =>
+        {
+            if (list.SelectedIndex < 0 || list.SelectedIndex >= _viewModel.SavedPageSetups.Count)
+            {
+                MessageBox.Show("Select a saved page setup to delete.", "Page Setups", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var selectedIndex = list.SelectedIndex;
+            var selectedName = _viewModel.SavedPageSetups[selectedIndex].Name;
+            if (_viewModel.DeleteSavedPageSetup(selectedName))
+                RefreshList(Math.Max(0, selectedIndex - 1));
+        };
+
+        closeButton.Click += (_, _) => dialog.Close();
+
+        buttonPanel.Children.Add(saveCurrentButton);
+        buttonPanel.Children.Add(applyButton);
+        buttonPanel.Children.Add(deleteButton);
+        buttonPanel.Children.Add(closeButton);
+        DockPanel.SetDock(buttonPanel, Dock.Bottom);
+        root.Children.Add(buttonPanel);
+
+        dialog.Content = root;
+        dialog.ShowDialog();
+    }
+
+    private bool ApplySavedPageSetup(string name)
+    {
+        if (!_viewModel.ApplySavedPageSetup(name))
+            return false;
+
+        UpdateStatusBar();
+        return true;
+    }
+
+    private static string BuildPlotLayoutSummary(Models.PlotLayout layout)
+        => layout.GetSummaryText();
 
     private void PrintPreview_Click(object sender, RoutedEventArgs e)
     {

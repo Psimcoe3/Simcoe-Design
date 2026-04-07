@@ -127,6 +127,69 @@ public class PlotStyleTests
     }
 
     [Fact]
+    public void PlotLayout_Clone_CopiesValues()
+    {
+        var layout = new PlotLayout
+        {
+            Name = "Permit Set",
+            PaperSize = PaperSize.ANSI_C,
+            CustomWidth = 18.0,
+            CustomHeight = 24.0,
+            PlotScale = 12.0,
+            PlotStyleTableName = "custom.ctb"
+        };
+
+        var clone = layout.Clone();
+
+        Assert.NotSame(layout, clone);
+        Assert.Equal(layout.Name, clone.Name);
+        Assert.Equal(layout.PaperSize, clone.PaperSize);
+        Assert.Equal(layout.CustomWidth, clone.CustomWidth);
+        Assert.Equal(layout.CustomHeight, clone.CustomHeight);
+        Assert.Equal(layout.PlotScale, clone.PlotScale);
+        Assert.Equal(layout.PlotStyleTableName, clone.PlotStyleTableName);
+    }
+
+    [Fact]
+    public void PlotLayout_ApplyFrom_UpdatesValues()
+    {
+        var target = new PlotLayout();
+        var source = new PlotLayout
+        {
+            Name = "Issue Set",
+            PaperSize = PaperSize.ANSI_E,
+            PlotScale = 48.0,
+            PlotStyleTableName = "issue.ctb"
+        };
+
+        target.ApplyFrom(source);
+
+        Assert.Equal("Issue Set", target.Name);
+        Assert.Equal(PaperSize.ANSI_E, target.PaperSize);
+        Assert.Equal(48.0, target.PlotScale);
+        Assert.Equal("issue.ctb", target.PlotStyleTableName);
+    }
+
+    [Fact]
+    public void PlotLayout_GetSummaryText_IncludesPaperScaleAndCtb()
+    {
+        var layout = new PlotLayout
+        {
+            Name = "Permit Set",
+            PaperSize = PaperSize.ANSI_D,
+            PlotScale = 24.0,
+            PlotStyleTableName = "permit.ctb"
+        };
+
+        var summary = layout.GetSummaryText();
+
+        Assert.Contains("Permit Set", summary);
+        Assert.Contains("ANSI_D", summary);
+        Assert.Contains("24", summary);
+        Assert.Contains("permit.ctb", summary);
+    }
+
+    [Fact]
     public void PaperSize_AllEnumValues_AreHandled()
     {
         var layout = new PlotLayout();

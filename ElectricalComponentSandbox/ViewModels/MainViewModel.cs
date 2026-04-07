@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Media.Media3D;
 using ElectricalComponentSandbox.Markup.Models;
+using ElectricalComponentSandbox.Markup.Services;
 using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.Rendering;
 using ElectricalComponentSandbox.Services;
@@ -60,6 +61,9 @@ public class MainViewModel : INotifyPropertyChanged
 
     /// <summary>Saved named views (camera bookmarks)</summary>
     public ObservableCollection<NamedView> NamedViews { get; } = new();
+
+    /// <summary>Saved AutoCAD-style page setup presets for plot layouts.</summary>
+    public ObservableCollection<PlotLayout> SavedPageSetups { get; } = new();
 
     /// <summary>IDs of all currently selected components (multi-select)</summary>
     public HashSet<string> SelectedComponentIds { get; } = new();
@@ -837,6 +841,73 @@ public class MainViewModel : INotifyPropertyChanged
             MarkupTool.SelectedMarkup = null;
     }
 
+    public bool SaveCurrentPageSetup(string? name)
+    {
+        var normalizedName = name?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedName))
+            return false;
+
+        var layoutToSave = (ActivePlotLayout ?? SelectedSheet?.PlotLayout ?? new PlotLayout()).Clone();
+        layoutToSave.Name = normalizedName;
+
+        var existing = SavedPageSetups.FirstOrDefault(pageSetup =>
+            string.Equals(pageSetup.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
+
+        if (existing == null)
+        {
+            SavedPageSetups.Add(layoutToSave);
+        }
+        else
+        {
+            existing.ApplyFrom(layoutToSave);
+        }
+
+        OnPropertyChanged(nameof(SavedPageSetups));
+        ActionLogService.Instance.Log(LogCategory.View, "Page setup saved", $"Name: {normalizedName}");
+        return true;
+    }
+
+    public bool ApplySavedPageSetup(string? name)
+    {
+        var normalizedName = name?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedName))
+            return false;
+
+        var savedPageSetup = SavedPageSetups.FirstOrDefault(pageSetup =>
+            string.Equals(pageSetup.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
+        if (savedPageSetup == null)
+            return false;
+
+        var appliedLayout = savedPageSetup.Clone();
+        ActivePlotLayout = appliedLayout;
+
+        if (SelectedSheet != null)
+        {
+            SelectedSheet.PlotLayout = appliedLayout;
+            TouchSheet(SelectedSheet, Environment.UserName);
+        }
+
+        ActionLogService.Instance.Log(LogCategory.View, "Page setup applied", $"Name: {normalizedName}");
+        return true;
+    }
+
+    public bool DeleteSavedPageSetup(string? name)
+    {
+        var normalizedName = name?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedName))
+            return false;
+
+        var savedPageSetup = SavedPageSetups.FirstOrDefault(pageSetup =>
+            string.Equals(pageSetup.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
+        if (savedPageSetup == null)
+            return false;
+
+        SavedPageSetups.Remove(savedPageSetup);
+        OnPropertyChanged(nameof(SavedPageSetups));
+        ActionLogService.Instance.Log(LogCategory.View, "Page setup deleted", $"Name: {normalizedName}");
+        return true;
+    }
+
     private static DrawingSheet CreateSheetFromLegacyProject(ProjectModel project)
     {
         var sheet = DrawingSheet.CreateDefault(1);
@@ -1199,6 +1270,7 @@ public class MainViewModel : INotifyPropertyChanged
         var auditText = $"Status changed: {MarkupRecord.GetStatusDisplayText(oldStatus)} -> {MarkupRecord.GetStatusDisplayText(newStatus)}";
         var auditReply = new MarkupReply
         {
+            ParentReplyId = MarkupThreadingService.GetLatestReplyId(markup.Replies),
             Author = author,
             Text = auditText,
             Kind = MarkupReplyKind.StatusAudit,
@@ -1219,6 +1291,7 @@ public class MainViewModel : INotifyPropertyChanged
         var newDisplay = string.IsNullOrWhiteSpace(newAssignedTo) ? "(unassigned)" : newAssignedTo;
         var auditReply = new MarkupReply
         {
+            ParentReplyId = MarkupThreadingService.GetLatestReplyId(markup.Replies),
             Author = author,
             Text = $"Assignment changed: {oldDisplay} -> {newDisplay}",
             Kind = MarkupReplyKind.AssignmentAudit,
@@ -1644,6 +1717,7 @@ public class MainViewModel : INotifyPropertyChanged
             NamedViews = activeSheet?.NamedViews.ToList() ?? NamedViews.ToList(),
             PdfUnderlay = activeSheet?.PdfUnderlay ?? PdfUnderlay,
             PlotLayout = activeSheet?.PlotLayout ?? ActivePlotLayout,
+            SavedPageSetups = SavedPageSetups.Select(pageSetup => pageSetup.Clone()).ToList(),
             UnitSystem = UnitSystemName,
             GridSize = GridSize,
             ShowGrid = ShowGrid,
@@ -1683,6 +1757,10 @@ public class MainViewModel : INotifyPropertyChanged
         var sheets = project.Sheets.Count > 0
             ? project.Sheets
             : new List<DrawingSheet> { CreateSheetFromLegacyProject(project) };
+
+        SavedPageSetups.Clear();
+        foreach (var savedPageSetup in project.SavedPageSetups)
+            SavedPageSetups.Add(savedPageSetup.Clone());
 
         foreach (var sheet in sheets)
         {

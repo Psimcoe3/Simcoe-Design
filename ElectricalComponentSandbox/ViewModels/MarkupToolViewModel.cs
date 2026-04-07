@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Input;
 using ElectricalComponentSandbox.Markup.Models;
+using ElectricalComponentSandbox.Markup.Services;
 using ElectricalComponentSandbox.Services;
 
 namespace ElectricalComponentSandbox.ViewModels;
@@ -71,9 +72,12 @@ public sealed class MarkupIssueGroupItemViewModel
 public sealed class MarkupReplyItemViewModel
 {
     public required string Id { get; init; }
+    public required string? ParentReplyId { get; init; }
     public required string Author { get; init; }
     public required string Text { get; init; }
     public required MarkupReplyKind Kind { get; init; }
+    public required int ThreadDepth { get; init; }
+    public required bool IsThreadRoot { get; init; }
     public required string EntryKindKey { get; init; }
     public required bool IsAuditEntry { get; init; }
     public required string EntryTypeDisplayText { get; init; }
@@ -970,17 +974,18 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         if (_selectedMarkup == null)
             return;
 
-        foreach (var reply in _selectedMarkup.Replies
-                     .OrderBy(reply => reply.CreatedUtc)
-                     .ThenBy(reply => reply.ModifiedUtc)
-                     .ThenBy(reply => reply.Id, StringComparer.Ordinal))
+        foreach (var threadEntry in MarkupThreadingService.BuildThread(_selectedMarkup.Replies))
         {
+            var reply = threadEntry.Reply;
             SelectedMarkupReplies.Add(new MarkupReplyItemViewModel
             {
                 Id = reply.Id,
+                ParentReplyId = reply.ParentReplyId,
                 Author = string.IsNullOrWhiteSpace(reply.Author) ? "Unknown" : reply.Author,
                 Text = reply.Text,
                 Kind = reply.Kind,
+                ThreadDepth = threadEntry.Depth,
+                IsThreadRoot = threadEntry.IsThreadRoot,
                 EntryKindKey = reply.EntryKindKey,
                 IsAuditEntry = reply.IsAuditEntry,
                 EntryTypeDisplayText = reply.EntryTypeDisplayText,

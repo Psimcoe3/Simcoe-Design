@@ -717,6 +717,7 @@ public class MarkupPersistenceServiceTests
     public void Json_RoundTrip()
     {
         var svc = new MarkupPersistenceService();
+        const string parentReplyId = "reply-parent";
         var markups = new List<MarkupRecord>
         {
             new()
@@ -736,6 +737,13 @@ public class MarkupPersistenceServiceTests
                 {
                     new MarkupReply
                     {
+                        Id = parentReplyId,
+                        Author = "Coordinator",
+                        Text = "Please verify conduit height before field install."
+                    },
+                    new MarkupReply
+                    {
+                        ParentReplyId = parentReplyId,
                         Author = "Reviewer",
                         Kind = MarkupReplyKind.AssignmentAudit,
                         Text = "Confirm field clearance before install."
@@ -755,17 +763,22 @@ public class MarkupPersistenceServiceTests
         Assert.Equal(MarkupType.Circle, loaded[1].Type);
         Assert.Equal(25, loaded[1].Radius);
         Assert.Equal("QA", loaded[1].AssignedTo);
-        Assert.Single(loaded[1].Replies);
-        Assert.Equal("Reviewer", loaded[1].Replies[0].Author);
-        Assert.True(loaded[1].Replies[0].IsAuditEntry);
-        Assert.Equal(MarkupReplyKind.AssignmentAudit, loaded[1].Replies[0].Kind);
-        Assert.Equal("Confirm field clearance before install.", loaded[1].Replies[0].Text);
+        Assert.Equal(2, loaded[1].Replies.Count);
+        Assert.Equal(parentReplyId, loaded[1].Replies[0].Id);
+        Assert.Equal("Coordinator", loaded[1].Replies[0].Author);
+        Assert.Null(loaded[1].Replies[0].ParentReplyId);
+        Assert.Equal(parentReplyId, loaded[1].Replies[1].ParentReplyId);
+        Assert.Equal("Reviewer", loaded[1].Replies[1].Author);
+        Assert.True(loaded[1].Replies[1].IsAuditEntry);
+        Assert.Equal(MarkupReplyKind.AssignmentAudit, loaded[1].Replies[1].Kind);
+        Assert.Equal("Confirm field clearance before install.", loaded[1].Replies[1].Text);
     }
 
     [Fact]
     public void Xml_RoundTrip()
     {
         var svc = new MarkupPersistenceService();
+        const string parentReplyId = "reply-parent";
         var markups = new List<MarkupRecord>
         {
             new()
@@ -779,6 +792,13 @@ public class MarkupPersistenceServiceTests
                 {
                     new MarkupReply
                     {
+                        Id = parentReplyId,
+                        Author = "Coordinator",
+                        Text = "Need updated clearance response before closeout."
+                    },
+                    new MarkupReply
+                    {
+                        ParentReplyId = parentReplyId,
                         Author = "QA",
                         Kind = MarkupReplyKind.StatusAudit,
                         Text = "Waiting on revised dimension callout."
@@ -798,11 +818,93 @@ public class MarkupPersistenceServiceTests
         Assert.Equal("Area 1", loaded[0].Metadata.Label);
         Assert.Equal("JD", loaded[0].Metadata.Author);
         Assert.Equal("Coordinator", loaded[0].AssignedTo);
-        Assert.Single(loaded[0].Replies);
-        Assert.Equal("QA", loaded[0].Replies[0].Author);
-        Assert.True(loaded[0].Replies[0].IsAuditEntry);
-        Assert.Equal(MarkupReplyKind.StatusAudit, loaded[0].Replies[0].Kind);
+        Assert.Equal(2, loaded[0].Replies.Count);
+        Assert.Equal(parentReplyId, loaded[0].Replies[0].Id);
+        Assert.Equal("Coordinator", loaded[0].Replies[0].Author);
+        Assert.Null(loaded[0].Replies[0].ParentReplyId);
+        Assert.Equal(parentReplyId, loaded[0].Replies[1].ParentReplyId);
+        Assert.Equal("QA", loaded[0].Replies[1].Author);
+        Assert.True(loaded[0].Replies[1].IsAuditEntry);
+        Assert.Equal(MarkupReplyKind.StatusAudit, loaded[0].Replies[1].Kind);
 
+    }
+
+    [Fact]
+    public void Xml_RoundTrip_PreservesReplyThreadParentage()
+    {
+        var svc = new MarkupPersistenceService();
+        const string rootReplyId = "reply-root";
+        var xml = svc.SerializeToXml(
+        [
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = [new Point(0, 0), new Point(10, 10)],
+                Replies =
+                {
+                    new MarkupReply
+                    {
+                        Id = rootReplyId,
+                        Author = "Reviewer A",
+                        Text = "Primary comment"
+                    },
+                    new MarkupReply
+                    {
+                        Id = "reply-child",
+                        ParentReplyId = rootReplyId,
+                        Author = "Reviewer B",
+                        Text = "Nested response"
+                    }
+                }
+            }
+        ]);
+
+        var loaded = svc.DeserializeFromXml(xml);
+
+        var markup = Assert.Single(loaded);
+        Assert.Equal(rootReplyId, markup.Replies[1].ParentReplyId);
+    }
+
+    [Fact]
+    public void BuildThread_OrdersRepliesByParentageAndFallsBackForOrphans()
+    {
+        var ordered = MarkupThreadingService.BuildThread(
+        [
+            new MarkupReply
+            {
+                Id = "child",
+                ParentReplyId = "root",
+                Author = "Reviewer B",
+                Text = "Follow-up",
+                CreatedUtc = new DateTime(2026, 4, 7, 12, 5, 0, DateTimeKind.Utc),
+                ModifiedUtc = new DateTime(2026, 4, 7, 12, 5, 0, DateTimeKind.Utc)
+            },
+            new MarkupReply
+            {
+                Id = "orphan",
+                ParentReplyId = "missing",
+                Author = "Reviewer C",
+                Text = "Independent issue",
+                CreatedUtc = new DateTime(2026, 4, 7, 12, 10, 0, DateTimeKind.Utc),
+                ModifiedUtc = new DateTime(2026, 4, 7, 12, 10, 0, DateTimeKind.Utc)
+            },
+            new MarkupReply
+            {
+                Id = "root",
+                Author = "Reviewer A",
+                Text = "Root comment",
+                CreatedUtc = new DateTime(2026, 4, 7, 12, 0, 0, DateTimeKind.Utc),
+                ModifiedUtc = new DateTime(2026, 4, 7, 12, 0, 0, DateTimeKind.Utc)
+            }
+        ]);
+
+        Assert.Equal(3, ordered.Count);
+        Assert.Equal("root", ordered[0].Reply.Id);
+        Assert.Equal(0, ordered[0].Depth);
+        Assert.Equal("child", ordered[1].Reply.Id);
+        Assert.Equal(1, ordered[1].Depth);
+        Assert.Equal("orphan", ordered[2].Reply.Id);
+        Assert.Equal(0, ordered[2].Depth);
     }
 
     [Fact]

@@ -96,6 +96,7 @@ public enum MarkupReplyKind
 public class MarkupReply
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string? ParentReplyId { get; set; }
     public string Author { get; set; } = string.Empty;
     public string Text { get; set; } = string.Empty;
     public MarkupReplyKind Kind { get; set; } = MarkupReplyKind.Manual;

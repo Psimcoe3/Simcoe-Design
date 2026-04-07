@@ -87,6 +87,7 @@
                     <MenuItem Header="Plot to Image..." Click="PlotToImage_Click"/>
                     <MenuItem Header="Plot Style (CTB)..." Click="PlotStyleManager_Click"/>
                     <MenuItem Header="Page Setup..." Click="PageSetup_Click"/>
+                    <MenuItem Header="Page Setups..." Click="ManagePageSetups_Click"/>
                     <MenuItem Header="Print Preview..." Click="PrintPreview_Click"/>
                 </MenuItem>
                 <Separator/>

@@ -11,6 +11,7 @@ public partial class MainViewModelTests
     public void MarkupTool_SelectedMarkup_ExposesReplyThreadDetails()
     {
         var vm = new MainViewModel();
+        const string rootReplyId = "reply-root";
         var markup = new MarkupRecord
         {
             Type = MarkupType.Rectangle,
@@ -23,6 +24,7 @@ public partial class MainViewModelTests
             {
                 new MarkupReply
                 {
+                    Id = rootReplyId,
                     Author = "Reviewer A",
                     Text = "Need revised clearance dimensions.",
                     Kind = MarkupReplyKind.Manual,
@@ -31,6 +33,8 @@ public partial class MainViewModelTests
                 },
                 new MarkupReply
                 {
+                    Id = "reply-child",
+                    ParentReplyId = rootReplyId,
                     Author = "Reviewer B",
                     Text = "Confirmed on sheet E2.",
                     Kind = MarkupReplyKind.StatusAudit,
@@ -51,11 +55,16 @@ public partial class MainViewModelTests
         Assert.Equal(1, vm.MarkupTool.SelectedMarkupStatusAuditReplyCount);
         Assert.Equal(0, vm.MarkupTool.SelectedMarkupAssignmentAuditReplyCount);
         Assert.Equal("Reviewer A", vm.MarkupTool.SelectedMarkupReplies[0].Author);
+        Assert.True(vm.MarkupTool.SelectedMarkupReplies[0].IsThreadRoot);
+        Assert.Equal(0, vm.MarkupTool.SelectedMarkupReplies[0].ThreadDepth);
         Assert.False(vm.MarkupTool.SelectedMarkupReplies[0].IsAuditEntry);
         Assert.Equal(MarkupReplyKind.Manual, vm.MarkupTool.SelectedMarkupReplies[0].Kind);
         Assert.Equal("Reply", vm.MarkupTool.SelectedMarkupReplies[0].EntryTypeDisplayText);
         Assert.Equal("Need revised clearance dimensions.", vm.MarkupTool.SelectedMarkupReplies[0].Text);
         Assert.True(vm.MarkupTool.SelectedMarkupReplies[1].IsAuditEntry);
+        Assert.False(vm.MarkupTool.SelectedMarkupReplies[1].IsThreadRoot);
+        Assert.Equal(rootReplyId, vm.MarkupTool.SelectedMarkupReplies[1].ParentReplyId);
+        Assert.Equal(1, vm.MarkupTool.SelectedMarkupReplies[1].ThreadDepth);
         Assert.Equal(MarkupReplyKind.StatusAudit, vm.MarkupTool.SelectedMarkupReplies[1].Kind);
         Assert.Equal("Status", vm.MarkupTool.SelectedMarkupReplies[1].EntryTypeDisplayText);
         Assert.Contains("1 replies, 1 status updates", vm.MarkupTool.SelectedMarkupReplySummary);

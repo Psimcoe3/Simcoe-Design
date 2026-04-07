@@ -9,6 +9,8 @@ namespace ElectricalComponentSandbox.Models;
 /// </summary>
 public abstract class ElectricalComponent
 {
+    private ComponentInteropMetadata _interopMetadata = new();
+
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = string.Empty;
     public ComponentType Type { get; set; }
@@ -27,6 +29,37 @@ public abstract class ElectricalComponent
     
     // Layer assignment
     public string LayerId { get; set; } = "default";
+
+    public ComponentInteropMetadata InteropMetadata
+    {
+        get => _interopMetadata;
+        set => _interopMetadata = value ?? new ComponentInteropMetadata();
+    }
+}
+
+public class ComponentInteropMetadata
+{
+    public string SourceSystem { get; set; } = string.Empty;
+    public string SourceDocumentId { get; set; } = string.Empty;
+    public string SourceDocumentName { get; set; } = string.Empty;
+    public string SourceElementId { get; set; } = string.Empty;
+    public string SourceFamilyName { get; set; } = string.Empty;
+    public string SourceTypeName { get; set; } = string.Empty;
+    public string LastInterchangeFormat { get; set; } = string.Empty;
+    public DateTime? LastImportedUtc { get; set; }
+    public DateTime? LastExportedUtc { get; set; }
+
+    [JsonIgnore]
+    public bool HasAnyValue =>
+        !string.IsNullOrWhiteSpace(SourceSystem) ||
+        !string.IsNullOrWhiteSpace(SourceDocumentId) ||
+        !string.IsNullOrWhiteSpace(SourceDocumentName) ||
+        !string.IsNullOrWhiteSpace(SourceElementId) ||
+        !string.IsNullOrWhiteSpace(SourceFamilyName) ||
+        !string.IsNullOrWhiteSpace(SourceTypeName) ||
+        !string.IsNullOrWhiteSpace(LastInterchangeFormat) ||
+        LastImportedUtc.HasValue ||
+        LastExportedUtc.HasValue;
 }
 
 public enum ComponentType

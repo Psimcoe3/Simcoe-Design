@@ -77,6 +77,37 @@ public class PlotLayout
     /// <summary>Name of the active CTB table</summary>
     public string PlotStyleTableName { get; set; } = "monochrome.ctb";
 
+    public PlotLayout Clone()
+    {
+        return new PlotLayout
+        {
+            Name = Name,
+            PaperSize = PaperSize,
+            CustomWidth = CustomWidth,
+            CustomHeight = CustomHeight,
+            PlotScale = PlotScale,
+            PlotStyleTableName = PlotStyleTableName
+        };
+    }
+
+    public void ApplyFrom(PlotLayout source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        Name = source.Name;
+        PaperSize = source.PaperSize;
+        CustomWidth = source.CustomWidth;
+        CustomHeight = source.CustomHeight;
+        PlotScale = source.PlotScale;
+        PlotStyleTableName = source.PlotStyleTableName;
+    }
+
+    public string GetSummaryText()
+    {
+        var (width, height) = GetPaperInches();
+        return $"{Name} — {PaperSize} ({width:F2}\" x {height:F2}\"), Scale {PlotScale:g}, CTB {PlotStyleTableName}";
+    }
+
     /// <summary>Gets the effective paper dimensions in inches</summary>
     public (double Width, double Height) GetPaperInches() => PaperSize switch
     {

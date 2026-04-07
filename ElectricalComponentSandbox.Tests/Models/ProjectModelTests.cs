@@ -83,6 +83,14 @@ public class ProjectModelTests
     }
 
     [Fact]
+    public void Constructor_SavedPageSetupsDefaults()
+    {
+        var project = new ProjectModel();
+        Assert.NotNull(project.SavedPageSetups);
+        Assert.Empty(project.SavedPageSetups);
+    }
+
+    [Fact]
     public void NamedViews_CanBeAdded()
     {
         var project = new ProjectModel();
@@ -131,5 +139,16 @@ public class ProjectModelTests
         Assert.Equal(2, project.Sheets.Count);
         Assert.Equal("S001 - Sheet 1", project.Sheets[0].DisplayName);
         Assert.Equal("A201 - Lighting Plan", project.Sheets[1].DisplayName);
+    }
+
+    [Fact]
+    public void SavedPageSetups_CanBeAdded()
+    {
+        var project = new ProjectModel();
+        project.SavedPageSetups.Add(new PlotLayout { Name = "Permit Set", PaperSize = PaperSize.ANSI_D, PlotScale = 24.0 });
+
+        Assert.Single(project.SavedPageSetups);
+        Assert.Equal("Permit Set", project.SavedPageSetups[0].Name);
+        Assert.Equal(24.0, project.SavedPageSetups[0].PlotScale);
     }
 }
