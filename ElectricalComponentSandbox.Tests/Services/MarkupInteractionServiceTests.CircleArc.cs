@@ -1675,6 +1675,26 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void SetArcGeometry_WithoutSweepOrEndAngle_PreservesCurrentSweep()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Arc,
+            Radius = 10,
+            ArcStartDeg = 45,
+            ArcSweepDeg = -90,
+            Vertices = { new Point(0, 0) }
+        };
+
+        var updated = _sut.SetArcGeometry(markup, 12, 60);
+
+        Assert.True(updated);
+        Assert.Equal(12, markup.Radius, 6);
+        Assert.Equal(60, markup.ArcStartDeg, 6);
+        Assert.Equal(-90, markup.ArcSweepDeg, 6);
+    }
+
+    [Fact]
     public void SetArcGeometry_CannotEdit_ReturnsFalseAndDoesNotMutate()
     {
         var modifiedUtc = new DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc);
