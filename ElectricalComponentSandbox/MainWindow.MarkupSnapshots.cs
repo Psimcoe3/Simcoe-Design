@@ -152,7 +152,7 @@ public partial class MainWindow
         var filters = string.IsNullOrWhiteSpace(snapshot.FilterSummary)
             ? "Published without additional filters."
             : snapshot.FilterSummary;
-        return $"{snapshot.ScopeDisplayText}  |  {snapshot.IssueCount} issue(s)  |  {snapshot.OpenCount} open/in progress. Published {snapshot.PublishedDisplayText} by {publisher}. Filters: {filters}";
+        return $"{snapshot.DisplayName}: {snapshot.ScopeDisplayText}  |  {snapshot.IssueCount} issue(s)  |  {snapshot.OpenCount} open/in progress. Published {snapshot.PublishedDisplayText} by {publisher}. Filters: {filters}";
     }
 
     private string BuildMarkupReviewSnapshotComparisonSummary(MarkupReviewSnapshot snapshot)

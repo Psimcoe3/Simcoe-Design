@@ -1160,4 +1160,164 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(0, outcome.afterUndo.ReplyCount);
         Assert.Equal(0, outcome.afterUndo.OtherReplyCount);
     }
+
+    [Fact]
+    public void PublishMarkupReviewSnapshotForTesting_CapturesCurrentReviewSetAndBuildsComparisonSummary()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+
+            var statusChangedMarkup = new MarkupRecord
+            {
+                Id = "snapshot-status",
+                Type = MarkupType.Rectangle,
+                Status = MarkupStatus.Open,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Status change",
+                    Author = "Paul"
+                }
+            };
+            statusChangedMarkup.UpdateBoundingRect();
+
+            var ownershipChangedMarkup = new MarkupRecord
+            {
+                Id = "snapshot-owner",
+                Type = MarkupType.Rectangle,
+                Status = MarkupStatus.Open,
+                AssignedTo = "Crew A",
+                Vertices = { new Point(12, 0), new Point(22, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Ownership change",
+                    Author = "Casey"
+                }
+            };
+            ownershipChangedMarkup.UpdateBoundingRect();
+
+            var unchangedMarkup = new MarkupRecord
+            {
+                Id = "snapshot-unchanged",
+                Type = MarkupType.Rectangle,
+                Status = MarkupStatus.Open,
+                AssignedTo = "Crew C",
+                Vertices = { new Point(24, 0), new Point(34, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Unchanged",
+                    Author = "Jordan"
+                }
+            };
+            unchangedMarkup.UpdateBoundingRect();
+
+            viewModel.Markups.Add(statusChangedMarkup);
+            viewModel.Markups.Add(ownershipChangedMarkup);
+            viewModel.Markups.Add(unchangedMarkup);
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var published = window.PublishMarkupReviewSnapshotForTesting("Coordination Set", "Coordinator");
+
+                statusChangedMarkup.Status = MarkupStatus.Resolved;
+                ownershipChangedMarkup.AssignedTo = "Crew B";
+
+                var newMarkup = new MarkupRecord
+                {
+                    Id = "snapshot-new",
+                    Type = MarkupType.Text,
+                    Status = MarkupStatus.Open,
+                    TextContent = "New issue",
+                    Vertices = { new Point(36, 6) },
+                    Metadata = new MarkupMetadata
+                    {
+                        Label = "Added later",
+                        Author = "Taylor"
+                    }
+                };
+                newMarkup.UpdateBoundingRect();
+                viewModel.Markups.Add(newMarkup);
+                viewModel.MarkupTool.RefreshReviewContext();
+
+                var displayNames = window.GetMarkupReviewSnapshotDisplayNamesForTesting();
+                var selected = window.SelectMarkupReviewSnapshotForTesting("Coordination Set");
+                var summary = window.GetMarkupReviewSnapshotSummaryForTesting();
+                var selectedSummary = window.GetSelectedMarkupReviewSnapshotSummaryForTesting();
+                var comparison = window.GetSelectedMarkupReviewSnapshotComparisonForTesting();
+
+                return (published, displayNames, selected, summary, selectedSummary, comparison);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.published);
+        Assert.Single(outcome.displayNames);
+        Assert.Equal("Coordination Set", outcome.displayNames[0]);
+        Assert.True(outcome.selected);
+        Assert.Contains("1 published review set", outcome.summary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Coordination Set", outcome.selectedSummary, StringComparison.Ordinal);
+        Assert.Contains("1 unchanged", outcome.comparison, StringComparison.Ordinal);
+        Assert.Contains("1 status changed", outcome.comparison, StringComparison.Ordinal);
+        Assert.Contains("1 ownership changed", outcome.comparison, StringComparison.Ordinal);
+        Assert.Contains("1 new", outcome.comparison, StringComparison.Ordinal);
+        Assert.Contains("0 missing", outcome.comparison, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MarkupReviewSnapshotSelection_IsRetainedAcrossSnapshotUiRefresh()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var markup = new MarkupRecord
+            {
+                Id = "snapshot-retained",
+                Type = MarkupType.Rectangle,
+                Status = MarkupStatus.Open,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Retained selection",
+                    Author = "Paul"
+                }
+            };
+            markup.UpdateBoundingRect();
+            viewModel.Markups.Add(markup);
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var firstPublished = window.PublishMarkupReviewSnapshotForTesting("Snapshot A", "Coordinator");
+
+                markup.Status = MarkupStatus.Resolved;
+                viewModel.MarkupTool.RefreshReviewContext();
+
+                var secondPublished = window.PublishMarkupReviewSnapshotForTesting("Snapshot B", "Coordinator");
+                var selected = window.SelectMarkupReviewSnapshotForTesting("Snapshot A");
+
+                markup.AssignedTo = "Field Crew";
+                viewModel.MarkupTool.RefreshReviewContext();
+
+                var displayNames = window.GetMarkupReviewSnapshotDisplayNamesForTesting();
+                var selectedSummary = window.GetSelectedMarkupReviewSnapshotSummaryForTesting();
+
+                return (firstPublished, secondPublished, selected, displayNames, selectedSummary);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.firstPublished);
+        Assert.True(outcome.secondPublished);
+        Assert.True(outcome.selected);
+        Assert.Equal(new[] { "Snapshot B", "Snapshot A" }, outcome.displayNames);
+        Assert.Contains("Snapshot A", outcome.selectedSummary, StringComparison.Ordinal);
+    }
 }

@@ -108,6 +108,57 @@ public class ProjectFileServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAndLoad_MarkupReviewSnapshots_RoundTrips()
+    {
+        var publishedUtc = new DateTime(2026, 4, 8, 13, 20, 0, DateTimeKind.Utc);
+        var project = new ProjectModel { Name = "Review Snapshot Project" };
+        var snapshot = new MarkupReviewSnapshot
+        {
+            Name = "Coordination Review Set",
+            PublishedBy = "QA Lead",
+            PublishedUtc = publishedUtc,
+            Scope = MarkupReviewSnapshotScope.AllSheets,
+            SourceSheetDisplayName = "E101",
+            FilterSummary = "Scope: All Sheets  |  Status: Open"
+        };
+        var markup = new MarkupRecord
+        {
+            Id = "markup-1",
+            Type = MarkupType.Rectangle,
+            Status = MarkupStatus.Open,
+            AssignedTo = "Field Crew",
+            Vertices = { new Point(0, 0), new Point(10, 10) },
+            Metadata = new MarkupMetadata
+            {
+                Label = "Revise conduit route",
+                Author = "Paul"
+            }
+        };
+        markup.UpdateBoundingRect();
+        snapshot.Markups.Add(markup);
+        project.MarkupReviewSnapshots.Add(snapshot);
+        var filePath = Path.Combine(_tempDir, "review-snapshots.ecproj");
+
+        await _service.SaveProjectAsync(project, filePath);
+        var loaded = await _service.LoadProjectAsync(filePath);
+
+        Assert.NotNull(loaded);
+        var loadedSnapshot = Assert.Single(loaded.MarkupReviewSnapshots);
+        Assert.Equal("Coordination Review Set", loadedSnapshot.Name);
+        Assert.Equal("QA Lead", loadedSnapshot.PublishedBy);
+        Assert.Equal(publishedUtc, loadedSnapshot.PublishedUtc);
+        Assert.Equal(MarkupReviewSnapshotScope.AllSheets, loadedSnapshot.Scope);
+        Assert.Equal("E101", loadedSnapshot.SourceSheetDisplayName);
+        Assert.Equal("Scope: All Sheets  |  Status: Open", loadedSnapshot.FilterSummary);
+        var loadedMarkup = Assert.Single(loadedSnapshot.Markups);
+        Assert.Equal("markup-1", loadedMarkup.Id);
+        Assert.Equal(MarkupStatus.Open, loadedMarkup.Status);
+        Assert.Equal("Field Crew", loadedMarkup.AssignedTo);
+        Assert.Equal("Revise conduit route", loadedMarkup.Metadata.Label);
+        Assert.Equal("Paul", loadedMarkup.Metadata.Author);
+    }
+
+    [Fact]
     public async Task SaveAndLoad_ProjectSettings_Preserved()
     {
         var project = new ProjectModel
