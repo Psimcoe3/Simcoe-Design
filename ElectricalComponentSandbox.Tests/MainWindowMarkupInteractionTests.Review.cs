@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using ElectricalComponentSandbox.Markup.Models;
 using ElectricalComponentSandbox.ViewModels;
 
@@ -184,6 +185,82 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal("MarkupTool.SelectedMarkupReplies", outcome.ReplyItemsSourcePath);
         Assert.True(outcome.AddReplyEnabled);
         Assert.True(outcome.AssignEnabled);
+    }
+
+    [Fact]
+    public void ReviewBucketSurface_BindsScopeBucketListAndActionSummary()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+
+            var firstMarkup = new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Status = MarkupStatus.Open,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Issue A",
+                    Author = "Paul"
+                }
+            };
+            firstMarkup.UpdateBoundingRect();
+            viewModel.Markups.Add(firstMarkup);
+
+            var secondMarkup = new MarkupRecord
+            {
+                Type = MarkupType.Text,
+                Status = MarkupStatus.Resolved,
+                TextContent = "Done",
+                Vertices = { new Point(12, 12) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Issue B",
+                    Author = "Casey"
+                }
+            };
+            secondMarkup.UpdateBoundingRect();
+            viewModel.Markups.Add(secondMarkup);
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                window.UpdateLayout();
+
+                var scopeCombo = FindRequired<ComboBox>(window, "MarkupReviewScopeCombo");
+                var issueGroupCombo = FindRequired<ComboBox>(window, "IssueGroupModeComboBox");
+                var issueGroupList = FindRequired<ListBox>(window, "IssueGroupListBox");
+                var issueGroupSummary = FindRequired<TextBlock>(window, "SelectedIssueGroupSummaryTextBlock");
+                var issueGroupActionSummary = FindRequired<TextBlock>(window, "SelectedIssueGroupActionSummaryTextBlock");
+                var resolveBucketButton = FindRequired<Button>(window, "ResolveSelectedIssueGroupButton");
+
+                return (
+                    ScopeItemsSourcePath: scopeCombo.GetBindingExpression(ItemsControl.ItemsSourceProperty)?.ParentBinding.Path.Path,
+                    ScopeSelectedItemPath: scopeCombo.GetBindingExpression(Selector.SelectedItemProperty)?.ParentBinding.Path.Path,
+                    GroupModeItemsSourcePath: issueGroupCombo.GetBindingExpression(ItemsControl.ItemsSourceProperty)?.ParentBinding.Path.Path,
+                    GroupModeSelectedItemPath: issueGroupCombo.GetBindingExpression(Selector.SelectedItemProperty)?.ParentBinding.Path.Path,
+                    GroupListItemsSourcePath: issueGroupList.GetBindingExpression(ItemsControl.ItemsSourceProperty)?.ParentBinding.Path.Path,
+                    GroupListSelectedItemPath: issueGroupList.GetBindingExpression(Selector.SelectedItemProperty)?.ParentBinding.Path.Path,
+                    GroupSummaryPath: issueGroupSummary.GetBindingExpression(TextBlock.TextProperty)?.ParentBinding.Path.Path,
+                    GroupActionSummaryPath: issueGroupActionSummary.GetBindingExpression(TextBlock.TextProperty)?.ParentBinding.Path.Path,
+                    ResolveBucketEnabledPath: resolveBucketButton.GetBindingExpression(UIElement.IsEnabledProperty)?.ParentBinding.Path.Path);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.Equal("MarkupTool.ReviewScopeOptions", outcome.ScopeItemsSourcePath);
+        Assert.Equal("MarkupTool.ReviewScope", outcome.ScopeSelectedItemPath);
+        Assert.Equal("MarkupTool.IssueGroupModeOptions", outcome.GroupModeItemsSourcePath);
+        Assert.Equal("MarkupTool.IssueGroupMode", outcome.GroupModeSelectedItemPath);
+        Assert.Equal("MarkupTool.IssueGroups", outcome.GroupListItemsSourcePath);
+        Assert.Equal("MarkupTool.SelectedIssueGroup", outcome.GroupListSelectedItemPath);
+        Assert.Equal("MarkupTool.SelectedIssueGroupSummary", outcome.GroupSummaryPath);
+        Assert.Equal("MarkupTool.SelectedIssueGroupActionSummary", outcome.GroupActionSummaryPath);
+        Assert.Equal("MarkupTool.HasSelectedIssueGroup", outcome.ResolveBucketEnabledPath);
     }
 
     [Fact]
@@ -544,6 +621,63 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(MarkupStatus.Open, outcome.afterUndo.OtherStatus);
         Assert.Equal(0, outcome.afterUndo.ReplyCount);
         Assert.Equal(0, outcome.afterUndo.OtherReplyCount);
+    }
+
+    [Fact]
+    public void ExecuteSetSelectedIssueGroupStatusForTesting_WithReviewerNote_AddsManualReplyAndAuditReply()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Status = MarkupStatus.Open,
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Bucket A",
+                    Author = "Paul"
+                }
+            },
+            (window, viewModel, markup) =>
+            {
+                viewModel.MarkupTool.IssueGroupMode = MarkupIssueGroupMode.Author;
+                viewModel.MarkupTool.SelectedIssueGroup = Assert.Single(viewModel.MarkupTool.IssueGroups.Where(group => group.DisplayName == "Paul"));
+
+                var changed = window.ExecuteSetSelectedIssueGroupStatusForTesting(MarkupStatus.Resolved, "Reviewer", "Fixed in rev C.");
+                var manualReply = Assert.Single(markup.Replies.Where(reply => !reply.IsAuditEntry));
+                var auditReply = Assert.Single(markup.Replies.Where(reply => reply.Kind == MarkupReplyKind.StatusAudit));
+                var afterChange = (
+                    Status: markup.Status,
+                    StatusNote: markup.StatusNote,
+                    ReplyCount: markup.Replies.Count,
+                    ManualReplyText: manualReply.Text,
+                    AuditReplyText: auditReply.Text,
+                    AuditParentReplyId: auditReply.ParentReplyId,
+                    VisibleReplyCount: viewModel.MarkupTool.SelectedMarkupReplies.Count,
+                    VisibleManualReplyCount: viewModel.MarkupTool.SelectedMarkupReplies.Count(reply => !reply.IsAuditEntry));
+
+                viewModel.Undo();
+                var afterUndo = (
+                    Status: markup.Status,
+                    StatusNote: markup.StatusNote,
+                    ReplyCount: markup.Replies.Count,
+                    VisibleReplyCount: viewModel.MarkupTool.SelectedMarkupReplies.Count);
+                return (changed, afterChange, afterUndo);
+            });
+
+        Assert.True(outcome.changed);
+        Assert.Equal(MarkupStatus.Resolved, outcome.afterChange.Status);
+        Assert.Equal("Fixed in rev C.", outcome.afterChange.StatusNote);
+        Assert.Equal(2, outcome.afterChange.ReplyCount);
+        Assert.Equal("Fixed in rev C.", outcome.afterChange.ManualReplyText);
+        Assert.Equal("Status changed: Open -> Resolved", outcome.afterChange.AuditReplyText);
+        Assert.NotNull(outcome.afterChange.AuditParentReplyId);
+        Assert.Equal(2, outcome.afterChange.VisibleReplyCount);
+        Assert.Equal(1, outcome.afterChange.VisibleManualReplyCount);
+        Assert.Equal(MarkupStatus.Open, outcome.afterUndo.Status);
+        Assert.Null(outcome.afterUndo.StatusNote);
+        Assert.Equal(0, outcome.afterUndo.ReplyCount);
+        Assert.Equal(0, outcome.afterUndo.VisibleReplyCount);
     }
 
     [Fact]

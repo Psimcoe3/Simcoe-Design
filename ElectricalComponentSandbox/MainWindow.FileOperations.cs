@@ -645,16 +645,17 @@ public partial class MainWindow
 
         try
         {
-            var layout = new Models.PlotLayout();
+            var layout = GetOrCreateActivePlotLayout();
+            var ctb = GetPlotStyleTable(layout);
             var extents = _viewModel.PlotService.ComputeModelExtents(
                 _viewModel.Components.ToList(), _viewModel.Layers.ToList());
             var bitmap = _viewModel.PlotService.RenderToBitmap(
-                layout, null, _viewModel.Components.ToList(),
+                layout, ctb, _viewModel.Components.ToList(),
                 _viewModel.Layers.ToList(), extents);
             _viewModel.PlotService.SaveToPng(bitmap, dlg.FileName);
 
             ActionLogService.Instance.Log(LogCategory.FileOperation, "Plot to image complete",
-                $"File: {dlg.FileName}");
+                $"File: {dlg.FileName}, Page setup: {layout.Name}");
             MessageBox.Show("Plot exported successfully!", "Plot to Image",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }

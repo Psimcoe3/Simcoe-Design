@@ -906,6 +906,165 @@
                                 <Button Content="Delete" Click="DeleteComponent_Click" Padding="8,2" Margin="0,0,6,4"/>
                                 <Button Content="Clear Filters" Command="{Binding MarkupTool.ClearFiltersCommand}" Padding="8,2" Margin="0,0,6,4"/>
                             </WrapPanel>
+                            <Border x:Name="MarkupReviewBucketsCard"
+                                    DockPanel.Dock="Top"
+                                    Margin="4,0,4,6"
+                                    Padding="8"
+                                    Background="#FFF7F7F8"
+                                    BorderBrush="#FFD0D7DE"
+                                    BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock Text="Review Scope &amp; Buckets" FontWeight="Bold" FontSize="11" Margin="0,0,0,6"/>
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,8,0">
+                                            <TextBlock Text="Scope" FontWeight="SemiBold" Margin="0,0,0,2"/>
+                                            <ComboBox x:Name="MarkupReviewScopeCombo"
+                                                      ItemsSource="{Binding MarkupTool.ReviewScopeOptions}"
+                                                      SelectedItem="{Binding MarkupTool.ReviewScope, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      SelectionChanged="MarkupReviewScope_Changed"
+                                                      Margin="0,0,0,4"/>
+                                            <TextBlock Text="Review scope determines whether triage covers the current sheet or the full sheet set."
+                                                       Foreground="Gray"
+                                                       FontSize="10"
+                                                       TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                            <TextBlock Text="Bucket Mode" FontWeight="SemiBold" Margin="0,0,0,2"/>
+                                            <ComboBox x:Name="IssueGroupModeComboBox"
+                                                      ItemsSource="{Binding MarkupTool.IssueGroupModeOptions}"
+                                                      SelectedItem="{Binding MarkupTool.IssueGroupMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      Margin="0,0,0,4"/>
+                                            <TextBlock Text="{Binding MarkupTool.IssueGroups.Count, StringFormat='Buckets: {0}'}"
+                                                       Foreground="Gray"
+                                                       FontSize="10"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="2*"/>
+                                            <ColumnDefinition Width="3*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Margin="0,0,8,0"
+                                                Padding="6"
+                                                Background="White"
+                                                BorderBrush="#FFE5E7EB"
+                                                BorderThickness="1">
+                                            <DockPanel>
+                                                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                                                    <TextBlock Text="Issue Buckets" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                    <Button Content="Clear Bucket"
+                                                            Command="{Binding MarkupTool.ClearIssueGroupCommand}"
+                                                            Padding="8,2"
+                                                            Margin="0,0,0,4"/>
+                                                </WrapPanel>
+                                                <TextBlock DockPanel.Dock="Top"
+                                                           Text="Select a bucket to focus the list and apply batch review actions to one review slice."
+                                                           Foreground="Gray"
+                                                           FontSize="10"
+                                                           Margin="0,0,0,6"
+                                                           TextWrapping="Wrap"/>
+                                                <ListBox x:Name="IssueGroupListBox"
+                                                         ItemsSource="{Binding MarkupTool.IssueGroups}"
+                                                         SelectedItem="{Binding MarkupTool.SelectedIssueGroup, Mode=TwoWay}"
+                                                         BorderThickness="0"
+                                                         Background="Transparent"
+                                                         MinHeight="140"
+                                                         MaxHeight="220">
+                                                    <ListBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Margin="0,0,0,6"
+                                                                    Padding="6"
+                                                                    Background="#FFF9FAFB"
+                                                                    BorderBrush="#FFE5E7EB"
+                                                                    BorderThickness="1">
+                                                                <StackPanel>
+                                                                    <TextBlock TextWrapping="Wrap">
+                                                                        <Run Text="{Binding DisplayName}" FontWeight="SemiBold"/>
+                                                                        <Run Text="  |  "/>
+                                                                        <Run Text="{Binding Count}"/>
+                                                                        <Run Text=" issue(s)"/>
+                                                                        <Run Text="  |  "/>
+                                                                        <Run Text="{Binding OpenCount}"/>
+                                                                        <Run Text=" open"/>
+                                                                    </TextBlock>
+                                                                    <TextBlock Text="{Binding SecondaryText}" Foreground="Gray" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                                                    <TextBlock Text="{Binding BreakdownText}" Foreground="#FF4B5563" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ListBox.ItemTemplate>
+                                                </ListBox>
+                                            </DockPanel>
+                                        </Border>
+                                        <Border x:Name="SelectedIssueGroupCard"
+                                                Grid.Column="1"
+                                                Margin="8,0,0,0"
+                                                Padding="6"
+                                                Background="White"
+                                                BorderBrush="#FFE5E7EB"
+                                                BorderThickness="1">
+                                            <StackPanel>
+                                                <TextBlock Text="Bucket Review Actions" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock x:Name="SelectedIssueGroupSummaryTextBlock"
+                                                           Text="{Binding MarkupTool.SelectedIssueGroupSummary}"
+                                                           TextWrapping="Wrap"
+                                                           Margin="0,0,0,2"/>
+                                                <TextBlock x:Name="SelectedIssueGroupBreakdownTextBlock"
+                                                           Text="{Binding MarkupTool.SelectedIssueGroupBreakdown}"
+                                                           Foreground="#FF4B5563"
+                                                           TextWrapping="Wrap"
+                                                           Margin="0,0,0,4"/>
+                                                <TextBlock x:Name="SelectedIssueGroupActionSummaryTextBlock"
+                                                           Text="{Binding MarkupTool.SelectedIssueGroupActionSummary}"
+                                                           Foreground="Gray"
+                                                           FontSize="10"
+                                                           TextWrapping="Wrap"
+                                                           Margin="0,0,0,6"/>
+                                                <WrapPanel Margin="0,0,0,6">
+                                                    <Button x:Name="AssignSelectedIssueGroupButton"
+                                                            Content="Assign"
+                                                            Click="AssignSelectedIssueGroup_Click"
+                                                            Padding="8,2"
+                                                            Margin="0,0,6,4"
+                                                            IsEnabled="{Binding MarkupTool.HasSelectedIssueGroup}"/>
+                                                    <Button x:Name="ApproveSelectedIssueGroupButton"
+                                                            Content="Approve"
+                                                            Click="ApproveSelectedIssueGroup_Click"
+                                                            Padding="8,2"
+                                                            Margin="0,0,6,4"
+                                                            IsEnabled="{Binding MarkupTool.HasSelectedIssueGroup}"/>
+                                                    <Button x:Name="RejectSelectedIssueGroupButton"
+                                                            Content="Reject"
+                                                            Click="RejectSelectedIssueGroup_Click"
+                                                            Padding="8,2"
+                                                            Margin="0,0,6,4"
+                                                            IsEnabled="{Binding MarkupTool.HasSelectedIssueGroup}"/>
+                                                    <Button x:Name="ResolveSelectedIssueGroupButton"
+                                                            Content="Resolve"
+                                                            Click="ResolveSelectedIssueGroup_Click"
+                                                            Padding="8,2"
+                                                            Margin="0,0,6,4"
+                                                            IsEnabled="{Binding MarkupTool.HasSelectedIssueGroup}"/>
+                                                    <Button x:Name="VoidSelectedIssueGroupButton"
+                                                            Content="Void"
+                                                            Click="VoidSelectedIssueGroup_Click"
+                                                            Padding="8,2"
+                                                            Margin="0,0,6,4"
+                                                            IsEnabled="{Binding MarkupTool.HasSelectedIssueGroup}"/>
+                                                </WrapPanel>
+                                                <TextBlock Text="Batch status actions prompt for an optional reviewer note and add it to each affected issue thread."
+                                                           Foreground="Gray"
+                                                           FontSize="10"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
                             <Border x:Name="SelectedMarkupReviewCard"
                                     DockPanel.Dock="Top"
                                     Margin="4,0,4,6"
@@ -1383,7 +1542,7 @@
                 <ComboBox x:Name="PartNumberParameterBindingComboBox" DisplayMemberPath="DisplayName" SelectedValuePath="ParameterId"/>
                 <ComboBox x:Name="ReferenceUrlParameterBindingComboBox" DisplayMemberPath="DisplayName" SelectedValuePath="ParameterId"/>
 
-                <ComboBox x:Name="MarkupReviewScopeCombo"/>
+                <ComboBox x:Name="CompatibilityMarkupReviewScopeCombo"/>
 
                 <ComboBox x:Name="ReferenceCatalogComboBox"/>
                 <Button x:Name="AssignReferenceButton"/>

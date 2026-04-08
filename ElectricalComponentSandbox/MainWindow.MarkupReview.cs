@@ -43,17 +43,17 @@ public partial class MainWindow
     internal bool ExecuteAssignSelectedMarkupForTesting(string? assignee, string? actor = null)
         => TryAssignSelectedMarkup(assignee, actor ?? "Test Reviewer", showFeedbackIfUnavailable: false);
 
-    internal bool ExecuteSetSelectedIssueGroupStatusForTesting(MarkupStatus newStatus, string? author = null)
-        => TrySetSelectedIssueGroupStatus(newStatus, $"{MarkupRecord.GetStatusDisplayText(newStatus)} Bucket", author ?? "Test Reviewer", showFeedbackIfUnavailable: false);
+    internal bool ExecuteSetSelectedIssueGroupStatusForTesting(MarkupStatus newStatus, string? author = null, string? reviewerNote = null)
+        => TrySetSelectedIssueGroupStatus(newStatus, $"{MarkupRecord.GetStatusDisplayText(newStatus)} Bucket", author ?? "Test Reviewer", showFeedbackIfUnavailable: false, reviewerNote: reviewerNote);
 
     internal bool ExecuteAssignSelectedIssueGroupForTesting(string? assignee, string? actor = null)
         => TryAssignSelectedIssueGroup(assignee, actor ?? "Test Reviewer", showFeedbackIfUnavailable: false);
 
-    internal bool ExecuteApproveSelectedIssueGroupForTesting(string? author = null)
-        => TrySetSelectedIssueGroupStatus(MarkupStatus.Approved, "Approve Bucket", author ?? "Test Reviewer", showFeedbackIfUnavailable: false);
+    internal bool ExecuteApproveSelectedIssueGroupForTesting(string? author = null, string? reviewerNote = null)
+        => TrySetSelectedIssueGroupStatus(MarkupStatus.Approved, "Approve Bucket", author ?? "Test Reviewer", showFeedbackIfUnavailable: false, reviewerNote: reviewerNote);
 
-    internal bool ExecuteRejectSelectedIssueGroupForTesting(string? author = null)
-        => TrySetSelectedIssueGroupStatus(MarkupStatus.Rejected, "Reject Bucket", author ?? "Test Reviewer", showFeedbackIfUnavailable: false);
+    internal bool ExecuteRejectSelectedIssueGroupForTesting(string? author = null, string? reviewerNote = null)
+        => TrySetSelectedIssueGroupStatus(MarkupStatus.Rejected, "Reject Bucket", author ?? "Test Reviewer", showFeedbackIfUnavailable: false, reviewerNote: reviewerNote);
 
     private void EditSelectedMarkupGeometry_Click(object sender, RoutedEventArgs e)
     {
@@ -126,12 +126,12 @@ public partial class MainWindow
 
     private void ResolveVisibleMarkups_Click(object sender, RoutedEventArgs e)
     {
-        TrySetVisibleMarkupStatus(MarkupStatus.Resolved, "Resolve Visible", Environment.UserName);
+        TrySetVisibleMarkupStatus(MarkupStatus.Resolved, "Resolve Visible", Environment.UserName, promptForReviewerNote: true);
     }
 
     private void VoidVisibleMarkups_Click(object sender, RoutedEventArgs e)
     {
-        TrySetVisibleMarkupStatus(MarkupStatus.Void, "Void Visible", Environment.UserName);
+        TrySetVisibleMarkupStatus(MarkupStatus.Void, "Void Visible", Environment.UserName, promptForReviewerNote: true);
     }
 
     private void AssignSelectedIssueGroup_Click(object sender, RoutedEventArgs e)
@@ -145,22 +145,22 @@ public partial class MainWindow
 
     private void ResolveSelectedIssueGroup_Click(object sender, RoutedEventArgs e)
     {
-        TrySetSelectedIssueGroupStatus(MarkupStatus.Resolved, "Resolve Bucket", Environment.UserName, showFeedbackIfUnavailable: true);
+        TrySetSelectedIssueGroupStatus(MarkupStatus.Resolved, "Resolve Bucket", Environment.UserName, showFeedbackIfUnavailable: true, promptForReviewerNote: true);
     }
 
     private void ApproveSelectedIssueGroup_Click(object sender, RoutedEventArgs e)
     {
-        TrySetSelectedIssueGroupStatus(MarkupStatus.Approved, "Approve Bucket", Environment.UserName, showFeedbackIfUnavailable: true);
+        TrySetSelectedIssueGroupStatus(MarkupStatus.Approved, "Approve Bucket", Environment.UserName, showFeedbackIfUnavailable: true, promptForReviewerNote: true);
     }
 
     private void RejectSelectedIssueGroup_Click(object sender, RoutedEventArgs e)
     {
-        TrySetSelectedIssueGroupStatus(MarkupStatus.Rejected, "Reject Bucket", Environment.UserName, showFeedbackIfUnavailable: true);
+        TrySetSelectedIssueGroupStatus(MarkupStatus.Rejected, "Reject Bucket", Environment.UserName, showFeedbackIfUnavailable: true, promptForReviewerNote: true);
     }
 
     private void VoidSelectedIssueGroup_Click(object sender, RoutedEventArgs e)
     {
-        TrySetSelectedIssueGroupStatus(MarkupStatus.Void, "Void Bucket", Environment.UserName, showFeedbackIfUnavailable: true);
+        TrySetSelectedIssueGroupStatus(MarkupStatus.Void, "Void Bucket", Environment.UserName, showFeedbackIfUnavailable: true, promptForReviewerNote: true);
     }
 
     private void AddMarkupReply_Click(object sender, RoutedEventArgs e)
@@ -234,24 +234,34 @@ public partial class MainWindow
         return true;
     }
 
-    private bool TrySetVisibleMarkupStatus(MarkupStatus newStatus, string action, string actor)
+    private bool TrySetVisibleMarkupStatus(MarkupStatus newStatus, string action, string actor, bool promptForReviewerNote = false, string? reviewerNote = null)
     {
-        var updatedCount = _viewModel.ApplyFilteredMarkupStatus(newStatus, actor);
-        if (updatedCount == 0)
+        var eligibleCount = _viewModel.GetFilteredReviewMarkups().Count(markup => markup.Status != newStatus);
+        if (eligibleCount == 0)
         {
             MessageBox.Show("No visible markups were eligible for that status change.", action,
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return false;
         }
 
+        if (promptForReviewerNote)
+        {
+            reviewerNote = PromptReviewerStatusNote(action, "all visible issues");
+            if (reviewerNote == null)
+                return false;
+        }
+
+        var updatedCount = _viewModel.ApplyFilteredMarkupStatus(newStatus, actor, reviewerNote);
+        var reviewerNoteApplied = !string.IsNullOrWhiteSpace(reviewerNote);
+
         ActionLogService.Instance.Log(LogCategory.Component,
-            $"Markup {action.ToLowerInvariant()}", $"Count: {updatedCount}");
+            $"Markup {action.ToLowerInvariant()}", $"Count: {updatedCount}, Reviewer note: {reviewerNoteApplied}");
 
         QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
         return true;
     }
 
-    private bool TrySetSelectedIssueGroupStatus(MarkupStatus newStatus, string action, string actor, bool showFeedbackIfUnavailable)
+    private bool TrySetSelectedIssueGroupStatus(MarkupStatus newStatus, string action, string actor, bool showFeedbackIfUnavailable, bool promptForReviewerNote = false, string? reviewerNote = null)
     {
         if (!_viewModel.MarkupTool.HasSelectedIssueGroup)
         {
@@ -264,8 +274,8 @@ public partial class MainWindow
             return false;
         }
 
-        var updatedCount = _viewModel.ApplySelectedIssueGroupStatus(newStatus, actor);
-        if (updatedCount == 0)
+        var eligibleCount = _viewModel.GetSelectedIssueGroupReviewMarkups().Count(markup => markup.Status != newStatus);
+        if (eligibleCount == 0)
         {
             if (showFeedbackIfUnavailable)
             {
@@ -276,11 +286,29 @@ public partial class MainWindow
             return false;
         }
 
+        if (promptForReviewerNote)
+        {
+            reviewerNote = PromptReviewerStatusNote(action, "the selected issue bucket");
+            if (reviewerNote == null)
+                return false;
+        }
+
+        var updatedCount = _viewModel.ApplySelectedIssueGroupStatus(newStatus, actor, reviewerNote);
+        var reviewerNoteApplied = !string.IsNullOrWhiteSpace(reviewerNote);
+
         ActionLogService.Instance.Log(LogCategory.Component,
-            $"Markup {action.ToLowerInvariant()}", $"Count: {updatedCount}");
+            $"Markup {action.ToLowerInvariant()}", $"Count: {updatedCount}, Reviewer note: {reviewerNoteApplied}");
 
         QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
         return true;
+    }
+
+    private string? PromptReviewerStatusNote(string action, string targetDescription)
+    {
+        return PromptInput(
+            action,
+            $"Enter an optional reviewer note for {targetDescription}. Leave blank to apply only the status audit entry:",
+            string.Empty);
     }
 
     private bool TryAssignSelectedMarkup(string? assignee, string actor, bool showFeedbackIfUnavailable)

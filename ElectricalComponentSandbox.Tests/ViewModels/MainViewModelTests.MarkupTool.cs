@@ -199,6 +199,73 @@ public partial class MainViewModelTests
     }
 
     [Fact]
+    public void ApplyFilteredMarkupStatus_WithReviewerNote_AddsManualReplyAndStoresStatusNote()
+    {
+        var vm = new MainViewModel();
+        var visibleMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Status = MarkupStatus.Open,
+            Metadata = new MarkupMetadata { Label = "Visible" }
+        };
+        var filteredOutMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Status = MarkupStatus.Open,
+            Metadata = new MarkupMetadata { Label = "Hidden" }
+        };
+
+        vm.Markups.Add(visibleMarkup);
+        vm.Markups.Add(filteredOutMarkup);
+        vm.MarkupTool.LabelSearch = "Visible";
+
+        var changedCount = vm.ApplyFilteredMarkupStatus(MarkupStatus.Resolved, "Coordinator", "Fixed on permit revision.");
+
+        Assert.Equal(1, changedCount);
+        Assert.Equal(MarkupStatus.Resolved, visibleMarkup.Status);
+        Assert.Equal("Fixed on permit revision.", visibleMarkup.StatusNote);
+        Assert.Equal(2, visibleMarkup.Replies.Count);
+        Assert.Contains(visibleMarkup.Replies, reply => !reply.IsAuditEntry && reply.Text == "Fixed on permit revision.");
+        Assert.Contains(visibleMarkup.Replies, reply => reply.Kind == MarkupReplyKind.StatusAudit && reply.Text == "Status changed: Open -> Resolved");
+        Assert.Equal(MarkupStatus.Open, filteredOutMarkup.Status);
+        Assert.Empty(filteredOutMarkup.Replies);
+    }
+
+    [Fact]
+    public void ApplySelectedIssueGroupStatus_WithReviewerNote_AddsManualReplyUnderSelectedBucketOnly()
+    {
+        var vm = new MainViewModel();
+        var bucketMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Status = MarkupStatus.Open,
+            Metadata = new MarkupMetadata { Label = "Bucket A", Author = "Paul" }
+        };
+        var otherMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Status = MarkupStatus.Open,
+            Metadata = new MarkupMetadata { Label = "Bucket B", Author = "Casey" }
+        };
+
+        vm.Markups.Add(bucketMarkup);
+        vm.Markups.Add(otherMarkup);
+        vm.MarkupTool.IssueGroupMode = MarkupIssueGroupMode.Author;
+        vm.MarkupTool.SelectedIssueGroup = Assert.Single(vm.MarkupTool.IssueGroups.Where(group => group.DisplayName == "Paul"));
+
+        var changedCount = vm.ApplySelectedIssueGroupStatus(MarkupStatus.Approved, "Coordinator", "Approved for release.");
+
+        Assert.Equal(1, changedCount);
+        Assert.Equal(MarkupStatus.Approved, bucketMarkup.Status);
+        Assert.Equal("Approved for release.", bucketMarkup.StatusNote);
+        Assert.Equal(2, bucketMarkup.Replies.Count);
+        Assert.Contains(bucketMarkup.Replies, reply => !reply.IsAuditEntry && reply.Text == "Approved for release.");
+        Assert.Contains(bucketMarkup.Replies, reply => reply.Kind == MarkupReplyKind.StatusAudit && reply.ParentReplyId != null);
+        Assert.Equal(MarkupStatus.Open, otherMarkup.Status);
+        Assert.Empty(otherMarkup.Replies);
+    }
+
+    [Fact]
     public void TryAssignSelectedMarkup_AddsAssignmentAuditReply()
     {
         var vm = new MainViewModel();

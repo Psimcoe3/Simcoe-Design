@@ -1,4 +1,7 @@
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.ViewModels;
 
@@ -64,6 +67,79 @@ public class MainWindowViewPresentationTests
                 window.Close();
             }
         });
+    }
+
+    [Fact]
+    public void BuildPrintPreviewInfoTextForTesting_IncludesPageSetupPaperSpaceAndExtents()
+    {
+        var infoText = MainWindow.BuildPrintPreviewInfoTextForTesting(
+            new PlotLayout
+            {
+                Name = "Permit Set",
+                PaperSize = PaperSize.ANSI_D,
+                PlotScale = 24.0,
+                PlotStyleTableName = "permit.ctb"
+            },
+            new Rect(0, 0, 144, 96),
+            componentCount: 12,
+            outputDpi: 300);
+
+        Assert.Contains("Page setup: Permit Set", infoText);
+        Assert.Contains("Paper space: ANSI_D", infoText);
+        Assert.Contains("Model extents: 144.00 × 96.00", infoText);
+        Assert.Contains("Components: 12", infoText);
+        Assert.Contains("DPI: 300", infoText);
+    }
+
+    [Fact]
+    public void BuildPrintPreviewWorkspaceForTesting_AddsPaperSpaceBadgeAndLayoutCaption()
+    {
+        RunOnSta(() =>
+        {
+            var workspace = MainWindow.BuildPrintPreviewWorkspaceForTesting(
+                new WriteableBitmap(640, 480, 96, 96, PixelFormats.Bgra32, null),
+                new PlotLayout
+                {
+                    Name = "Permit Set",
+                    PaperSize = PaperSize.ANSI_C,
+                    PlotScale = 12.0,
+                    PlotStyleTableName = "permit.ctb"
+                },
+                new Rect(0, 0, 96, 48));
+
+            var allText = GetDescendants<TextBlock>(workspace)
+                .Select(textBlock => textBlock.Text)
+                .Where(text => !string.IsNullOrWhiteSpace(text))
+                .ToList();
+
+            var workspaceBorder = Assert.IsType<Border>(workspace);
+            var background = Assert.IsType<SolidColorBrush>(workspaceBorder.Background);
+
+            Assert.Equal(Color.FromRgb(229, 231, 235), background.Color);
+            Assert.Contains("PAPER SPACE", allText);
+            Assert.Contains(allText, text => text.Contains("Permit Set", StringComparison.Ordinal));
+            Assert.Contains(allText, text => text.Contains("Model: 96.00 × 48.00", StringComparison.Ordinal));
+        });
+    }
+
+    private static List<T> GetDescendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        var results = new List<T>();
+        CollectDescendants(root, results);
+        return results;
+    }
+
+    private static void CollectDescendants<T>(DependencyObject root, ICollection<T> results) where T : DependencyObject
+    {
+        var childCount = VisualTreeHelper.GetChildrenCount(root);
+        for (var index = 0; index < childCount; index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+                results.Add(match);
+
+            CollectDescendants(child, results);
+        }
     }
 
     private static void RunOnSta(Action action)

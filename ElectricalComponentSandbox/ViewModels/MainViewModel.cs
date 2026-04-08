@@ -1120,32 +1120,32 @@ public class MainViewModel : INotifyPropertyChanged
         return TryApplyMarkupStatus(markup, newStatus, actor);
     }
 
-    public int ApplyFilteredMarkupStatus(MarkupStatus newStatus, string actor)
+    public int ApplyFilteredMarkupStatus(MarkupStatus newStatus, string actor, string? reviewerNote = null)
     {
         var markups = GetFilteredReviewMarkups()
             .Where(markup => markup.Status != newStatus)
             .ToList();
 
-        return ApplyMarkupStatus(markups, newStatus, actor);
+        return ApplyMarkupStatus(markups, newStatus, actor, reviewerNote);
     }
 
-    public int ApplySelectedIssueGroupStatus(MarkupStatus newStatus, string actor)
+    public int ApplySelectedIssueGroupStatus(MarkupStatus newStatus, string actor, string? reviewerNote = null)
     {
         var markups = GetSelectedIssueGroupReviewMarkups()
             .Where(markup => markup.Status != newStatus)
             .ToList();
 
-        return ApplyMarkupStatus(markups, newStatus, actor);
+        return ApplyMarkupStatus(markups, newStatus, actor, reviewerNote);
     }
 
-    private int ApplyMarkupStatus(IReadOnlyList<MarkupRecord> markups, MarkupStatus newStatus, string actor)
+    private int ApplyMarkupStatus(IReadOnlyList<MarkupRecord> markups, MarkupStatus newStatus, string actor, string? reviewerNote = null)
     {
 
         if (markups.Count == 0)
             return 0;
 
         var actions = markups
-            .Select(markup => (IUndoableAction)CreateMarkupStatusAction(markup, newStatus, actor))
+            .Select(markup => CreateMarkupStatusAction(markup, newStatus, actor, reviewerNote))
             .ToList();
 
         UndoRedo.Execute(actions.Count == 1
@@ -1262,15 +1262,32 @@ public class MainViewModel : INotifyPropertyChanged
         return true;
     }
 
-    private static MarkupStatusAction CreateMarkupStatusAction(MarkupRecord markup, MarkupStatus newStatus, string actor)
+    private static IUndoableAction CreateMarkupStatusAction(MarkupRecord markup, MarkupStatus newStatus, string actor, string? reviewerNote = null)
     {
         var utcNow = DateTime.UtcNow;
         var oldStatus = markup.Status;
         var author = string.IsNullOrWhiteSpace(actor) ? Environment.UserName : actor;
+        var normalizedReviewerNote = string.IsNullOrWhiteSpace(reviewerNote)
+            ? null
+            : reviewerNote.Trim();
+        var latestReplyId = MarkupThreadingService.GetLatestReplyId(markup.Replies);
+        MarkupReply? reviewerReply = null;
+        if (normalizedReviewerNote != null)
+        {
+            reviewerReply = new MarkupReply
+            {
+                ParentReplyId = latestReplyId,
+                Author = author,
+                Text = normalizedReviewerNote,
+                CreatedUtc = utcNow,
+                ModifiedUtc = utcNow
+            };
+        }
+
         var auditText = $"Status changed: {MarkupRecord.GetStatusDisplayText(oldStatus)} -> {MarkupRecord.GetStatusDisplayText(newStatus)}";
         var auditReply = new MarkupReply
         {
-            ParentReplyId = MarkupThreadingService.GetLatestReplyId(markup.Replies),
+            ParentReplyId = reviewerReply?.Id ?? latestReplyId,
             Author = author,
             Text = auditText,
             Kind = MarkupReplyKind.StatusAudit,
@@ -1278,7 +1295,15 @@ public class MainViewModel : INotifyPropertyChanged
             ModifiedUtc = utcNow
         };
 
-        return new MarkupStatusAction(markup, newStatus, auditText, auditReply, utcNow);
+        var statusAction = new MarkupStatusAction(markup, newStatus, normalizedReviewerNote ?? auditText, auditReply, utcNow);
+        if (reviewerReply == null)
+            return statusAction;
+
+        return new CompositeAction($"Change markup status with reviewer note: {markup.Metadata.Label}", new IUndoableAction[]
+        {
+            new MarkupReplyAction(markup, reviewerReply),
+            statusAction
+        });
     }
 
     private static MarkupAssignmentAction CreateMarkupAssignmentAction(MarkupRecord markup, string? assignee, string actor)
