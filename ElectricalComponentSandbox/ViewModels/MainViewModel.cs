@@ -1150,6 +1150,20 @@ public class MainViewModel : INotifyPropertyChanged
         return snapshot;
     }
 
+    public bool RemoveMarkupReviewSnapshot(string snapshotId)
+    {
+        if (string.IsNullOrWhiteSpace(snapshotId))
+            return false;
+
+        var snapshot = MarkupReviewSnapshots.FirstOrDefault(candidate => string.Equals(candidate.Id, snapshotId, StringComparison.Ordinal));
+        if (snapshot == null)
+            return false;
+
+        MarkupReviewSnapshots.Remove(snapshot);
+        OnPropertyChanged(nameof(MarkupReviewSnapshots));
+        return true;
+    }
+
     public bool TryApplySelectedMarkupStatus(MarkupStatus newStatus, string actor)
     {
         var markup = MarkupTool.SelectedMarkup;

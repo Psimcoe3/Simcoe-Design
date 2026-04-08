@@ -1264,8 +1264,13 @@ public partial class MainWindowMarkupInteractionTests
                 var selectedSummary = window.GetSelectedMarkupReviewSnapshotSummaryForTesting();
                 var comparison = window.GetSelectedMarkupReviewSnapshotComparisonForTesting();
                 var details = window.GetSelectedMarkupReviewSnapshotDetailsForTesting();
+                var diffTitles = window.GetMarkupReviewSnapshotDiffTitlesForTesting();
+                var selectedNewIssue = window.SelectMarkupReviewSnapshotDiffEntryForTesting("Added later");
+                var selectedMarkupIdAfterNewIssue = viewModel.MarkupTool.SelectedMarkup?.Id;
+                var selectedMissingIssue = window.SelectMarkupReviewSnapshotDiffEntryForTesting("Missing later");
+                var selectedMarkupIdAfterMissingIssue = viewModel.MarkupTool.SelectedMarkup?.Id;
 
-                return (published, displayNames, selected, summary, selectedSummary, comparison, details);
+                return (published, displayNames, selected, summary, selectedSummary, comparison, details, diffTitles, selectedNewIssue, selectedMarkupIdAfterNewIssue, selectedMissingIssue, selectedMarkupIdAfterMissingIssue);
             }
             finally
             {
@@ -1291,6 +1296,15 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Contains("Added later", outcome.details, StringComparison.Ordinal);
         Assert.Contains("Missing issues:", outcome.details, StringComparison.Ordinal);
         Assert.Contains("Missing later", outcome.details, StringComparison.Ordinal);
+        Assert.Equal(4, outcome.diffTitles.Count);
+        Assert.Contains("Status change", outcome.diffTitles, StringComparer.Ordinal);
+        Assert.Contains("Ownership change", outcome.diffTitles, StringComparer.Ordinal);
+        Assert.Contains("Added later", outcome.diffTitles, StringComparer.Ordinal);
+        Assert.Contains("Missing later", outcome.diffTitles, StringComparer.Ordinal);
+        Assert.True(outcome.selectedNewIssue);
+        Assert.Equal("snapshot-new", outcome.selectedMarkupIdAfterNewIssue);
+        Assert.True(outcome.selectedMissingIssue);
+        Assert.Equal("snapshot-new", outcome.selectedMarkupIdAfterMissingIssue);
     }
 
     [Fact]
@@ -1343,6 +1357,58 @@ public partial class MainWindowMarkupInteractionTests
         Assert.True(outcome.secondPublished);
         Assert.True(outcome.selected);
         Assert.Equal(new[] { "Snapshot B", "Snapshot A" }, outcome.displayNames);
+        Assert.Contains("Snapshot A", outcome.selectedSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DeleteSelectedMarkupReviewSnapshotForTesting_RemovesSnapshotAndRetainsRemainingSelection()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var markup = new MarkupRecord
+            {
+                Id = "snapshot-delete",
+                Type = MarkupType.Rectangle,
+                Status = MarkupStatus.Open,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Delete candidate",
+                    Author = "Paul"
+                }
+            };
+            markup.UpdateBoundingRect();
+            viewModel.Markups.Add(markup);
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var firstPublished = window.PublishMarkupReviewSnapshotForTesting("Snapshot A", "Coordinator");
+
+                markup.Status = MarkupStatus.Resolved;
+                viewModel.MarkupTool.RefreshReviewContext();
+
+                var secondPublished = window.PublishMarkupReviewSnapshotForTesting("Snapshot B", "Coordinator");
+                var selected = window.SelectMarkupReviewSnapshotForTesting("Snapshot B");
+                var deleted = window.DeleteSelectedMarkupReviewSnapshotForTesting();
+                var displayNames = window.GetMarkupReviewSnapshotDisplayNamesForTesting();
+                var selectedSummary = window.GetSelectedMarkupReviewSnapshotSummaryForTesting();
+
+                return (firstPublished, secondPublished, selected, deleted, displayNames, selectedSummary);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.firstPublished);
+        Assert.True(outcome.secondPublished);
+        Assert.True(outcome.selected);
+        Assert.True(outcome.deleted);
+        Assert.Single(outcome.displayNames);
+        Assert.Equal("Snapshot A", outcome.displayNames[0]);
         Assert.Contains("Snapshot A", outcome.selectedSummary, StringComparison.Ordinal);
     }
 }

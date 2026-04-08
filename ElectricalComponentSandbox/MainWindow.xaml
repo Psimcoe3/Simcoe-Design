@@ -1227,12 +1227,52 @@
                                                            FontSize="10"
                                                            TextWrapping="Wrap"
                                                            Margin="0,0,0,6"/>
+                                                <TextBlock Text="Issue Diff" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock Text="Select a changed or new issue to focus the live markup. Missing issues stay snapshot-only for comparison."
+                                                           Foreground="Gray"
+                                                           FontSize="10"
+                                                           TextWrapping="Wrap"
+                                                           Margin="0,0,0,4"/>
+                                                <ListBox x:Name="MarkupReviewSnapshotDiffListBox"
+                                                         BorderThickness="0"
+                                                         Background="Transparent"
+                                                         MinHeight="80"
+                                                         MaxHeight="180"
+                                                         Margin="0,0,0,6"
+                                                         SelectionChanged="MarkupReviewSnapshotDiffListBox_SelectionChanged">
+                                                    <ListBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Margin="0,0,0,6"
+                                                                    Padding="6"
+                                                                    Background="#FFF9FAFB"
+                                                                    BorderBrush="#FFE5E7EB"
+                                                                    BorderThickness="1">
+                                                                <StackPanel>
+                                                                    <TextBlock TextWrapping="Wrap">
+                                                                        <Run Text="[" Foreground="#FF6B7280"/>
+                                                                        <Run Text="{Binding CategoryDisplayText}" FontWeight="SemiBold" Foreground="#FF6B7280"/>
+                                                                        <Run Text="] " Foreground="#FF6B7280"/>
+                                                                        <Run Text="{Binding Title}" FontWeight="SemiBold"/>
+                                                                    </TextBlock>
+                                                                    <TextBlock Text="{Binding DetailText}" Foreground="#FF4B5563" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                                                    <TextBlock Text="{Binding RevealHintText}" Foreground="Gray" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ListBox.ItemTemplate>
+                                                </ListBox>
                                                 <WrapPanel Margin="0,0,0,6">
                                                     <Button x:Name="PublishMarkupReviewSnapshotButton"
                                                             Content="Publish Current Review Set"
                                                             Click="PublishMarkupReviewSnapshot_Click"
                                                             Padding="8,2"
                                                             Margin="0,0,6,4"/>
+                                                    <Button x:Name="DeleteMarkupReviewSnapshotButton"
+                                                        Content="Delete Selected Review Set"
+                                                        Click="DeleteSelectedMarkupReviewSnapshot_Click"
+                                                        Padding="8,2"
+                                                        Margin="0,0,6,4"
+                                                        IsEnabled="False"/>
                                                 </WrapPanel>
                                                 <TextBlock Text="Published review sets stay immutable in the project file, which makes them safe baselines for handoff, coordination, and later issue-set comparisons."
                                                            Foreground="Gray"

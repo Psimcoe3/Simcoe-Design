@@ -14,6 +14,9 @@ public partial class MainWindow
     internal bool PublishMarkupReviewSnapshotForTesting(string name, string? actor = null)
         => TryPublishMarkupReviewSnapshot(name, actor ?? "Test Reviewer", showFeedbackIfUnavailable: false);
 
+    internal bool DeleteSelectedMarkupReviewSnapshotForTesting()
+        => TryDeleteSelectedMarkupReviewSnapshot(confirmDeletion: false, showFeedbackIfUnavailable: false);
+
     internal IReadOnlyList<string> GetMarkupReviewSnapshotDisplayNamesForTesting()
     {
         UpdateMarkupReviewSnapshotUi();
@@ -51,6 +54,31 @@ public partial class MainWindow
     internal string GetSelectedMarkupReviewSnapshotDetailsForTesting()
         => SelectedMarkupReviewSnapshotDetailsTextBlock?.Text ?? string.Empty;
 
+    internal IReadOnlyList<string> GetMarkupReviewSnapshotDiffTitlesForTesting()
+    {
+        UpdateMarkupReviewSnapshotUi();
+        return MarkupReviewSnapshotDiffListBox?.Items
+            .OfType<MarkupReviewSnapshotDiffEntry>()
+            .Select(entry => entry.Title)
+            .ToList() ?? new List<string>();
+    }
+
+    internal bool SelectMarkupReviewSnapshotDiffEntryForTesting(string title)
+    {
+        UpdateMarkupReviewSnapshotUi();
+        if (MarkupReviewSnapshotDiffListBox == null)
+            return false;
+
+        var entry = MarkupReviewSnapshotDiffListBox.Items
+            .OfType<MarkupReviewSnapshotDiffEntry>()
+            .FirstOrDefault(candidate => string.Equals(candidate.Title, title, StringComparison.OrdinalIgnoreCase));
+        if (entry == null)
+            return false;
+
+        MarkupReviewSnapshotDiffListBox.SelectedItem = entry;
+        return true;
+    }
+
     private void PublishMarkupReviewSnapshot_Click(object sender, RoutedEventArgs e)
     {
         var input = PromptInput(
@@ -62,6 +90,9 @@ public partial class MainWindow
 
         TryPublishMarkupReviewSnapshot(input, Environment.UserName, showFeedbackIfUnavailable: true);
     }
+
+    private void DeleteSelectedMarkupReviewSnapshot_Click(object sender, RoutedEventArgs e)
+        => TryDeleteSelectedMarkupReviewSnapshot(confirmDeletion: true, showFeedbackIfUnavailable: true);
 
     private bool TryPublishMarkupReviewSnapshot(string name, string actor, bool showFeedbackIfUnavailable)
     {
@@ -86,10 +117,71 @@ public partial class MainWindow
         return true;
     }
 
+    private bool TryDeleteSelectedMarkupReviewSnapshot(bool confirmDeletion, bool showFeedbackIfUnavailable)
+    {
+        var snapshot = MarkupReviewSnapshotListBox?.SelectedItem as MarkupReviewSnapshot
+            ?? _viewModel.MarkupReviewSnapshots.FirstOrDefault(candidate => string.Equals(candidate.Id, _selectedMarkupReviewSnapshotId, StringComparison.Ordinal));
+        if (snapshot == null)
+        {
+            if (showFeedbackIfUnavailable)
+            {
+                MessageBox.Show("Select a published review set first.", "Delete Review Set",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        if (confirmDeletion)
+        {
+            var choice = MessageBox.Show(
+                $"Delete published review set '{snapshot.DisplayName}'? This removes the saved snapshot from the project file.",
+                "Delete Review Set",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (choice != MessageBoxResult.Yes)
+                return false;
+        }
+
+        var removed = _viewModel.RemoveMarkupReviewSnapshot(snapshot.Id);
+        if (!removed)
+            return false;
+
+        if (string.Equals(_selectedMarkupReviewSnapshotId, snapshot.Id, StringComparison.Ordinal))
+            _selectedMarkupReviewSnapshotId = null;
+
+        UpdateMarkupReviewSnapshotUi();
+        ActionLogService.Instance.Log(LogCategory.Component,
+            "Review snapshot deleted", $"Id: {snapshot.Id}, Name: {snapshot.DisplayName}");
+        return true;
+    }
+
     private void MarkupReviewSnapshotListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         _selectedMarkupReviewSnapshotId = (MarkupReviewSnapshotListBox?.SelectedItem as MarkupReviewSnapshot)?.Id;
         UpdateSelectedMarkupReviewSnapshotUi(MarkupReviewSnapshotListBox?.SelectedItem as MarkupReviewSnapshot);
+    }
+
+    private void MarkupReviewSnapshotDiffListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (MarkupReviewSnapshotDiffListBox?.SelectedItem is not MarkupReviewSnapshotDiffEntry entry ||
+            !entry.CanRevealLiveMarkup ||
+            string.IsNullOrWhiteSpace(entry.CurrentMarkupId))
+        {
+            return;
+        }
+
+        var markup = _viewModel.GetFilteredReviewMarkups()
+            .FirstOrDefault(candidate => string.Equals(candidate.Id, entry.CurrentMarkupId, StringComparison.Ordinal));
+        if (markup == null)
+            return;
+
+        if (_viewModel.RevealMarkup(markup))
+        {
+            SelectInspectorTab(MarkupsInspectorTab);
+            MarkupListView?.ScrollIntoView(_viewModel.MarkupTool.SelectedMarkup);
+            QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+        }
     }
 
     private void UpdateMarkupReviewSnapshotUi()
@@ -99,7 +191,9 @@ public partial class MainWindow
             SelectedMarkupReviewSnapshotSummaryTextBlock == null ||
             SelectedMarkupReviewSnapshotComparisonTextBlock == null ||
             SelectedMarkupReviewSnapshotDetailsTextBlock == null ||
-            PublishMarkupReviewSnapshotButton == null)
+            MarkupReviewSnapshotDiffListBox == null ||
+            PublishMarkupReviewSnapshotButton == null ||
+            DeleteMarkupReviewSnapshotButton == null)
         {
             return;
         }
@@ -114,6 +208,7 @@ public partial class MainWindow
         var selectedSnapshot = snapshots.FirstOrDefault(snapshot => string.Equals(snapshot.Id, retainedSnapshotId, StringComparison.Ordinal))
             ?? snapshots.FirstOrDefault();
         MarkupReviewSnapshotListBox.SelectedItem = selectedSnapshot;
+        DeleteMarkupReviewSnapshotButton.IsEnabled = selectedSnapshot != null;
         _selectedMarkupReviewSnapshotId = selectedSnapshot?.Id;
         UpdateSelectedMarkupReviewSnapshotUi(selectedSnapshot);
     }
@@ -135,23 +230,30 @@ public partial class MainWindow
     {
         if (SelectedMarkupReviewSnapshotSummaryTextBlock == null ||
             SelectedMarkupReviewSnapshotComparisonTextBlock == null ||
-            SelectedMarkupReviewSnapshotDetailsTextBlock == null)
+            SelectedMarkupReviewSnapshotDetailsTextBlock == null ||
+            MarkupReviewSnapshotDiffListBox == null ||
+            DeleteMarkupReviewSnapshotButton == null)
         {
             return;
         }
 
         if (snapshot == null)
         {
+            DeleteMarkupReviewSnapshotButton.IsEnabled = false;
             SelectedMarkupReviewSnapshotSummaryTextBlock.Text = "Select a published review set to inspect its saved scope, filters, and issue counts.";
             SelectedMarkupReviewSnapshotComparisonTextBlock.Text = string.Empty;
             SelectedMarkupReviewSnapshotDetailsTextBlock.Text = string.Empty;
+            MarkupReviewSnapshotDiffListBox.ItemsSource = null;
             return;
         }
 
+        DeleteMarkupReviewSnapshotButton.IsEnabled = true;
         var comparison = BuildMarkupReviewSnapshotComparison(snapshot);
         SelectedMarkupReviewSnapshotSummaryTextBlock.Text = BuildSelectedMarkupReviewSnapshotSummary(snapshot);
         SelectedMarkupReviewSnapshotComparisonTextBlock.Text = BuildMarkupReviewSnapshotComparisonSummary(comparison);
         SelectedMarkupReviewSnapshotDetailsTextBlock.Text = BuildMarkupReviewSnapshotComparisonDetails(comparison);
+        MarkupReviewSnapshotDiffListBox.ItemsSource = comparison.DiffEntries;
+        MarkupReviewSnapshotDiffListBox.SelectedItem = null;
     }
 
     private static string BuildSelectedMarkupReviewSnapshotSummary(MarkupReviewSnapshot snapshot)
@@ -179,11 +281,14 @@ public partial class MainWindow
         var statusChanged = 0;
         var ownershipChanged = 0;
         var changedIssues = new List<string>();
+        var diffEntries = new List<MarkupReviewSnapshotDiffEntry>();
 
-        foreach (var markupId in snapshotById.Keys.Intersect(currentById.Keys, StringComparer.Ordinal))
+        foreach (var snapshotMarkup in snapshot.Markups
+                     .Where(markup => currentById.ContainsKey(markup.Id))
+                     .GroupBy(markup => markup.Id, StringComparer.Ordinal)
+                     .Select(group => group.First()))
         {
-            var snapshotMarkup = snapshotById[markupId];
-            var currentMarkup = currentById[markupId];
+            var currentMarkup = currentById[snapshotMarkup.Id];
             var sameStatus = snapshotMarkup.Status == currentMarkup.Status;
             var sameAssignee = string.Equals(NormalizeAssignee(snapshotMarkup.AssignedTo), NormalizeAssignee(currentMarkup.AssignedTo), StringComparison.OrdinalIgnoreCase);
 
@@ -198,17 +303,23 @@ public partial class MainWindow
             if (!sameAssignee)
                 ownershipChanged++;
 
-             changedIssues.Add(BuildMarkupReviewSnapshotChangedIssueLine(snapshotMarkup, currentMarkup, sameStatus, sameAssignee));
+            changedIssues.Add(BuildMarkupReviewSnapshotChangedIssueLine(snapshotMarkup, currentMarkup, sameStatus, sameAssignee));
+            diffEntries.Add(BuildMarkupReviewSnapshotChangedIssueEntry(snapshotMarkup, currentMarkup, sameStatus, sameAssignee));
         }
 
-        var newIssues = currentById.Keys
-            .Where(markupId => !snapshotById.ContainsKey(markupId))
-            .Select(markupId => currentById[markupId])
+        var newIssues = _viewModel.GetFilteredReviewMarkups()
+            .Where(markup => !snapshotById.ContainsKey(markup.Id))
+            .GroupBy(markup => markup.Id, StringComparer.Ordinal)
+            .Select(group => group.First())
             .ToList();
-        var missingIssues = snapshotById.Keys
-            .Where(markupId => !currentById.ContainsKey(markupId))
-            .Select(markupId => snapshotById[markupId])
+        var missingIssues = snapshot.Markups
+            .Where(markup => !currentById.ContainsKey(markup.Id))
+            .GroupBy(markup => markup.Id, StringComparer.Ordinal)
+            .Select(group => group.First())
             .ToList();
+
+        diffEntries.AddRange(newIssues.Select(BuildMarkupReviewSnapshotNewIssueEntry));
+        diffEntries.AddRange(missingIssues.Select(BuildMarkupReviewSnapshotMissingIssueEntry));
 
         return new MarkupReviewSnapshotComparisonResult(
             IsEmptySnapshot: false,
@@ -219,7 +330,8 @@ public partial class MainWindow
             MissingIssueCount: missingIssues.Count,
             ChangedIssues: changedIssues,
             NewIssues: newIssues.Select(markup => BuildMarkupReviewSnapshotIssueLabel(markup)).ToList(),
-            MissingIssues: missingIssues.Select(markup => BuildMarkupReviewSnapshotIssueLabel(markup)).ToList());
+            MissingIssues: missingIssues.Select(markup => BuildMarkupReviewSnapshotIssueLabel(markup)).ToList(),
+            DiffEntries: diffEntries);
     }
 
     private static string BuildMarkupReviewSnapshotComparisonSummary(MarkupReviewSnapshotComparisonResult comparison)
@@ -281,6 +393,48 @@ public partial class MainWindow
         }
 
         return $"{BuildMarkupReviewSnapshotIssueLabel(currentMarkup)} [{string.Join("; ", deltas)}]";
+    }
+
+    private static MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotChangedIssueEntry(MarkupRecord snapshotMarkup, MarkupRecord currentMarkup, bool sameStatus, bool sameAssignee)
+    {
+        var deltas = new List<string>(2);
+        if (!sameStatus)
+            deltas.Add($"Status: {MarkupRecord.GetStatusDisplayText(snapshotMarkup.Status)} -> {MarkupRecord.GetStatusDisplayText(currentMarkup.Status)}");
+        if (!sameAssignee)
+            deltas.Add($"Owner: {FormatAssigneeForDisplay(snapshotMarkup.AssignedTo)} -> {FormatAssigneeForDisplay(currentMarkup.AssignedTo)}");
+
+        return new MarkupReviewSnapshotDiffEntry(
+            Key: $"changed:{currentMarkup.Id}",
+            CategoryKey: "changed",
+            CategoryDisplayText: "Changed",
+            Title: BuildMarkupReviewSnapshotIssueLabel(currentMarkup),
+            DetailText: string.Join("  |  ", deltas),
+            RevealHintText: "Select to focus the live review issue.",
+            CurrentMarkupId: currentMarkup.Id);
+    }
+
+    private static MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotNewIssueEntry(MarkupRecord markup)
+    {
+        return new MarkupReviewSnapshotDiffEntry(
+            Key: $"new:{markup.Id}",
+            CategoryKey: "new",
+            CategoryDisplayText: "New",
+            Title: BuildMarkupReviewSnapshotIssueLabel(markup),
+            DetailText: "Added after snapshot publication.",
+            RevealHintText: "Select to focus the live review issue.",
+            CurrentMarkupId: markup.Id);
+    }
+
+    private static MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotMissingIssueEntry(MarkupRecord markup)
+    {
+        return new MarkupReviewSnapshotDiffEntry(
+            Key: $"missing:{markup.Id}",
+            CategoryKey: "missing",
+            CategoryDisplayText: "Missing",
+            Title: BuildMarkupReviewSnapshotIssueLabel(markup),
+            DetailText: "Not present in the current filtered review set.",
+            RevealHintText: "Snapshot only - no live issue to focus.",
+            CurrentMarkupId: null);
     }
 
     private static string BuildMarkupReviewSnapshotIssueLabel(MarkupRecord markup)
@@ -345,9 +499,23 @@ internal sealed record MarkupReviewSnapshotComparisonResult(
     int MissingIssueCount = 0,
     IReadOnlyList<string>? ChangedIssues = null,
     IReadOnlyList<string>? NewIssues = null,
-    IReadOnlyList<string>? MissingIssues = null)
+    IReadOnlyList<string>? MissingIssues = null,
+    IReadOnlyList<MarkupReviewSnapshotDiffEntry>? DiffEntries = null)
 {
     public IReadOnlyList<string> ChangedIssues { get; } = ChangedIssues ?? Array.Empty<string>();
     public IReadOnlyList<string> NewIssues { get; } = NewIssues ?? Array.Empty<string>();
     public IReadOnlyList<string> MissingIssues { get; } = MissingIssues ?? Array.Empty<string>();
+    public IReadOnlyList<MarkupReviewSnapshotDiffEntry> DiffEntries { get; } = DiffEntries ?? Array.Empty<MarkupReviewSnapshotDiffEntry>();
+}
+
+internal sealed record MarkupReviewSnapshotDiffEntry(
+    string Key,
+    string CategoryKey,
+    string CategoryDisplayText,
+    string Title,
+    string DetailText,
+    string RevealHintText,
+    string? CurrentMarkupId)
+{
+    public bool CanRevealLiveMarkup => !string.IsNullOrWhiteSpace(CurrentMarkupId);
 }
