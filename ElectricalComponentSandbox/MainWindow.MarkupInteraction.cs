@@ -19,7 +19,7 @@ internal enum MarkupHandleOverlayMode
 
 public partial class MainWindow
 {
-    private const string UnsupportedGeometryEditMessage = "Numeric geometry editing is currently available for polyline, polygon, circle, arc, rectangle, stamp, hyperlink, box, panel, angular dimension or measurement, arc-length dimension or measurement, and line-style dimension or measurement markups.";
+    private const string UnsupportedGeometryEditMessage = "Numeric geometry editing is currently available for polyline, polygon, circle, arc, rectangle, text, stamp, hyperlink, box, panel, angular dimension or measurement, arc-length dimension or measurement, and line-style dimension or measurement markups.";
     private const string LineGeometryVertexCountMessage = "Numeric geometry editing for dimensions and measurements is currently available for line-style markups with 2 or 3 points. Angular dimensions or measurements use angle/radius semantics, and arc-length dimensions or measurements use arc length/radius semantics.";
 
     private bool _isDraggingMarkupArcAngle = false;
@@ -578,7 +578,7 @@ public partial class MainWindow
         {
             if (showFeedbackIfUnsupported)
             {
-                MessageBox.Show("Numeric geometry editing is available for a single selected polyline, polygon, circle, arc, rectangle, stamp, hyperlink, box, panel, dimension, or measurement markup.", "Edit Geometry",
+                MessageBox.Show("Numeric geometry editing is available for a single selected polyline, polygon, circle, arc, rectangle, text, stamp, hyperlink, box, panel, dimension, or measurement markup.", "Edit Geometry",
                     MessageBoxButton.OK, MessageBoxImage.Information);
             }
 
@@ -587,7 +587,7 @@ public partial class MainWindow
 
         return selectedMarkup.Type switch
         {
-            MarkupType.Rectangle or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel => TryEditSelectedBoundsGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
+            MarkupType.Rectangle or MarkupType.Text or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel => TryEditSelectedBoundsGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
             MarkupType.Circle => TryEditSelectedCircleGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
             MarkupType.Arc => TryEditSelectedArcGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
             MarkupType.Polyline or MarkupType.Polygon => TryEditSelectedPolylineGeometry(selectedMarkup, input, showFeedbackIfUnsupported),
@@ -843,9 +843,8 @@ public partial class MainWindow
 
     private bool TryEditSelectedBoundsGeometry(MarkupRecord markup, string input, bool showValidationFeedback)
     {
-        var bounds = markup.BoundingRect != Rect.Empty
-            ? markup.BoundingRect
-            : new Rect(markup.Vertices[0], markup.Vertices[1]);
+        if (!TryGetBoundsGeometryRect(markup, out var bounds))
+            return false;
 
         if (!TryParseMarkupGeometryAssignments(input, out var values, out var errorMessage))
         {
@@ -1287,9 +1286,8 @@ public partial class MainWindow
 
     private static string BuildBoundsGeometryDefaultValue(MarkupRecord markup)
     {
-        var bounds = markup.BoundingRect != Rect.Empty
-            ? markup.BoundingRect
-            : new Rect(markup.Vertices[0], markup.Vertices[1]);
+        if (!TryGetBoundsGeometryRect(markup, out var bounds))
+            bounds = Rect.Empty;
 
         return string.Join(Environment.NewLine, new[]
         {
@@ -1326,12 +1324,15 @@ public partial class MainWindow
         switch (markup.Type)
         {
             case MarkupType.Rectangle:
+            case MarkupType.Text:
             case MarkupType.Stamp:
             case MarkupType.Hyperlink:
             case MarkupType.Box:
             case MarkupType.Panel:
                 title = $"Edit {markup.TypeDisplayText} Geometry";
-                prompt = "Enter width and height. The markup's top-left corner stays fixed.\n\nExamples:\nwidth=24\nheight=12";
+                prompt = markup.Type == MarkupType.Text
+                    ? "Enter width and height. The markup's top-left corner stays fixed and the text scales to fit.\n\nExamples:\nwidth=24\nheight=12"
+                    : "Enter width and height. The markup's top-left corner stays fixed.\n\nExamples:\nwidth=24\nheight=12";
                 defaultValue = BuildBoundsGeometryDefaultValue(markup);
                 return true;
             case MarkupType.Circle:
@@ -1384,6 +1385,28 @@ public partial class MainWindow
             default:
                 return false;
         }
+    }
+
+    private static bool TryGetBoundsGeometryRect(MarkupRecord markup, out Rect bounds)
+    {
+        if (markup.BoundingRect != Rect.Empty)
+        {
+            bounds = markup.BoundingRect;
+            return true;
+        }
+
+        if (markup.Type == MarkupType.Text || markup.Vertices.Count == 0)
+        {
+            bounds = Rect.Empty;
+            return false;
+        }
+
+        var minX = markup.Vertices.Min(point => point.X);
+        var minY = markup.Vertices.Min(point => point.Y);
+        var maxX = markup.Vertices.Max(point => point.X);
+        var maxY = markup.Vertices.Max(point => point.Y);
+        bounds = new Rect(new Point(minX, minY), new Point(maxX, maxY));
+        return true;
     }
 
     private static string BuildArcGeometryDefaultValue(MarkupRecord markup)

@@ -700,6 +700,29 @@ public partial class MainViewModelTests
     }
 
     [Fact]
+    public void MarkupTool_SelectedTextMarkup_ReportsGeometryEditability()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            TextContent = "PANEL-A",
+            BoundingRect = new Rect(10, 10, 40, 12)
+        };
+        markup.Vertices.Add(new Point(10, 22));
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasGeometryEditableSelection);
+        Assert.True(vm.MarkupTool.HasGeometryShortcutHint);
+        Assert.True(vm.MarkupTool.HasSelectedMarkupGeometryDetails);
+        Assert.Equal("Numeric edit available: width and height", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.Equal("Shortcut: Ctrl+Shift+G", vm.MarkupTool.SelectedMarkupGeometryShortcutHint);
+        Assert.Equal($"Width: 40{Environment.NewLine}Height: 12", vm.MarkupTool.SelectedMarkupGeometryDetails);
+    }
+
+    [Fact]
     public void MarkupTool_GroupedArcSelection_DisablesGeometryEditability()
     {
         var vm = new MainViewModel();
@@ -972,11 +995,10 @@ public partial class MainViewModelTests
         var vm = new MainViewModel();
         var markup = new MarkupRecord
         {
-            Type = MarkupType.Text,
+            Type = MarkupType.Callout,
             TextContent = "NOTE",
-            BoundingRect = new Rect(0, 0, 20, 10)
+            Vertices = { new Point(0, 0), new Point(20, 10) }
         };
-        markup.Vertices.Add(new Point(0, 10));
 
         vm.Markups.Add(markup);
         vm.MarkupTool.SelectedMarkup = markup;

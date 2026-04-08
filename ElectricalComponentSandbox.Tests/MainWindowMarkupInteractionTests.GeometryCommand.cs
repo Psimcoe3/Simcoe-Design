@@ -171,10 +171,9 @@ public partial class MainWindowMarkupInteractionTests
         var outcome = RunWithSelectedMarkupWindow(
             new MarkupRecord
             {
-                Type = MarkupType.Text,
+                Type = MarkupType.Callout,
                 TextContent = "NOTE",
-                BoundingRect = new Rect(10, 20, 30, 12),
-                Vertices = { new Point(10, 32) }
+                Vertices = { new Point(10, 20), new Point(20, 30) }
             },
             (window, viewModel, _) =>
             {
@@ -184,6 +183,55 @@ public partial class MainWindowMarkupInteractionTests
 
         Assert.False(outcome.handled);
         Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_TextMarkup_UpdatesBoundsAnchorAndTypographyAndSupportsUndo()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var markup = new MarkupRecord
+            {
+                Type = MarkupType.Text,
+                TextContent = "NOTE",
+                BoundingRect = new Rect(10, 20, 30, 12),
+                Appearance = new MarkupAppearance
+                {
+                    FontSize = 10,
+                    StrokeWidth = 2
+                }
+            };
+            markup.Vertices.Add(new Point(10, 32));
+            viewModel.Markups.Add(markup);
+            viewModel.MarkupTool.SelectedMarkup = markup;
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var edited = window.ExecuteEditMarkupGeometryCommandForTesting("width=45\nheight=18");
+                var editedState = (markup.BoundingRect, Anchor: markup.Vertices[0], markup.Appearance.FontSize, markup.Appearance.StrokeWidth);
+
+                viewModel.Undo();
+                var undoneState = (markup.BoundingRect, Anchor: markup.Vertices[0], markup.Appearance.FontSize, markup.Appearance.StrokeWidth);
+                return (edited, editedState, undoneState);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.edited);
+        Assert.Equal(new Rect(10, 20, 45, 18), outcome.editedState.BoundingRect);
+        Assert.Equal(new Point(10, 38), outcome.editedState.Anchor);
+        Assert.Equal(15, outcome.editedState.FontSize, 6);
+        Assert.Equal(3, outcome.editedState.StrokeWidth, 6);
+
+        Assert.Equal(new Rect(10, 20, 30, 12), outcome.undoneState.BoundingRect);
+        Assert.Equal(new Point(10, 32), outcome.undoneState.Anchor);
+        Assert.Equal(10, outcome.undoneState.FontSize, 6);
+        Assert.Equal(2, outcome.undoneState.StrokeWidth, 6);
     }
 
     [Fact]

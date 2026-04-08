@@ -204,6 +204,82 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ResizeDragForTesting_MixedResizableGroup_FromLeftHandle_ResizesBoundsAndVertexGeometry()
+    {
+        var selectedMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            TextContent = "NOTE",
+            BoundingRect = new Rect(0, 0, 10, 10),
+            Appearance = new MarkupAppearance
+            {
+                FontSize = 10,
+                StrokeWidth = 1.0
+            }
+        };
+        selectedMarkup.Vertices.Add(new Point(0, 0));
+        selectedMarkup.Vertices.Add(new Point(10, 10));
+        selectedMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = "group-1";
+
+        var peerMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Polygon,
+            Appearance = new MarkupAppearance
+            {
+                StrokeWidth = 1.2,
+                FontSize = 10
+            },
+            Vertices = { new Point(20, 20), new Point(30, 20), new Point(25, 30) }
+        };
+        peerMarkup.UpdateBoundingRect();
+        peerMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = "group-1";
+
+        var outcome = RunWithSelectedMarkupWindow(
+            selectedMarkup,
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupResizeDragForTesting(new Point(0, 15));
+                window.UpdateMarkupResizePreviewForTesting(new Point(-15, 15));
+                window.FinishMarkupResizeDragForTesting();
+
+                var editedPrimary = (markup.Vertices[0], markup.BoundingRect, markup.Appearance.FontSize);
+                var editedPeer = (peerMarkup.Vertices[0], peerMarkup.Vertices[1], peerMarkup.Vertices[2], peerMarkup.BoundingRect, peerMarkup.Appearance.StrokeWidth);
+
+                viewModel.Undo();
+
+                var undonePrimary = (markup.Vertices[0], markup.BoundingRect, markup.Appearance.FontSize);
+                var undonePeer = (peerMarkup.Vertices[0], peerMarkup.Vertices[1], peerMarkup.Vertices[2], peerMarkup.BoundingRect, peerMarkup.Appearance.StrokeWidth);
+                return (began, editedPrimary, editedPeer, undonePrimary, undonePeer);
+            },
+            viewModel =>
+            {
+                viewModel.Markups.Add(peerMarkup);
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.True(outcome.began);
+        Assert.Equal(new Point(-15, 0), outcome.editedPrimary.Item1);
+        Assert.Equal(new Rect(-15, 0, 15, 10), outcome.editedPrimary.Item2);
+        Assert.Equal(10, outcome.editedPrimary.Item3, 6);
+
+        Assert.Equal(new Point(15, 20), outcome.editedPeer.Item1);
+        Assert.Equal(new Point(30, 20), outcome.editedPeer.Item2);
+        Assert.Equal(new Point(22.5, 30), outcome.editedPeer.Item3);
+        Assert.Equal(new Rect(15, 20, 15, 10), outcome.editedPeer.Item4);
+        Assert.Equal(1.2, outcome.editedPeer.Item5, 6);
+
+        Assert.Equal(new Point(0, 0), outcome.undonePrimary.Item1);
+        Assert.Equal(new Rect(0, 0, 10, 10), outcome.undonePrimary.Item2);
+        Assert.Equal(10, outcome.undonePrimary.Item3, 6);
+
+        Assert.Equal(new Point(20, 20), outcome.undonePeer.Item1);
+        Assert.Equal(new Point(30, 20), outcome.undonePeer.Item2);
+        Assert.Equal(new Point(25, 30), outcome.undonePeer.Item3);
+        Assert.Equal(new Rect(20, 20, 10, 10), outcome.undonePeer.Item4);
+        Assert.Equal(1.2, outcome.undonePeer.Item5, 6);
+    }
+
+    [Fact]
     public void BeginSelectedMarkupResizeDragForTesting_WithoutHandleHit_ReturnsFalseAndLeavesGeometryUnchanged()
     {
         var outcome = RunWithSelectedMarkupWindow(

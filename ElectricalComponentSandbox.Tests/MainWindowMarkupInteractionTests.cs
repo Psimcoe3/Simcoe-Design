@@ -220,6 +220,7 @@ public partial class MainWindowMarkupInteractionTests
     {
         var message = MainWindow.GetUnsupportedGeometryEditMessageForTesting();
 
+        Assert.Contains("text", message, StringComparison.Ordinal);
         Assert.Contains("angular dimension or measurement", message, StringComparison.Ordinal);
         Assert.Contains("arc-length dimension or measurement", message, StringComparison.Ordinal);
     }
@@ -252,6 +253,25 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal("Edit Measurement Geometry", title);
         Assert.Equal("Enter angle and optional radius. The vertex and first ray stay fixed.\n\nExamples:\nangle=45\nradius=18", prompt);
         Assert.Equal($"angle=90{Environment.NewLine}radius=8", defaultValue);
+    }
+
+    [Fact]
+    public void TryBuildGeometryPromptForTesting_TextMarkup_UsesBoundsPromptAndDefaults()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            TextContent = "NOTE",
+            BoundingRect = new Rect(10, 20, 30, 12)
+        };
+        markup.Vertices.Add(new Point(10, 32));
+
+        var built = MainWindow.TryBuildGeometryPromptForTesting(markup, out var title, out var prompt, out var defaultValue);
+
+        Assert.True(built);
+        Assert.Equal("Edit Text Geometry", title);
+        Assert.Equal("Enter width and height. The markup's top-left corner stays fixed and the text scales to fit.\n\nExamples:\nwidth=24\nheight=12", prompt);
+        Assert.Equal($"width=30{Environment.NewLine}height=12", defaultValue);
     }
 
     [Fact]

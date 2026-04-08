@@ -1212,9 +1212,25 @@ public partial class MainWindowMarkupInteractionTests
             };
             unchangedMarkup.UpdateBoundingRect();
 
+            var missingMarkup = new MarkupRecord
+            {
+                Id = "snapshot-missing",
+                Type = MarkupType.Rectangle,
+                Status = MarkupStatus.InProgress,
+                AssignedTo = "Crew D",
+                Vertices = { new Point(36, 0), new Point(46, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Missing later",
+                    Author = "Morgan"
+                }
+            };
+            missingMarkup.UpdateBoundingRect();
+
             viewModel.Markups.Add(statusChangedMarkup);
             viewModel.Markups.Add(ownershipChangedMarkup);
             viewModel.Markups.Add(unchangedMarkup);
+            viewModel.Markups.Add(missingMarkup);
 
             var window = new MainWindow(viewModel);
             try
@@ -1223,6 +1239,7 @@ public partial class MainWindowMarkupInteractionTests
 
                 statusChangedMarkup.Status = MarkupStatus.Resolved;
                 ownershipChangedMarkup.AssignedTo = "Crew B";
+                viewModel.Markups.Remove(missingMarkup);
 
                 var newMarkup = new MarkupRecord
                 {
@@ -1246,8 +1263,9 @@ public partial class MainWindowMarkupInteractionTests
                 var summary = window.GetMarkupReviewSnapshotSummaryForTesting();
                 var selectedSummary = window.GetSelectedMarkupReviewSnapshotSummaryForTesting();
                 var comparison = window.GetSelectedMarkupReviewSnapshotComparisonForTesting();
+                var details = window.GetSelectedMarkupReviewSnapshotDetailsForTesting();
 
-                return (published, displayNames, selected, summary, selectedSummary, comparison);
+                return (published, displayNames, selected, summary, selectedSummary, comparison, details);
             }
             finally
             {
@@ -1265,7 +1283,14 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Contains("1 status changed", outcome.comparison, StringComparison.Ordinal);
         Assert.Contains("1 ownership changed", outcome.comparison, StringComparison.Ordinal);
         Assert.Contains("1 new", outcome.comparison, StringComparison.Ordinal);
-        Assert.Contains("0 missing", outcome.comparison, StringComparison.Ordinal);
+        Assert.Contains("1 missing", outcome.comparison, StringComparison.Ordinal);
+        Assert.Contains("Changed issues:", outcome.details, StringComparison.Ordinal);
+        Assert.Contains("Status change [status Open -> Resolved]", outcome.details, StringComparison.Ordinal);
+        Assert.Contains("Ownership change [owner Crew A -> Crew B]", outcome.details, StringComparison.Ordinal);
+        Assert.Contains("New issues:", outcome.details, StringComparison.Ordinal);
+        Assert.Contains("Added later", outcome.details, StringComparison.Ordinal);
+        Assert.Contains("Missing issues:", outcome.details, StringComparison.Ordinal);
+        Assert.Contains("Missing later", outcome.details, StringComparison.Ordinal);
     }
 
     [Fact]

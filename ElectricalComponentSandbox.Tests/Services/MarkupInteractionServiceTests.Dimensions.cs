@@ -43,6 +43,39 @@ public partial class MarkupInteractionServiceTests
         Assert.Equal(new Point(250, 240), markup.Vertices[1]);
     }
 
+    [Theory]
+    [InlineData(null, 10, 38)]
+    [InlineData("Center", 32.5, 38)]
+    [InlineData("Right", 55, 38)]
+    public void SetBoundsGeometry_TextMarkup_PreservesAnchorAlignmentAndScalesTypography(string? align, double expectedAnchorX, double expectedAnchorY)
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            TextContent = "NOTE",
+            BoundingRect = new Rect(10, 20, 30, 12),
+            Appearance = new MarkupAppearance
+            {
+                FontSize = 10,
+                StrokeWidth = 2
+            }
+        };
+        markup.Vertices.Add(new Point(10, 32));
+
+        if (!string.IsNullOrWhiteSpace(align))
+            markup.Metadata.CustomFields[DrawingAnnotationMarkupService.TextAlignField] = align;
+
+        var result = _sut.SetBoundsGeometry(markup, 45, 18);
+
+        Assert.True(result);
+        Assert.Equal(new Rect(10, 20, 45, 18), markup.BoundingRect);
+        Assert.Single(markup.Vertices);
+        Assert.Equal(expectedAnchorX, markup.Vertices[0].X, 6);
+        Assert.Equal(expectedAnchorY, markup.Vertices[0].Y, 6);
+        Assert.Equal(15, markup.Appearance.FontSize, 6);
+        Assert.Equal(3, markup.Appearance.StrokeWidth, 6);
+    }
+
     [Fact]
     public void SetBoundsGeometry_UsesVertexBoundsWhenBoundingRectIsEmpty()
     {

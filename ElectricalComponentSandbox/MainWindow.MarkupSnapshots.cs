@@ -48,6 +48,9 @@ public partial class MainWindow
     internal string GetSelectedMarkupReviewSnapshotComparisonForTesting()
         => SelectedMarkupReviewSnapshotComparisonTextBlock?.Text ?? string.Empty;
 
+    internal string GetSelectedMarkupReviewSnapshotDetailsForTesting()
+        => SelectedMarkupReviewSnapshotDetailsTextBlock?.Text ?? string.Empty;
+
     private void PublishMarkupReviewSnapshot_Click(object sender, RoutedEventArgs e)
     {
         var input = PromptInput(
@@ -95,6 +98,7 @@ public partial class MainWindow
             MarkupReviewSnapshotListBox == null ||
             SelectedMarkupReviewSnapshotSummaryTextBlock == null ||
             SelectedMarkupReviewSnapshotComparisonTextBlock == null ||
+            SelectedMarkupReviewSnapshotDetailsTextBlock == null ||
             PublishMarkupReviewSnapshotButton == null)
         {
             return;
@@ -130,7 +134,8 @@ public partial class MainWindow
     private void UpdateSelectedMarkupReviewSnapshotUi(MarkupReviewSnapshot? snapshot)
     {
         if (SelectedMarkupReviewSnapshotSummaryTextBlock == null ||
-            SelectedMarkupReviewSnapshotComparisonTextBlock == null)
+            SelectedMarkupReviewSnapshotComparisonTextBlock == null ||
+            SelectedMarkupReviewSnapshotDetailsTextBlock == null)
         {
             return;
         }
@@ -139,11 +144,14 @@ public partial class MainWindow
         {
             SelectedMarkupReviewSnapshotSummaryTextBlock.Text = "Select a published review set to inspect its saved scope, filters, and issue counts.";
             SelectedMarkupReviewSnapshotComparisonTextBlock.Text = string.Empty;
+            SelectedMarkupReviewSnapshotDetailsTextBlock.Text = string.Empty;
             return;
         }
 
+        var comparison = BuildMarkupReviewSnapshotComparison(snapshot);
         SelectedMarkupReviewSnapshotSummaryTextBlock.Text = BuildSelectedMarkupReviewSnapshotSummary(snapshot);
-        SelectedMarkupReviewSnapshotComparisonTextBlock.Text = BuildMarkupReviewSnapshotComparisonSummary(snapshot);
+        SelectedMarkupReviewSnapshotComparisonTextBlock.Text = BuildMarkupReviewSnapshotComparisonSummary(comparison);
+        SelectedMarkupReviewSnapshotDetailsTextBlock.Text = BuildMarkupReviewSnapshotComparisonDetails(comparison);
     }
 
     private static string BuildSelectedMarkupReviewSnapshotSummary(MarkupReviewSnapshot snapshot)
@@ -155,10 +163,10 @@ public partial class MainWindow
         return $"{snapshot.DisplayName}: {snapshot.ScopeDisplayText}  |  {snapshot.IssueCount} issue(s)  |  {snapshot.OpenCount} open/in progress. Published {snapshot.PublishedDisplayText} by {publisher}. Filters: {filters}";
     }
 
-    private string BuildMarkupReviewSnapshotComparisonSummary(MarkupReviewSnapshot snapshot)
+    private MarkupReviewSnapshotComparisonResult BuildMarkupReviewSnapshotComparison(MarkupReviewSnapshot snapshot)
     {
         if (snapshot.Markups.Count == 0)
-            return "This published review set contains no issues.";
+            return new MarkupReviewSnapshotComparisonResult(IsEmptySnapshot: true);
 
         var snapshotById = snapshot.Markups
             .GroupBy(markup => markup.Id, StringComparer.Ordinal)
@@ -170,6 +178,7 @@ public partial class MainWindow
         var unchanged = 0;
         var statusChanged = 0;
         var ownershipChanged = 0;
+        var changedIssues = new List<string>();
 
         foreach (var markupId in snapshotById.Keys.Intersect(currentById.Keys, StringComparer.Ordinal))
         {
@@ -188,15 +197,105 @@ public partial class MainWindow
                 statusChanged++;
             if (!sameAssignee)
                 ownershipChanged++;
+
+             changedIssues.Add(BuildMarkupReviewSnapshotChangedIssueLine(snapshotMarkup, currentMarkup, sameStatus, sameAssignee));
         }
 
-        var newIssues = currentById.Keys.Count(markupId => !snapshotById.ContainsKey(markupId));
-        var missingIssues = snapshotById.Keys.Count(markupId => !currentById.ContainsKey(markupId));
-        if (statusChanged == 0 && ownershipChanged == 0 && newIssues == 0 && missingIssues == 0)
+        var newIssues = currentById.Keys
+            .Where(markupId => !snapshotById.ContainsKey(markupId))
+            .Select(markupId => currentById[markupId])
+            .ToList();
+        var missingIssues = snapshotById.Keys
+            .Where(markupId => !currentById.ContainsKey(markupId))
+            .Select(markupId => snapshotById[markupId])
+            .ToList();
+
+        return new MarkupReviewSnapshotComparisonResult(
+            IsEmptySnapshot: false,
+            UnchangedCount: unchanged,
+            StatusChangedCount: statusChanged,
+            OwnershipChangedCount: ownershipChanged,
+            NewIssueCount: newIssues.Count,
+            MissingIssueCount: missingIssues.Count,
+            ChangedIssues: changedIssues,
+            NewIssues: newIssues.Select(markup => BuildMarkupReviewSnapshotIssueLabel(markup)).ToList(),
+            MissingIssues: missingIssues.Select(markup => BuildMarkupReviewSnapshotIssueLabel(markup)).ToList());
+    }
+
+    private static string BuildMarkupReviewSnapshotComparisonSummary(MarkupReviewSnapshotComparisonResult comparison)
+    {
+        if (comparison.IsEmptySnapshot)
+            return "This published review set contains no issues.";
+
+        if (comparison.StatusChangedCount == 0 && comparison.OwnershipChangedCount == 0 && comparison.NewIssueCount == 0 && comparison.MissingIssueCount == 0)
             return "Current filtered review set matches this published review set exactly.";
 
-        return $"Current filtered review set: {unchanged} unchanged, {statusChanged} status changed, {ownershipChanged} ownership changed, {newIssues} new, {missingIssues} missing.";
+        return $"Current filtered review set: {comparison.UnchangedCount} unchanged, {comparison.StatusChangedCount} status changed, {comparison.OwnershipChangedCount} ownership changed, {comparison.NewIssueCount} new, {comparison.MissingIssueCount} missing.";
     }
+
+    private static string BuildMarkupReviewSnapshotComparisonDetails(MarkupReviewSnapshotComparisonResult comparison)
+    {
+        if (comparison.IsEmptySnapshot)
+            return string.Empty;
+
+        if (comparison.StatusChangedCount == 0 && comparison.OwnershipChangedCount == 0 && comparison.NewIssueCount == 0 && comparison.MissingIssueCount == 0)
+            return "No issue-level differences from the current filtered review set.";
+
+        var sections = new List<string>();
+        AppendMarkupReviewSnapshotDetailSection(sections, "Changed issues", comparison.ChangedIssues);
+        AppendMarkupReviewSnapshotDetailSection(sections, "New issues", comparison.NewIssues);
+        AppendMarkupReviewSnapshotDetailSection(sections, "Missing issues", comparison.MissingIssues);
+        return string.Join(Environment.NewLine + Environment.NewLine, sections);
+    }
+
+    private static void AppendMarkupReviewSnapshotDetailSection(List<string> sections, string title, IReadOnlyList<string> issues)
+    {
+        if (issues.Count == 0)
+            return;
+
+        var lines = new List<string>(issues.Count + 1)
+        {
+            title + ":"
+        };
+
+        foreach (var issue in issues.Take(5))
+            lines.Add($"- {issue}");
+
+        if (issues.Count > 5)
+            lines.Add($"- +{issues.Count - 5} more");
+
+        sections.Add(string.Join(Environment.NewLine, lines));
+    }
+
+    private static string BuildMarkupReviewSnapshotChangedIssueLine(MarkupRecord snapshotMarkup, MarkupRecord currentMarkup, bool sameStatus, bool sameAssignee)
+    {
+        var deltas = new List<string>(2);
+        if (!sameStatus)
+        {
+            deltas.Add($"status {MarkupRecord.GetStatusDisplayText(snapshotMarkup.Status)} -> {MarkupRecord.GetStatusDisplayText(currentMarkup.Status)}");
+        }
+
+        if (!sameAssignee)
+        {
+            deltas.Add($"owner {FormatAssigneeForDisplay(snapshotMarkup.AssignedTo)} -> {FormatAssigneeForDisplay(currentMarkup.AssignedTo)}");
+        }
+
+        return $"{BuildMarkupReviewSnapshotIssueLabel(currentMarkup)} [{string.Join("; ", deltas)}]";
+    }
+
+    private static string BuildMarkupReviewSnapshotIssueLabel(MarkupRecord markup)
+    {
+        if (!string.IsNullOrWhiteSpace(markup.Metadata.Label))
+            return markup.Metadata.Label.Trim();
+
+        if (!string.IsNullOrWhiteSpace(markup.TextContent))
+            return markup.TextContent.Trim();
+
+        return markup.TypeDisplayText;
+    }
+
+    private static string FormatAssigneeForDisplay(string? assignee)
+        => string.IsNullOrWhiteSpace(assignee) ? "(unassigned)" : assignee.Trim();
 
     private string BuildMarkupReviewSnapshotFilterSummary()
     {
@@ -235,4 +334,20 @@ public partial class MainWindow
 
     private static string NormalizeAssignee(string? assignee)
         => string.IsNullOrWhiteSpace(assignee) ? string.Empty : assignee.Trim();
+}
+
+internal sealed record MarkupReviewSnapshotComparisonResult(
+    bool IsEmptySnapshot,
+    int UnchangedCount = 0,
+    int StatusChangedCount = 0,
+    int OwnershipChangedCount = 0,
+    int NewIssueCount = 0,
+    int MissingIssueCount = 0,
+    IReadOnlyList<string>? ChangedIssues = null,
+    IReadOnlyList<string>? NewIssues = null,
+    IReadOnlyList<string>? MissingIssues = null)
+{
+    public IReadOnlyList<string> ChangedIssues { get; } = ChangedIssues ?? Array.Empty<string>();
+    public IReadOnlyList<string> NewIssues { get; } = NewIssues ?? Array.Empty<string>();
+    public IReadOnlyList<string> MissingIssues { get; } = MissingIssues ?? Array.Empty<string>();
 }

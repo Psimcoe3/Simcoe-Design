@@ -607,6 +607,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         _selectedMarkup is { } markup &&
         GetSelectionSet(markup).Count == 1 &&
         (markup.Type is MarkupType.Circle or MarkupType.Arc or MarkupType.Rectangle or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel ||
+         markup.Type == MarkupType.Text && markup.BoundingRect != Rect.Empty ||
          MarkupInteractionService.IsPolylineGeometryEditable(markup) ||
          IsLineGeometryEditable(markup));
 
@@ -682,14 +683,14 @@ public class MarkupToolViewModel : INotifyPropertyChanged
                     MarkupType.Arc => "Numeric edit available: radius, start, end, or sweep",
                     MarkupType.Polyline or MarkupType.Polygon => $"Numeric edit available: {_selectedMarkup.Vertices.Count} vertex coordinates",
                     MarkupType.Dimension or MarkupType.Measurement => GetLineGeometrySummary(_selectedMarkup),
-                    MarkupType.Rectangle or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel => "Numeric edit available: width and height",
+                    MarkupType.Rectangle or MarkupType.Text or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel => "Numeric edit available: width and height",
                     _ => string.Empty
                 };
             }
 
             return GetSelectionSet(_selectedMarkup).Count > 1
                 ? "Numeric geometry editing is disabled for grouped selections"
-                : "Numeric geometry editing is currently available for polyline, polygon, circle, arc, rectangle, stamp, hyperlink, box, panel, angular dimension or measurement, arc-length dimension or measurement, and line-style dimension or measurement markups only";
+                : "Numeric geometry editing is currently available for polyline, polygon, circle, arc, rectangle, text, stamp, hyperlink, box, panel, angular dimension or measurement, arc-length dimension or measurement, and line-style dimension or measurement markups only";
         }
     }
 
@@ -764,7 +765,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
                 });
             }
 
-            if (_selectedMarkup.Type is MarkupType.Rectangle or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel)
+            if (_selectedMarkup.Type is MarkupType.Rectangle or MarkupType.Text or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel)
             {
                 var rect = _selectedMarkup.BoundingRect;
                 return string.Join(Environment.NewLine, new[]

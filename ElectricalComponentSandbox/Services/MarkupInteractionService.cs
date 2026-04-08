@@ -588,6 +588,9 @@ public sealed class MarkupInteractionService
         if (!IsBoundsGeometryEditable(markup))
             return false;
 
+        if (markup.Type == MarkupType.Text && markup.BoundingRect == Rect.Empty)
+            return false;
+
         var bounds = GetBounds(markup);
         if (bounds == Rect.Empty)
             return false;
@@ -596,11 +599,29 @@ public sealed class MarkupInteractionService
         var nextHeight = Math.Max(0.1, height);
         var topLeft = bounds.TopLeft;
         var bottomRight = new Point(topLeft.X + nextWidth, topLeft.Y + nextHeight);
+        var nextBounds = new Rect(topLeft, bottomRight);
 
-        markup.BoundingRect = new Rect(topLeft, bottomRight);
+        markup.BoundingRect = nextBounds;
         markup.Vertices.Clear();
-        markup.Vertices.Add(topLeft);
-        markup.Vertices.Add(bottomRight);
+
+        if (markup.Type == MarkupType.Text)
+        {
+            markup.Vertices.Add(GetTextAnchorFromBounds(markup, nextBounds));
+
+            var scaleX = GetScaleFactor(bounds.Width, nextBounds.Width);
+            var scaleY = GetScaleFactor(bounds.Height, nextBounds.Height);
+            var styleScale = Math.Max(MinimumScale, Math.Min(scaleX, scaleY));
+            markup.Appearance.FontSize = Math.Max(1.0, markup.Appearance.FontSize * styleScale);
+            markup.Appearance.StrokeWidth = markup.Appearance.StrokeWidth <= 0
+                ? 0
+                : Math.Max(0.4, markup.Appearance.StrokeWidth * styleScale);
+        }
+        else
+        {
+            markup.Vertices.Add(topLeft);
+            markup.Vertices.Add(bottomRight);
+        }
+
         markup.Metadata.ModifiedUtc = DateTime.UtcNow;
         return true;
     }
@@ -857,7 +878,21 @@ public sealed class MarkupInteractionService
 
     private static bool IsBoundsGeometryEditable(MarkupRecord markup)
     {
-        return markup.Type is MarkupType.Rectangle or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel;
+        return markup.Type is MarkupType.Rectangle or MarkupType.Text or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel;
+    }
+
+    private static Point GetTextAnchorFromBounds(MarkupRecord markup, Rect bounds)
+    {
+        var anchorX = bounds.Left;
+        if (markup.Metadata.CustomFields.TryGetValue(DrawingAnnotationMarkupService.TextAlignField, out var alignValue))
+        {
+            if (string.Equals(alignValue, "Center", StringComparison.OrdinalIgnoreCase))
+                anchorX = bounds.Left + bounds.Width / 2.0;
+            else if (string.Equals(alignValue, "Right", StringComparison.OrdinalIgnoreCase))
+                anchorX = bounds.Right;
+        }
+
+        return new Point(anchorX, bounds.Bottom);
     }
 
     internal static bool IsPolylineGeometryEditable(MarkupRecord markup)

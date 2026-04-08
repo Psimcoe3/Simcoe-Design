@@ -292,6 +292,31 @@ public partial class MarkupInteractionServiceTests
         Assert.True(_sut.CanResize(new[] { rectangle, polygon }));
     }
 
+    [Theory]
+    [InlineData(MarkupType.Rectangle, true)]
+    [InlineData(MarkupType.Text, true)]
+    [InlineData(MarkupType.Stamp, true)]
+    [InlineData(MarkupType.Hyperlink, true)]
+    [InlineData(MarkupType.Box, true)]
+    [InlineData(MarkupType.Panel, true)]
+    [InlineData(MarkupType.Polyline, true)]
+    [InlineData(MarkupType.Polygon, true)]
+    [InlineData(MarkupType.Circle, false)]
+    [InlineData(MarkupType.Arc, false)]
+    [InlineData(MarkupType.RevisionCloud, false)]
+    [InlineData(MarkupType.LeaderNote, false)]
+    [InlineData(MarkupType.Callout, false)]
+    [InlineData(MarkupType.Dimension, false)]
+    [InlineData(MarkupType.Measurement, false)]
+    public void CanResize_SingleMarkupType_MatchesSupportedHandleResizeSet(MarkupType markupType, bool expected)
+    {
+        var markup = CreateMarkupOfType(markupType);
+
+        var result = _sut.CanResize(new[] { markup });
+
+        Assert.Equal(expected, result);
+    }
+
     [Fact]
     public void CanResize_EmptyMarkupSet_ReturnsFalse()
     {
@@ -379,5 +404,40 @@ public partial class MarkupInteractionServiceTests
         markup.Vertices.Add(rect.BottomRight);
         markup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = groupId;
         return markup;
+    }
+
+    private static MarkupRecord CreateMarkupOfType(MarkupType markupType)
+    {
+        return markupType switch
+        {
+            MarkupType.Rectangle or MarkupType.Text or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel
+                => new MarkupRecord
+                {
+                    Type = markupType,
+                    BoundingRect = new Rect(0, 0, 10, 10),
+                    Vertices = { new Point(0, 0), new Point(10, 10) }
+                },
+            MarkupType.Polyline => new MarkupRecord
+            {
+                Type = markupType,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(10, 10) }
+            },
+            MarkupType.Polygon => new MarkupRecord
+            {
+                Type = markupType,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(5, 10) }
+            },
+            MarkupType.Circle or MarkupType.Arc => new MarkupRecord
+            {
+                Type = markupType,
+                Radius = 5,
+                Vertices = { new Point(5, 5) }
+            },
+            _ => new MarkupRecord
+            {
+                Type = markupType,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(10, 10) }
+            }
+        };
     }
 }
