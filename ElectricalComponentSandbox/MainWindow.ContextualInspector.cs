@@ -19,6 +19,8 @@ public partial class MainWindow
     private const string InspectorActionApplyProperties = "apply-properties";
     private const string InspectorActionZoomSelection = "zoom-selection";
     private const string InspectorActionDuplicateSelection = "duplicate-selection";
+    private const string InspectorActionSelectSameSource = "select-same-source";
+    private const string InspectorActionReviewImportedChanges = "review-imported-changes";
     private const string InspectorActionAddReply = "add-reply";
     private const string InspectorActionResolveMarkup = "resolve-markup";
     private const string InspectorActionAssignMarkup = "assign-markup";
@@ -49,6 +51,12 @@ public partial class MainWindow
                 break;
             case InspectorActionDuplicateSelection:
                 DuplicateComponent_Click(sender, e);
+                break;
+            case InspectorActionSelectSameSource:
+                SelectSameSourceComponents();
+                break;
+            case InspectorActionReviewImportedChanges:
+                SelectInteropReviewCandidates();
                 break;
             case InspectorActionAddReply:
                 AddMarkupReply_Click(sender, e);
@@ -147,7 +155,10 @@ public partial class MainWindow
         if (selectedComponentCount == 1)
         {
             var component = GetSelectedComponents().First();
-            return $"Editing {component.Name} in component details, dimensions, and catalog reference sections.";
+            var provenance = component.InteropMetadata.HasAnyValue
+                ? $", {BuildInspectorInteropPhrase(component.InteropMetadata)},"
+                : string.Empty;
+            return $"Editing {component.Name} in component details, dimensions{provenance} and catalog reference sections.";
         }
 
         return "Select a component or markup to focus the inspector on the task at hand.";
@@ -159,7 +170,7 @@ public partial class MainWindow
             return "Use Review & Markups for threaded replies, status updates, assignments, and geometry or appearance edits.";
 
         if (selectedComponentCount > 0)
-            return "Use Component Details for transforms, shared properties, dimensions, and part references.";
+            return "Use Component Details for transforms, shared properties, dimensions, part references, and source provenance.";
 
         return "Choose Component Details when laying out equipment, or switch to Review & Markups when triaging review comments.";
     }
@@ -184,16 +195,32 @@ public partial class MainWindow
 
         if (selectedComponentCount > 0)
         {
+            var selectedComponent = selectedComponentCount == 1 ? GetSelectedComponents().FirstOrDefault() : null;
+            var hasImportedSource = selectedComponent?.InteropMetadata.HasAnyValue == true;
             InspectorTaskTitleTextBlock.Text = selectedComponentCount > 1 ? "Current Selection Action" : "Current Component Action";
             InspectorTaskSummaryTextBlock.Text = selectedComponentCount > 1
                 ? "Apply shared edits, zoom to the affected area, or duplicate the current selection while you refine the layout."
-                : "Apply property edits, zoom to the component, or duplicate it while you continue placement and routing.";
+                : hasImportedSource
+                    ? "Apply property edits, select the full source group, or isolate imported changes that still need review."
+                    : "Apply property edits, zoom to the component, or duplicate it while you continue placement and routing.";
             SetInspectorTaskButton(InspectorPrimaryActionButton,
                 selectedComponentCount > 1 ? "Apply Shared Changes" : "Apply Changes",
                 InspectorActionApplyProperties,
                 "Apply the edits currently shown in Component Details.");
-            SetInspectorTaskButton(InspectorSecondaryActionButton, "Zoom Selection", InspectorActionZoomSelection, "Zoom the active view to the current component selection.");
-            SetInspectorTaskButton(InspectorTertiaryActionButton, "Duplicate", InspectorActionDuplicateSelection, "Duplicate the current component selection.");
+            SetInspectorTaskButton(
+                InspectorSecondaryActionButton,
+                hasImportedSource ? "Select Same Source" : "Zoom Selection",
+                hasImportedSource ? InspectorActionSelectSameSource : InspectorActionZoomSelection,
+                hasImportedSource
+                    ? "Select every component that shares the same recorded source group as the current component."
+                    : "Zoom the active view to the current component selection.");
+            SetInspectorTaskButton(
+                InspectorTertiaryActionButton,
+                hasImportedSource ? "Review Imported Changes" : "Duplicate",
+                hasImportedSource ? InspectorActionReviewImportedChanges : InspectorActionDuplicateSelection,
+                hasImportedSource
+                    ? "Select only the source-group components whose import history is newer than their export history."
+                    : "Duplicate the current component selection.");
             return;
         }
 

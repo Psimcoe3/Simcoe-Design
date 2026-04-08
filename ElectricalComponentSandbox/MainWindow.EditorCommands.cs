@@ -26,6 +26,16 @@ public partial class MainWindow
         _viewModel.MarkupTool.LayerFilter = MarkupLayerFilterCombo.SelectedItem?.ToString() ?? "All";
     }
 
+    private void MarkupAuthorFilter_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        _viewModel.MarkupTool.AuthorFilter = MarkupAuthorFilterCombo.SelectedItem?.ToString() ?? "All";
+    }
+
+    private void MarkupAssigneeFilter_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        _viewModel.MarkupTool.AssigneeFilter = MarkupAssigneeFilterCombo.SelectedItem?.ToString() ?? "All";
+    }
+
     private void MarkupReviewScope_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (MarkupReviewScopeCombo.SelectedItem is MarkupReviewScope scope)

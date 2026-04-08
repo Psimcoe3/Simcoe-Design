@@ -110,6 +110,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
     private string          _statusFilter = "All";
     private string          _typeFilter   = "All";
     private string          _layerFilter  = "All";
+    private string          _authorFilter = "All";
     private string          _assigneeFilter = "All";
     private string          _labelSearch  = string.Empty;
     private MarkupRecord?   _selectedMarkup;
@@ -198,8 +199,8 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         : _selectedIssueGroup.BreakdownText;
 
     public string SelectedIssueGroupActionSummary => _selectedIssueGroup == null
-        ? "Select a bucket to target bulk triage actions to one review slice."
-        : $"Bucket actions target {_selectedIssueGroup.Count} issue(s) in {_selectedIssueGroup.DisplayName}.";
+        ? "Select a bucket to target bulk triage, assignment, and claim actions to one review slice."
+        : $"Bucket actions target {_selectedIssueGroup.Count} issue(s) in {_selectedIssueGroup.DisplayName}. Use Assign to route work or Claim to take ownership directly.";
 
     /// <summary>Valid status filter values for the Markups panel</summary>
     public IReadOnlyList<string> StatusFilterOptions { get; } = new[]
@@ -221,6 +222,9 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
     /// <summary>Distinct layer IDs represented by the current markup set</summary>
     public ObservableCollection<string> LayerFilterOptions { get; } = new() { "All" };
+
+    /// <summary>Distinct authors represented by the current review source.</summary>
+    public ObservableCollection<string> AuthorFilterOptions { get; } = new() { "All" };
 
     /// <summary>Distinct assignees represented by the current review source.</summary>
     public ObservableCollection<string> AssigneeFilterOptions { get; } = new() { "All" };
@@ -302,6 +306,24 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>"All" or a markup author display value.</summary>
+    public string AuthorFilter
+    {
+        get => _authorFilter;
+        set
+        {
+            _authorFilter = string.IsNullOrWhiteSpace(value) ? "All" : value;
+            if (_authorFilter != "All" &&
+                !AuthorFilterOptions.Contains(_authorFilter, StringComparer.OrdinalIgnoreCase))
+            {
+                _authorFilter = "All";
+            }
+
+            OnPropertyChanged();
+            ApplyFilter();
+        }
+    }
+
     /// <summary>"All" or an assignee display value.</summary>
     public string AssigneeFilter
     {
@@ -354,8 +376,8 @@ public class MarkupToolViewModel : INotifyPropertyChanged
                 return string.Empty;
 
             return string.IsNullOrWhiteSpace(_selectedMarkup.AssignedTo)
-                ? "Issue is currently unassigned."
-                : $"Assigned to {_selectedMarkup.AssignedTo}.";
+                ? "Issue is currently unassigned. Use Claim to take ownership or Assign to route it."
+                : $"Assigned to {_selectedMarkup.AssignedTo}. Use Claim to reassign it to yourself or Assign to route it elsewhere.";
         }
     }
 
@@ -831,6 +853,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         _activeSheetMarkups.CollectionChanged += (_, _) =>
         {
             RefreshLayerFilterOptions();
+            RefreshAuthorFilterOptions();
             RefreshAssigneeFilterOptions();
             ApplyFilter();
             RefreshSelectedMarkupPresentation();
@@ -873,12 +896,14 @@ public class MarkupToolViewModel : INotifyPropertyChanged
             _statusFilter = "All";
             _typeFilter = "All";
             _layerFilter = "All";
+            _authorFilter = "All";
             _assigneeFilter = "All";
             _labelSearch = string.Empty;
             _selectedIssueGroup = null;
             OnPropertyChanged(nameof(StatusFilter));
             OnPropertyChanged(nameof(TypeFilter));
             OnPropertyChanged(nameof(LayerFilter));
+            OnPropertyChanged(nameof(AuthorFilter));
             OnPropertyChanged(nameof(AssigneeFilter));
             OnPropertyChanged(nameof(LabelSearch));
             OnPropertyChanged(nameof(SelectedIssueGroup));
@@ -891,6 +916,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         });
 
         RefreshLayerFilterOptions();
+        RefreshAuthorFilterOptions();
         RefreshAssigneeFilterOptions();
         ApplyFilter();
     }
@@ -898,6 +924,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
     public void RefreshReviewContext()
     {
         RefreshLayerFilterOptions();
+        RefreshAuthorFilterOptions();
         RefreshAssigneeFilterOptions();
         ApplyFilter();
         RefreshSelectedMarkupPresentation();
@@ -1044,6 +1071,9 @@ public class MarkupToolViewModel : INotifyPropertyChanged
 
         if (_layerFilter != "All")
             filtered = filtered.Where(markup => string.Equals(markup.LayerId, _layerFilter, StringComparison.OrdinalIgnoreCase));
+
+        if (_authorFilter != "All")
+            filtered = filtered.Where(markup => string.Equals(GetAuthorGroupValue(markup), _authorFilter, StringComparison.OrdinalIgnoreCase));
 
         if (_assigneeFilter != "All")
             filtered = filtered.Where(markup => string.Equals(GetAssigneeGroupValue(markup), _assigneeFilter, StringComparison.OrdinalIgnoreCase));
@@ -1380,6 +1410,27 @@ public class MarkupToolViewModel : INotifyPropertyChanged
         {
             _layerFilter = "All";
             OnPropertyChanged(nameof(LayerFilter));
+        }
+    }
+
+    private void RefreshAuthorFilterOptions()
+    {
+        var authors = GetReviewSourceMarkups()
+            .Select(GetAuthorGroupValue)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(author => author, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        AuthorFilterOptions.Clear();
+        AuthorFilterOptions.Add("All");
+        foreach (var author in authors)
+            AuthorFilterOptions.Add(author);
+
+        if (_authorFilter != "All" &&
+            !AuthorFilterOptions.Contains(_authorFilter, StringComparer.OrdinalIgnoreCase))
+        {
+            _authorFilter = "All";
+            OnPropertyChanged(nameof(AuthorFilter));
         }
     }
 

@@ -1,6 +1,7 @@
 using System;
 using System.Windows.Media.Media3D;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 
 namespace ElectricalComponentSandbox.Models;
 
@@ -48,6 +49,11 @@ public class ComponentInteropMetadata
     public string LastInterchangeFormat { get; set; } = string.Empty;
     public DateTime? LastImportedUtc { get; set; }
     public DateTime? LastExportedUtc { get; set; }
+    [JsonConverter(typeof(StringEnumConverter))]
+    public ComponentInteropReviewStatus ReviewStatus { get; set; } = ComponentInteropReviewStatus.Unreviewed;
+    public string ReviewedBy { get; set; } = string.Empty;
+    public string ReviewNote { get; set; } = string.Empty;
+    public DateTime? LastReviewedUtc { get; set; }
 
     [JsonIgnore]
     public bool HasAnyValue =>
@@ -58,9 +64,20 @@ public class ComponentInteropMetadata
         !string.IsNullOrWhiteSpace(SourceFamilyName) ||
         !string.IsNullOrWhiteSpace(SourceTypeName) ||
         !string.IsNullOrWhiteSpace(LastInterchangeFormat) ||
+        ReviewStatus != ComponentInteropReviewStatus.Unreviewed ||
+        !string.IsNullOrWhiteSpace(ReviewedBy) ||
+        !string.IsNullOrWhiteSpace(ReviewNote) ||
+        LastReviewedUtc.HasValue ||
         LastImportedUtc.HasValue ||
         LastExportedUtc.HasValue;
 }
+
+    public enum ComponentInteropReviewStatus
+    {
+        Unreviewed,
+        Reviewed,
+        NeedsChanges
+    }
 
 public enum ComponentType
 {

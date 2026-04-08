@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -101,6 +102,208 @@ public class MainWindowComponentSelectionTests
             Assert.Equal("4'-3\"", widthTextBox.Text);
             Assert.Equal(parameter.Id, widthBindingComboBox.SelectedValue);
             Assert.Contains("Shared Width", bindingSummaryTextBlock.Text);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdatePropertiesPanelForTesting_SingleSelectionShowsInteropMetadataDetails()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            selected[0].InteropMetadata.SourceSystem = "Revit";
+            selected[0].InteropMetadata.SourceDocumentName = "Campus Power.rvt";
+            selected[0].InteropMetadata.SourceDocumentId = "doc-001";
+            selected[0].InteropMetadata.SourceElementId = "987654";
+            selected[0].InteropMetadata.SourceFamilyName = "Conduit";
+            selected[0].InteropMetadata.SourceTypeName = "EMT 3/4";
+            selected[0].InteropMetadata.LastInterchangeFormat = "RVT";
+            selected[0].InteropMetadata.LastImportedUtc = new DateTime(2025, 4, 12, 18, 30, 0, DateTimeKind.Utc);
+            selected[0].InteropMetadata.LastExportedUtc = new DateTime(2025, 4, 13, 14, 45, 0, DateTimeKind.Utc);
+
+            viewModel.SelectSingleComponent(selected[0]);
+            window.UpdatePropertiesPanelForTesting();
+
+            var summaryText = FindRequired<TextBlock>(window, "ComponentInteropSummaryTextBlock");
+            var documentText = FindRequired<TextBlock>(window, "ComponentInteropDocumentTextBlock");
+            var elementText = FindRequired<TextBlock>(window, "ComponentInteropElementTextBlock");
+            var familyTypeText = FindRequired<TextBlock>(window, "ComponentInteropFamilyTypeTextBlock");
+            var exchangeText = FindRequired<TextBlock>(window, "ComponentInteropExchangeTextBlock");
+
+            Assert.Contains("Revit", summaryText.Text);
+            Assert.Contains("Campus Power.rvt", summaryText.Text);
+            Assert.Contains("Campus Power.rvt", documentText.Text);
+            Assert.Contains("doc-001", documentText.Text);
+            Assert.Contains("987654", elementText.Text);
+            Assert.Contains("Conduit", familyTypeText.Text);
+            Assert.Contains("EMT 3/4", familyTypeText.Text);
+            Assert.Contains("RVT", exchangeText.Text);
+            Assert.Contains("Imported", exchangeText.Text);
+            Assert.Contains("Exported", exchangeText.Text);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdatePropertiesPanelForTesting_MultiSelectionShowsInteropCoverageSummary()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            selected[0].InteropMetadata.SourceSystem = "Revit";
+            selected[0].InteropMetadata.SourceDocumentName = "Campus Power.rvt";
+
+            viewModel.SetSelectedComponents(selected, selected[0]);
+            window.UpdatePropertiesPanelForTesting();
+
+            var summaryText = FindRequired<TextBlock>(window, "ComponentInteropSummaryTextBlock");
+            var documentText = FindRequired<TextBlock>(window, "ComponentInteropDocumentTextBlock");
+            var exchangeText = FindRequired<TextBlock>(window, "ComponentInteropExchangeTextBlock");
+
+            Assert.Contains("1 of 2", summaryText.Text);
+            Assert.Contains("Revit", summaryText.Text);
+            Assert.Contains("1 of 2", documentText.Text);
+            Assert.Contains("No interchange activity", exchangeText.Text);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdatePropertiesPanelForTesting_SingleSelectionShowsSourceReviewSummary()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            selected[0].InteropMetadata.SourceSystem = "Revit";
+            selected[0].InteropMetadata.SourceDocumentName = "Campus Power.rvt";
+            selected[0].InteropMetadata.LastImportedUtc = new DateTime(2026, 4, 1, 10, 0, 0, DateTimeKind.Utc);
+            selected[0].InteropMetadata.LastExportedUtc = new DateTime(2026, 4, 1, 11, 0, 0, DateTimeKind.Utc);
+
+            selected[1].InteropMetadata.SourceSystem = "Revit";
+            selected[1].InteropMetadata.SourceDocumentName = "Campus Power.rvt";
+            selected[1].InteropMetadata.LastImportedUtc = new DateTime(2026, 4, 3, 10, 0, 0, DateTimeKind.Utc);
+            selected[1].InteropMetadata.LastExportedUtc = new DateTime(2026, 4, 2, 10, 0, 0, DateTimeKind.Utc);
+
+            viewModel.SelectSingleComponent(selected[0]);
+            window.UpdatePropertiesPanelForTesting();
+
+            var reviewText = FindRequired<TextBlock>(window, "ComponentInteropReviewTextBlock");
+
+            Assert.Contains("2 components share", reviewText.Text);
+            Assert.Contains("Campus Power.rvt", reviewText.Text);
+            Assert.Contains("1 need review", reviewText.Text);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void ApplyInteropReviewStateForTesting_ReviewedSelectionUpdatesMetadataAndClearsOutstandingReview()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            selected[0].InteropMetadata.SourceSystem = "Revit";
+            selected[0].InteropMetadata.SourceDocumentName = "Campus Power.rvt";
+            selected[0].InteropMetadata.LastImportedUtc = new DateTime(2026, 4, 3, 10, 0, 0, DateTimeKind.Utc);
+            selected[0].InteropMetadata.LastExportedUtc = new DateTime(2026, 4, 2, 10, 0, 0, DateTimeKind.Utc);
+
+            viewModel.SelectSingleComponent(selected[0]);
+
+            Assert.True(window.ApplyInteropReviewStateForTesting(ComponentInteropReviewStatus.Reviewed, "QA Lead", "Verified imported source mapping."));
+
+            Assert.Equal(ComponentInteropReviewStatus.Reviewed, selected[0].InteropMetadata.ReviewStatus);
+            Assert.Equal("QA Lead", selected[0].InteropMetadata.ReviewedBy);
+            Assert.Equal("Verified imported source mapping.", selected[0].InteropMetadata.ReviewNote);
+            Assert.True(selected[0].InteropMetadata.LastReviewedUtc.HasValue);
+
+            window.UpdatePropertiesPanelForTesting();
+            var reviewText = FindRequired<TextBlock>(window, "ComponentInteropReviewTextBlock");
+
+            Assert.Contains("reviewed by QA Lead", reviewText.Text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("need review", reviewText.Text, StringComparison.OrdinalIgnoreCase);
+            Assert.False(window.SelectInteropReviewCandidatesForTesting());
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdateInteropReviewQueueForTesting_ShowsSourceGroupsAndSelectReviewCandidatesButtonNarrowsSelection()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            var third = CreateComponent("Box 3", 10, 0, 10, Colors.Green);
+            viewModel.Components.Add(third);
+
+            selected[0].InteropMetadata.SourceSystem = "Revit";
+            selected[0].InteropMetadata.SourceDocumentName = "Campus Power.rvt";
+            selected[0].InteropMetadata.LastImportedUtc = new DateTime(2026, 4, 4, 10, 0, 0, DateTimeKind.Utc);
+            selected[0].InteropMetadata.LastExportedUtc = new DateTime(2026, 4, 2, 10, 0, 0, DateTimeKind.Utc);
+
+            selected[1].InteropMetadata.SourceSystem = "Revit";
+            selected[1].InteropMetadata.SourceDocumentName = "Campus Power.rvt";
+            selected[1].InteropMetadata.LastImportedUtc = new DateTime(2026, 4, 4, 10, 0, 0, DateTimeKind.Utc);
+            selected[1].InteropMetadata.ReviewStatus = ComponentInteropReviewStatus.Reviewed;
+            selected[1].InteropMetadata.ReviewedBy = "QA Lead";
+            selected[1].InteropMetadata.LastReviewedUtc = new DateTime(2026, 4, 5, 10, 0, 0, DateTimeKind.Utc);
+
+            third.InteropMetadata.SourceSystem = "IFC";
+            third.InteropMetadata.SourceDocumentName = "South Wing.ifc";
+            third.InteropMetadata.LastImportedUtc = new DateTime(2026, 4, 1, 9, 0, 0, DateTimeKind.Utc);
+
+            window.UpdateInteropReviewQueueForTesting();
+
+            var groupNames = window.GetInteropReviewGroupDisplayNamesForTesting();
+            var summaryText = window.GetInteropReviewSummaryForTesting();
+
+            Assert.Equal(2, groupNames.Count);
+            Assert.Contains("Campus Power.rvt (Revit)", groupNames);
+            Assert.Contains("South Wing.ifc (IFC)", groupNames);
+            Assert.Contains("3 across 2", summaryText);
+
+            Assert.True(window.SelectInteropReviewGroupForTesting("Campus Power.rvt (Revit)"));
+            Assert.Contains("Campus Power.rvt", window.GetSelectedInteropReviewGroupSummaryForTesting());
+
+            var selectCandidatesButton = FindRequired<Button>(window, "SelectInteropReviewCandidatesButton");
+            selectCandidatesButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, selectCandidatesButton));
+
+            Assert.Single(viewModel.SelectedComponentIds);
+            Assert.Contains(selected[0].Id, viewModel.SelectedComponentIds);
+            Assert.Equal(selected[0], viewModel.SelectedComponent);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void ApplyInteropReviewStateToSelectedGroupForTesting_MarksEntireSourceGroupReviewed()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            var third = CreateComponent("Box 3", 10, 0, 10, Colors.Green);
+            viewModel.Components.Add(third);
+
+            selected[0].InteropMetadata.SourceSystem = "Revit";
+            selected[0].InteropMetadata.SourceDocumentName = "Campus Power.rvt";
+            selected[0].InteropMetadata.LastImportedUtc = new DateTime(2026, 4, 4, 10, 0, 0, DateTimeKind.Utc);
+            selected[0].InteropMetadata.LastExportedUtc = new DateTime(2026, 4, 2, 10, 0, 0, DateTimeKind.Utc);
+
+            selected[1].InteropMetadata.SourceSystem = "Revit";
+            selected[1].InteropMetadata.SourceDocumentName = "Campus Power.rvt";
+            selected[1].InteropMetadata.LastImportedUtc = new DateTime(2026, 4, 4, 10, 0, 0, DateTimeKind.Utc);
+
+            third.InteropMetadata.SourceSystem = "IFC";
+            third.InteropMetadata.SourceDocumentName = "South Wing.ifc";
+            third.InteropMetadata.LastImportedUtc = new DateTime(2026, 4, 1, 9, 0, 0, DateTimeKind.Utc);
+
+            window.UpdateInteropReviewQueueForTesting();
+            Assert.True(window.SelectInteropReviewGroupForTesting("Campus Power.rvt (Revit)"));
+
+            Assert.True(window.ApplyInteropReviewStateToSelectedGroupForTesting(ComponentInteropReviewStatus.Reviewed, "QA Lead", "Reviewed entire source group."));
+
+            Assert.Equal(ComponentInteropReviewStatus.Reviewed, selected[0].InteropMetadata.ReviewStatus);
+            Assert.Equal(ComponentInteropReviewStatus.Reviewed, selected[1].InteropMetadata.ReviewStatus);
+            Assert.Equal("QA Lead", selected[0].InteropMetadata.ReviewedBy);
+            Assert.Equal("Reviewed entire source group.", selected[1].InteropMetadata.ReviewNote);
+            Assert.Equal(ComponentInteropReviewStatus.Unreviewed, third.InteropMetadata.ReviewStatus);
+
+            window.UpdateInteropReviewQueueForTesting();
+            Assert.Contains("0 need review, 2 reviewed", window.GetSelectedInteropReviewGroupActionSummaryForTesting(), StringComparison.OrdinalIgnoreCase);
             return 0;
         });
     }
@@ -881,6 +1084,105 @@ public class MainWindowComponentSelectionTests
             Assert.Equal("Apply Shared Changes", primaryButton.Content?.ToString());
             Assert.Equal("Zoom Selection", secondaryButton.Content?.ToString());
             Assert.Equal("Duplicate", tertiaryButton.Content?.ToString());
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdateContextualInspectorForTesting_WithImportedSingleComponent_IncludesSourceProvenance()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            selected[0].InteropMetadata.SourceSystem = "Revit";
+            selected[0].InteropMetadata.SourceDocumentName = "Campus Power.rvt";
+            selected[0].InteropMetadata.SourceElementId = "987654";
+
+            viewModel.SelectSingleComponent(selected[0]);
+            window.UpdateContextualInspectorForTesting();
+
+            var titleText = FindRequired<TextBlock>(window, "InspectorTitleTextBlock");
+            var summaryText = FindRequired<TextBlock>(window, "InspectorSummaryTextBlock");
+            var hintText = FindRequired<TextBlock>(window, "InspectorHintTextBlock");
+
+            Assert.Equal("Component Inspector", titleText.Text);
+            Assert.Contains("Revit", summaryText.Text);
+            Assert.Contains("Campus Power.rvt", summaryText.Text);
+            Assert.Contains("source provenance", hintText.Text, StringComparison.OrdinalIgnoreCase);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdateContextualInspectorForTesting_WithImportedSingleComponent_ShowsSourceTaskActions()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            selected[0].InteropMetadata.SourceSystem = "Revit";
+            selected[0].InteropMetadata.SourceDocumentName = "Campus Power.rvt";
+
+            viewModel.SelectSingleComponent(selected[0]);
+            window.UpdateContextualInspectorForTesting();
+
+            var primaryButton = FindRequired<Button>(window, "InspectorPrimaryActionButton");
+            var secondaryButton = FindRequired<Button>(window, "InspectorSecondaryActionButton");
+            var tertiaryButton = FindRequired<Button>(window, "InspectorTertiaryActionButton");
+            var taskSummary = FindRequired<TextBlock>(window, "InspectorTaskSummaryTextBlock");
+
+            Assert.Equal("Apply Changes", primaryButton.Content?.ToString());
+            Assert.Equal("Select Same Source", secondaryButton.Content?.ToString());
+            Assert.Equal("Review Imported Changes", tertiaryButton.Content?.ToString());
+            Assert.Contains("source group", taskSummary.Text, StringComparison.OrdinalIgnoreCase);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void InspectorTaskActionButton_WithImportedSingleComponent_SelectSameSourceSelectsSourceGroup()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            selected[0].InteropMetadata.SourceSystem = "Revit";
+            selected[0].InteropMetadata.SourceDocumentName = "Campus Power.rvt";
+            selected[1].InteropMetadata.SourceSystem = "Revit";
+            selected[1].InteropMetadata.SourceDocumentName = "Campus Power.rvt";
+
+            viewModel.SelectSingleComponent(selected[0]);
+            window.UpdateContextualInspectorForTesting();
+
+            var selectSameSourceButton = FindRequired<Button>(window, "InspectorSecondaryActionButton");
+            selectSameSourceButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, selectSameSourceButton));
+
+            Assert.Equal(2, viewModel.SelectedComponentIds.Count);
+            Assert.Contains(selected[0].Id, viewModel.SelectedComponentIds);
+            Assert.Contains(selected[1].Id, viewModel.SelectedComponentIds);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void InspectorTaskActionButton_WithImportedSingleComponent_ReviewImportedChangesSelectsOnlyReviewCandidates()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            selected[0].InteropMetadata.SourceSystem = "Revit";
+            selected[0].InteropMetadata.SourceDocumentName = "Campus Power.rvt";
+            selected[0].InteropMetadata.LastImportedUtc = new DateTime(2026, 4, 1, 10, 0, 0, DateTimeKind.Utc);
+            selected[0].InteropMetadata.LastExportedUtc = new DateTime(2026, 4, 1, 11, 0, 0, DateTimeKind.Utc);
+
+            selected[1].InteropMetadata.SourceSystem = "Revit";
+            selected[1].InteropMetadata.SourceDocumentName = "Campus Power.rvt";
+            selected[1].InteropMetadata.LastImportedUtc = new DateTime(2026, 4, 3, 10, 0, 0, DateTimeKind.Utc);
+            selected[1].InteropMetadata.LastExportedUtc = new DateTime(2026, 4, 2, 10, 0, 0, DateTimeKind.Utc);
+
+            viewModel.SelectSingleComponent(selected[0]);
+            window.UpdateContextualInspectorForTesting();
+
+            var reviewChangesButton = FindRequired<Button>(window, "InspectorTertiaryActionButton");
+            reviewChangesButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, reviewChangesButton));
+
+            Assert.Single(viewModel.SelectedComponentIds);
+            Assert.Contains(selected[1].Id, viewModel.SelectedComponentIds);
+            Assert.Equal(selected[1], viewModel.SelectedComponent);
             return 0;
         });
     }

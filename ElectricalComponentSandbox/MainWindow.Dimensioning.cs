@@ -1054,6 +1054,7 @@ public partial class MainWindow
         ManufacturerTextBox.Text = component.Parameters.Manufacturer;
         PartNumberTextBox.Text = component.Parameters.PartNumber;
         ReferenceUrlTextBox.Text = component.Parameters.ReferenceUrl;
+        UpdateComponentInteropPropertiesPanel(new[] { component });
         UpdateReferenceAssignmentUi(new[] { component });
         UpdateSelectedDimensionsDisplay(component);
         RefreshProjectParameterBindingsUi(new[] { component }, isMultiSelection: false);
@@ -1098,6 +1099,7 @@ public partial class MainWindow
         ManufacturerTextBox.Text = TryGetSharedValue(components, component => component.Parameters.Manufacturer, value => value) ?? string.Empty;
         PartNumberTextBox.Text = TryGetSharedValue(components, component => component.Parameters.PartNumber, value => value) ?? string.Empty;
         ReferenceUrlTextBox.Text = TryGetSharedValue(components, component => component.Parameters.ReferenceUrl, value => value) ?? string.Empty;
+        UpdateComponentInteropPropertiesPanel(components);
         UpdateReferenceAssignmentUi(components);
         UpdateSelectedDimensionsDisplay(components);
         RefreshProjectParameterBindingsUi(components, isMultiSelection: true);
@@ -1150,6 +1152,505 @@ public partial class MainWindow
         return formatter(first);
     }
 
+    private void UpdateComponentInteropPropertiesPanel(IReadOnlyList<ElectricalComponent> components)
+    {
+        if (ComponentInteropSummaryTextBlock == null ||
+            ComponentInteropDocumentTextBlock == null ||
+            ComponentInteropElementTextBlock == null ||
+            ComponentInteropFamilyTypeTextBlock == null ||
+            ComponentInteropExchangeTextBlock == null ||
+            ComponentInteropReviewTextBlock == null)
+        {
+            return;
+        }
+
+        UpdateComponentInteropReviewActionButtons(components);
+
+        if (components.Count == 0)
+        {
+            ClearComponentInteropPropertiesPanel();
+            return;
+        }
+
+        if (components.Count == 1)
+        {
+            var metadata = components[0].InteropMetadata;
+            ComponentInteropSummaryTextBlock.Text = BuildComponentInteropSummary(components[0]);
+            ComponentInteropDocumentTextBlock.Text = BuildInteropDocumentText(metadata);
+            ComponentInteropElementTextBlock.Text = BuildInteropElementText(metadata);
+            ComponentInteropFamilyTypeTextBlock.Text = BuildInteropFamilyTypeText(metadata);
+            ComponentInteropExchangeTextBlock.Text = BuildInteropExchangeText(metadata);
+            ComponentInteropReviewTextBlock.Text = BuildComponentInteropReviewSummary(new[] { components[0] });
+            return;
+        }
+
+        ComponentInteropSummaryTextBlock.Text = BuildComponentInteropSummary(components);
+        ComponentInteropDocumentTextBlock.Text = BuildSelectionInteropDocumentText(components);
+        ComponentInteropElementTextBlock.Text = BuildSelectionInteropElementText(components);
+        ComponentInteropFamilyTypeTextBlock.Text = BuildSelectionInteropFamilyTypeText(components);
+        ComponentInteropExchangeTextBlock.Text = BuildSelectionInteropExchangeText(components);
+        ComponentInteropReviewTextBlock.Text = BuildComponentInteropReviewSummary(components);
+    }
+
+    private void ClearComponentInteropPropertiesPanel()
+    {
+        if (ComponentInteropSummaryTextBlock == null ||
+            ComponentInteropDocumentTextBlock == null ||
+            ComponentInteropElementTextBlock == null ||
+            ComponentInteropFamilyTypeTextBlock == null ||
+            ComponentInteropExchangeTextBlock == null ||
+            ComponentInteropReviewTextBlock == null)
+        {
+            return;
+        }
+
+        ComponentInteropSummaryTextBlock.Text = string.Empty;
+        ComponentInteropDocumentTextBlock.Text = string.Empty;
+        ComponentInteropElementTextBlock.Text = string.Empty;
+        ComponentInteropFamilyTypeTextBlock.Text = string.Empty;
+        ComponentInteropExchangeTextBlock.Text = string.Empty;
+        ComponentInteropReviewTextBlock.Text = string.Empty;
+        UpdateComponentInteropReviewActionButtons(Array.Empty<ElectricalComponent>());
+    }
+
+    private void UpdateComponentInteropReviewActionButtons(IReadOnlyList<ElectricalComponent> components)
+    {
+        if (MarkInteropReviewedButton == null ||
+            MarkInteropNeedsChangesButton == null ||
+            ClearInteropReviewButton == null)
+        {
+            return;
+        }
+
+        var hasSourceSelection = components.Any(component => GetInteropSourceGroupKey(component.InteropMetadata) != null);
+        var hasRecordedReview = components.Any(component => HasRecordedInteropReview(component.InteropMetadata));
+
+        MarkInteropReviewedButton.IsEnabled = hasSourceSelection;
+        MarkInteropNeedsChangesButton.IsEnabled = hasSourceSelection;
+        ClearInteropReviewButton.IsEnabled = hasSourceSelection && hasRecordedReview;
+    }
+
+    private static string BuildComponentInteropSummary(ElectricalComponent component)
+    {
+        var metadata = component.InteropMetadata;
+        if (!metadata.HasAnyValue)
+            return $"{component.Name} is a native workspace component with no external source metadata recorded.";
+
+        var provenance = BuildInspectorInteropPhrase(metadata);
+        return $"{component.Name} carries {provenance} and interchange history in this workspace.";
+    }
+
+    private static string BuildComponentInteropSummary(IReadOnlyList<ElectricalComponent> components)
+    {
+        var withMetadata = components.Count(component => component.InteropMetadata.HasAnyValue);
+        if (withMetadata == 0)
+            return "None of the selected components carry external source or interchange metadata.";
+
+        var sources = components
+            .Where(component => component.InteropMetadata.HasAnyValue)
+            .Select(component => NormalizeInteropText(component.InteropMetadata.SourceSystem) ?? "external")
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var provenanceSummary = sources.Count switch
+        {
+            1 => $"{sources[0]} provenance",
+            > 1 => $"mixed-source provenance ({string.Join(", ", sources.Take(3))}{(sources.Count > 3 ? ", ..." : string.Empty)})",
+            _ => "external provenance"
+        };
+
+        return withMetadata == components.Count
+            ? $"All {components.Count} selected components carry {provenanceSummary}."
+            : $"{withMetadata} of {components.Count} selected components carry {provenanceSummary}.";
+    }
+
+    private static string BuildInteropDocumentText(ComponentInteropMetadata metadata)
+    {
+        var documentName = NormalizeInteropText(metadata.SourceDocumentName);
+        var documentId = NormalizeInteropText(metadata.SourceDocumentId);
+        return BuildInteropDocumentLabel(documentName, documentId) ?? "No source document recorded.";
+    }
+
+    private static string BuildInteropElementText(ComponentInteropMetadata metadata)
+    {
+        var elementId = NormalizeInteropText(metadata.SourceElementId);
+        return elementId ?? "No source element recorded.";
+    }
+
+    private static string BuildInteropFamilyTypeText(ComponentInteropMetadata metadata)
+    {
+        var familyName = NormalizeInteropText(metadata.SourceFamilyName);
+        var typeName = NormalizeInteropText(metadata.SourceTypeName);
+        return BuildInteropFamilyTypeLabel(familyName, typeName) ?? "No source family or type recorded.";
+    }
+
+    private static string BuildInteropExchangeText(ComponentInteropMetadata metadata)
+    {
+        var details = new List<string>();
+        var interchangeFormat = NormalizeInteropText(metadata.LastInterchangeFormat);
+        if (interchangeFormat != null)
+            details.Add($"Format {interchangeFormat}");
+
+        if (metadata.LastImportedUtc.HasValue)
+            details.Add($"Imported {FormatInteropTimestamp(metadata.LastImportedUtc.Value)}");
+
+        if (metadata.LastExportedUtc.HasValue)
+            details.Add($"Exported {FormatInteropTimestamp(metadata.LastExportedUtc.Value)}");
+
+        return details.Count == 0
+            ? "No interchange activity recorded."
+            : string.Join(" | ", details);
+    }
+
+    internal bool SelectSameSourceComponentsForTesting()
+        => SelectSameSourceComponents();
+
+    internal bool SelectInteropReviewCandidatesForTesting()
+        => SelectInteropReviewCandidates();
+
+    private bool SelectSameSourceComponents()
+        => SelectInteropSourceComponents(reviewCandidatesOnly: false);
+
+    private bool SelectInteropReviewCandidates()
+        => SelectInteropSourceComponents(reviewCandidatesOnly: true);
+
+    private bool SelectInteropSourceComponents(bool reviewCandidatesOnly)
+    {
+        var selectedComponents = GetSelectedComponents();
+        var primaryComponent = _viewModel.SelectedComponent ?? selectedComponents.FirstOrDefault();
+        if (primaryComponent == null ||
+            !TryResolveInteropSourceGroup(primaryComponent, out var sourceGroup, out _))
+        {
+            return false;
+        }
+
+        var nextSelection = reviewCandidatesOnly
+            ? sourceGroup.Where(component => NeedsInteropReview(component.InteropMetadata)).ToList()
+            : sourceGroup;
+
+        if (nextSelection.Count == 0)
+            return false;
+
+        var nextPrimary = nextSelection.FirstOrDefault(component => component.Id == primaryComponent.Id) ?? nextSelection[0];
+        _viewModel.SetSelectedComponents(nextSelection, nextPrimary);
+        QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
+        UpdateContextualInspector();
+        return true;
+    }
+
+    private string BuildComponentInteropReviewSummary(IReadOnlyList<ElectricalComponent> components)
+    {
+        if (components.Count == 0)
+            return string.Empty;
+
+        if (components.Count == 1)
+        {
+            var component = components[0];
+            var selectionStateSummary = BuildInteropSelectionStateSummary(component.InteropMetadata);
+            if (!TryResolveInteropSourceGroup(component, out var sourceGroup, out var sourceLabel))
+                return selectionStateSummary;
+
+            var reviewCandidates = sourceGroup.Count(candidate => NeedsInteropReview(candidate.InteropMetadata));
+            var reviewedCount = sourceGroup.Count(candidate => IsInteropReviewAcknowledged(candidate.InteropMetadata));
+            var needsChangesCount = sourceGroup.Count(candidate => candidate.InteropMetadata.ReviewStatus == ComponentInteropReviewStatus.NeedsChanges);
+            if (sourceGroup.Count == 1)
+            {
+                return reviewCandidates == 0 && needsChangesCount == 0
+                    ? $"{selectionStateSummary} Only this component is linked to {sourceLabel}, and its source review is up to date."
+                    : $"{selectionStateSummary} Only this component is linked to {sourceLabel}; {reviewCandidates} need review and {needsChangesCount} are flagged as needing changes.";
+            }
+
+            return reviewCandidates == 0 && needsChangesCount == 0
+                ? $"{selectionStateSummary} {sourceGroup.Count} components share {sourceLabel}; {reviewedCount} reviewed and source review is aligned across the group."
+                : $"{selectionStateSummary} {sourceGroup.Count} components share {sourceLabel}; {reviewCandidates} need review, {reviewedCount} reviewed, and {needsChangesCount} flagged as needing changes.";
+        }
+
+        var importedComponents = components
+            .Where(component => GetInteropSourceGroupKey(component.InteropMetadata) != null)
+            .ToList();
+
+        if (importedComponents.Count == 0)
+            return "Source review is unavailable because none of the selected components carry external source metadata.";
+
+        var sourceGroupCount = importedComponents
+            .Select(component => GetInteropSourceGroupKey(component.InteropMetadata))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count(key => key != null);
+
+        if (sourceGroupCount <= 1)
+        {
+            var reviewCandidates = importedComponents.Count(component => NeedsInteropReview(component.InteropMetadata));
+            var reviewedCount = importedComponents.Count(component => IsInteropReviewAcknowledged(component.InteropMetadata));
+            var needsChangesCount = importedComponents.Count(component => component.InteropMetadata.ReviewStatus == ComponentInteropReviewStatus.NeedsChanges);
+            var sourceLabel = BuildInteropSourceGroupLabel(importedComponents[0].InteropMetadata);
+            return reviewCandidates == 0 && needsChangesCount == 0
+                ? $"Selected imported components all belong to {sourceLabel}; {reviewedCount} reviewed and no open imported review work remains."
+                : $"Selected imported components all belong to {sourceLabel}; {reviewCandidates} need review, {reviewedCount} reviewed, and {needsChangesCount} are flagged as needing changes.";
+        }
+
+        return $"Selection spans {sourceGroupCount} source groups across {importedComponents.Count} imported components. Narrow to a single imported component to select the full source group or isolate review candidates.";
+    }
+
+    private static string BuildInteropSelectionStateSummary(ComponentInteropMetadata metadata)
+    {
+        var reviewedBy = NormalizeInteropText(metadata.ReviewedBy) ?? "an unnamed reviewer";
+        var reviewNote = NormalizeInteropText(metadata.ReviewNote);
+
+        if (metadata.ReviewStatus == ComponentInteropReviewStatus.Reviewed)
+        {
+            var timeSummary = metadata.LastReviewedUtc.HasValue
+                ? $" on {FormatInteropTimestamp(metadata.LastReviewedUtc.Value)}"
+                : string.Empty;
+            var noteSummary = reviewNote == null ? string.Empty : $" Note: {reviewNote}.";
+            return $"Current component reviewed by {reviewedBy}{timeSummary}.{noteSummary}";
+        }
+
+        if (metadata.ReviewStatus == ComponentInteropReviewStatus.NeedsChanges)
+        {
+            var timeSummary = metadata.LastReviewedUtc.HasValue
+                ? $" on {FormatInteropTimestamp(metadata.LastReviewedUtc.Value)}"
+                : string.Empty;
+            var noteSummary = reviewNote == null ? string.Empty : $" Note: {reviewNote}.";
+            return $"Current component flagged as needing changes by {reviewedBy}{timeSummary}.{noteSummary}";
+        }
+
+        return NeedsInteropReview(metadata)
+            ? "Current component is awaiting review because import data is newer than export or review history."
+            : "No explicit review decision is recorded for the current component.";
+    }
+
+    private static string BuildSelectionInteropDocumentText(IReadOnlyList<ElectricalComponent> components)
+    {
+        var sharedDocumentName = TryGetSharedInteropText(components, metadata => metadata.SourceDocumentName);
+        var sharedDocumentId = TryGetSharedInteropText(components, metadata => metadata.SourceDocumentId);
+        var sharedDocument = BuildInteropDocumentLabel(sharedDocumentName, sharedDocumentId);
+        if (sharedDocument != null)
+            return $"{sharedDocument} shared across selection.";
+
+        var documentCount = components.Count(component =>
+            NormalizeInteropText(component.InteropMetadata.SourceDocumentName) != null ||
+            NormalizeInteropText(component.InteropMetadata.SourceDocumentId) != null);
+
+        return documentCount == 0
+            ? "No source document metadata recorded across the selection."
+            : $"{documentCount} of {components.Count} selected components include source document metadata.";
+    }
+
+    private static string BuildSelectionInteropElementText(IReadOnlyList<ElectricalComponent> components)
+    {
+        var sharedElementId = TryGetSharedInteropText(components, metadata => metadata.SourceElementId);
+        if (sharedElementId != null)
+            return $"Element {sharedElementId} shared across selection.";
+
+        var elementCount = components.Count(component => NormalizeInteropText(component.InteropMetadata.SourceElementId) != null);
+        return elementCount == 0
+            ? "No source element metadata recorded across the selection."
+            : $"{elementCount} of {components.Count} selected components include source element metadata.";
+    }
+
+    private static string BuildSelectionInteropFamilyTypeText(IReadOnlyList<ElectricalComponent> components)
+    {
+        var sharedFamilyName = TryGetSharedInteropText(components, metadata => metadata.SourceFamilyName);
+        var sharedTypeName = TryGetSharedInteropText(components, metadata => metadata.SourceTypeName);
+        var sharedFamilyType = BuildInteropFamilyTypeLabel(sharedFamilyName, sharedTypeName);
+        if (sharedFamilyType != null)
+            return $"{sharedFamilyType} shared across selection.";
+
+        var familyTypeCount = components.Count(component =>
+            NormalizeInteropText(component.InteropMetadata.SourceFamilyName) != null ||
+            NormalizeInteropText(component.InteropMetadata.SourceTypeName) != null);
+
+        return familyTypeCount == 0
+            ? "No source family or type metadata recorded across the selection."
+            : $"{familyTypeCount} of {components.Count} selected components include source family or type metadata.";
+    }
+
+    private static string BuildSelectionInteropExchangeText(IReadOnlyList<ElectricalComponent> components)
+    {
+        var details = new List<string>();
+        var sharedFormat = TryGetSharedInteropText(components, metadata => metadata.LastInterchangeFormat);
+        var formatCount = components.Count(component => NormalizeInteropText(component.InteropMetadata.LastInterchangeFormat) != null);
+        var importedCount = components.Count(component => component.InteropMetadata.LastImportedUtc.HasValue);
+        var exportedCount = components.Count(component => component.InteropMetadata.LastExportedUtc.HasValue);
+
+        if (sharedFormat != null)
+            details.Add($"Format {sharedFormat} shared across selection");
+        else if (formatCount > 0)
+            details.Add($"{formatCount} of {components.Count} selected components record an interchange format");
+
+        if (importedCount > 0)
+            details.Add($"import history on {importedCount} of {components.Count}");
+
+        if (exportedCount > 0)
+            details.Add($"export history on {exportedCount} of {components.Count}");
+
+        return details.Count == 0
+            ? "No interchange activity recorded across the selection."
+            : string.Join(" | ", details);
+    }
+
+    private static string BuildInspectorInteropPhrase(ComponentInteropMetadata metadata)
+    {
+        var source = NormalizeInteropText(metadata.SourceSystem) ?? "external";
+        var documentName = NormalizeInteropText(metadata.SourceDocumentName);
+        var elementId = NormalizeInteropText(metadata.SourceElementId);
+
+        if (documentName != null && elementId != null)
+            return $"{source} provenance from {documentName} (element {elementId})";
+
+        if (documentName != null)
+            return $"{source} provenance from {documentName}";
+
+        if (elementId != null)
+            return $"{source} provenance for element {elementId}";
+
+        return $"{source} provenance";
+    }
+
+    private bool TryResolveInteropSourceGroup(ElectricalComponent component, out List<ElectricalComponent> sourceGroup, out string sourceLabel)
+    {
+        sourceGroup = new List<ElectricalComponent>();
+        sourceLabel = BuildInteropSourceGroupLabel(component.InteropMetadata);
+        if (GetInteropSourceGroupKey(component.InteropMetadata) == null)
+            return false;
+
+        sourceGroup = _viewModel.Components
+            .Where(candidate => BelongsToInteropSourceGroup(candidate.InteropMetadata, component.InteropMetadata))
+            .ToList();
+
+        return sourceGroup.Count > 0;
+    }
+
+    private static bool BelongsToInteropSourceGroup(ComponentInteropMetadata candidate, ComponentInteropMetadata reference)
+    {
+        var referenceKey = GetInteropSourceGroupKey(reference);
+        if (referenceKey == null)
+            return false;
+
+        var referenceSourceSystem = NormalizeInteropText(reference.SourceSystem);
+        if (referenceSourceSystem != null &&
+            !string.Equals(NormalizeInteropText(candidate.SourceSystem), referenceSourceSystem, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var referenceDocumentId = NormalizeInteropText(reference.SourceDocumentId);
+        if (referenceDocumentId != null)
+        {
+            return string.Equals(NormalizeInteropText(candidate.SourceDocumentId), referenceDocumentId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        var referenceDocumentName = NormalizeInteropText(reference.SourceDocumentName);
+        if (referenceDocumentName != null)
+        {
+            return string.Equals(NormalizeInteropText(candidate.SourceDocumentName), referenceDocumentName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return string.Equals(GetInteropSourceGroupKey(candidate), referenceKey, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool NeedsInteropReview(ComponentInteropMetadata metadata)
+    {
+        if (metadata.ReviewStatus == ComponentInteropReviewStatus.NeedsChanges)
+            return true;
+
+        if (!metadata.LastImportedUtc.HasValue)
+            return false;
+
+        if (metadata.LastReviewedUtc.HasValue && metadata.LastReviewedUtc.Value >= metadata.LastImportedUtc.Value)
+            return metadata.ReviewStatus == ComponentInteropReviewStatus.NeedsChanges;
+
+        return !metadata.LastExportedUtc.HasValue || metadata.LastImportedUtc.Value > metadata.LastExportedUtc.Value;
+    }
+
+    private static bool IsInteropReviewAcknowledged(ComponentInteropMetadata metadata)
+        => metadata.ReviewStatus == ComponentInteropReviewStatus.Reviewed &&
+           metadata.LastReviewedUtc.HasValue &&
+           (!metadata.LastImportedUtc.HasValue || metadata.LastReviewedUtc.Value >= metadata.LastImportedUtc.Value);
+
+    private static bool HasRecordedInteropReview(ComponentInteropMetadata metadata)
+        => metadata.ReviewStatus != ComponentInteropReviewStatus.Unreviewed ||
+           !string.IsNullOrWhiteSpace(metadata.ReviewedBy) ||
+           !string.IsNullOrWhiteSpace(metadata.ReviewNote) ||
+           metadata.LastReviewedUtc.HasValue;
+
+    private static string BuildInteropSourceGroupLabel(ComponentInteropMetadata metadata)
+    {
+        var sourceSystem = NormalizeInteropText(metadata.SourceSystem);
+        var documentName = NormalizeInteropText(metadata.SourceDocumentName);
+        var documentId = NormalizeInteropText(metadata.SourceDocumentId);
+
+        if (documentName != null && sourceSystem != null)
+            return $"{documentName} ({sourceSystem})";
+
+        if (documentName != null)
+            return documentName;
+
+        if (documentId != null && sourceSystem != null)
+            return $"document {documentId} ({sourceSystem})";
+
+        if (documentId != null)
+            return $"document {documentId}";
+
+        return sourceSystem ?? "the recorded source";
+    }
+
+    private static string? GetInteropSourceGroupKey(ComponentInteropMetadata metadata)
+    {
+        var sourceSystem = NormalizeInteropText(metadata.SourceSystem);
+        var documentId = NormalizeInteropText(metadata.SourceDocumentId);
+        var documentName = NormalizeInteropText(metadata.SourceDocumentName);
+
+        if (sourceSystem == null && documentId == null && documentName == null)
+            return null;
+
+        return string.Join("|", new[] { sourceSystem ?? string.Empty, documentId ?? string.Empty, documentName ?? string.Empty });
+    }
+
+    private static string? BuildInteropDocumentLabel(string? documentName, string? documentId)
+    {
+        if (documentName == null && documentId == null)
+            return null;
+
+        if (documentName != null && documentId != null)
+            return $"{documentName} (Document ID {documentId})";
+
+        return documentName ?? $"Document ID {documentId}";
+    }
+
+    private static string? BuildInteropFamilyTypeLabel(string? familyName, string? typeName)
+    {
+        if (familyName == null && typeName == null)
+            return null;
+
+        if (familyName != null && typeName != null)
+            return $"{familyName} / {typeName}";
+
+        return familyName ?? typeName;
+    }
+
+    private static string? TryGetSharedInteropText(IReadOnlyList<ElectricalComponent> components, Func<ComponentInteropMetadata, string> selector)
+    {
+        if (components.Count == 0)
+            return null;
+
+        var first = NormalizeInteropText(selector(components[0].InteropMetadata));
+        for (var index = 1; index < components.Count; index++)
+        {
+            var current = NormalizeInteropText(selector(components[index].InteropMetadata));
+            if (!string.Equals(first, current, StringComparison.OrdinalIgnoreCase))
+                return null;
+        }
+
+        return first;
+    }
+
+    private static string? NormalizeInteropText(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string FormatInteropTimestamp(DateTime value)
+        => value.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
+
     private void ClearPropertiesPanel()
     {
         SetPropertiesPanelMultiSelectMode(isMultiSelection: false);
@@ -1171,6 +1672,7 @@ public partial class MainWindow
         ManufacturerTextBox.Text = string.Empty;
         PartNumberTextBox.Text = string.Empty;
         ReferenceUrlTextBox.Text = string.Empty;
+        ClearComponentInteropPropertiesPanel();
         RefreshProjectParameterBindingsUi(Array.Empty<ElectricalComponent>(), isMultiSelection: false);
         UpdateReferenceAssignmentUi(Array.Empty<ElectricalComponent>());
         LayerComboBox.SelectedItem = null;

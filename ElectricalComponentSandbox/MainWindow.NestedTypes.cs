@@ -41,6 +41,19 @@ public partial class MainWindow
         public List<SemanticFace> FaceLocals { get; } = new();
     }
 
+    private sealed class InteropReviewGroupItem
+    {
+        public string SourceGroupKey { get; init; } = string.Empty;
+        public string DisplayName { get; init; } = string.Empty;
+        public string SourceSystem { get; init; } = string.Empty;
+        public int Count { get; init; }
+        public int ReviewCandidateCount { get; init; }
+        public int ReviewedCount { get; init; }
+        public int NeedsChangesCount { get; init; }
+        public string SecondaryText { get; init; } = string.Empty;
+        public string BreakdownText { get; init; } = string.Empty;
+    }
+
     private enum MobilePane
     {
         Canvas,

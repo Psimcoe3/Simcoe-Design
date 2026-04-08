@@ -25,6 +25,7 @@ public partial class MainWindow
             _viewModel.ClearProjectParameters();
             _viewModel.Layers.Clear();
             _viewModel.ResetDrawingSheets();
+            _viewModel.ClearMarkupReviewSnapshots();
             _viewModel.ProjectName = "Untitled Project";
             _viewModel.UndoRedo.Clear();
             _currentFilePath = null;
@@ -36,6 +37,7 @@ public partial class MainWindow
             _viewModel.ActiveLayer = defaultLayer;
             SyncSheetBrowserSelection();
             RebuildNamedViewMenuItems();
+            UpdateMarkupReviewSnapshotUi();
             ActionLogService.Instance.Log(LogCategory.FileOperation, "New project created");
             
             UpdateViewport();
@@ -68,6 +70,7 @@ public partial class MainWindow
                     UpdateWindowTitle();
                     SyncSheetBrowserSelection();
                     RebuildNamedViewMenuItems();
+                    UpdateMarkupReviewSnapshotUi();
                     ActionLogService.Instance.Log(LogCategory.FileOperation, "Project opened", $"File: {dialog.FileName}");
                     UpdateViewport();
                     Update2DCanvas();

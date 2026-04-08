@@ -56,6 +56,7 @@ public class ComponentFileServiceTests : IDisposable
     {
         var importedUtc = new DateTime(2026, 4, 7, 12, 30, 0, DateTimeKind.Utc);
         var exportedUtc = new DateTime(2026, 4, 7, 18, 45, 0, DateTimeKind.Utc);
+        var reviewedUtc = new DateTime(2026, 4, 8, 9, 15, 0, DateTimeKind.Utc);
         var conduit = new ConduitComponent
         {
             Name = "Interop Conduit",
@@ -69,7 +70,11 @@ public class ComponentFileServiceTests : IDisposable
                 SourceTypeName = "EMT 3-4",
                 LastInterchangeFormat = "IFC4",
                 LastImportedUtc = importedUtc,
-                LastExportedUtc = exportedUtc
+                LastExportedUtc = exportedUtc,
+                ReviewStatus = ComponentInteropReviewStatus.Reviewed,
+                ReviewedBy = "QA Lead",
+                ReviewNote = "Verified imported conduit mapping.",
+                LastReviewedUtc = reviewedUtc
             }
         };
         var filePath = Path.Combine(_tempDir, "interop.ecomp");
@@ -87,6 +92,10 @@ public class ComponentFileServiceTests : IDisposable
         Assert.Equal("IFC4", loadedConduit.InteropMetadata.LastInterchangeFormat);
         Assert.Equal(importedUtc, loadedConduit.InteropMetadata.LastImportedUtc);
         Assert.Equal(exportedUtc, loadedConduit.InteropMetadata.LastExportedUtc);
+        Assert.Equal(ComponentInteropReviewStatus.Reviewed, loadedConduit.InteropMetadata.ReviewStatus);
+        Assert.Equal("QA Lead", loadedConduit.InteropMetadata.ReviewedBy);
+        Assert.Equal("Verified imported conduit mapping.", loadedConduit.InteropMetadata.ReviewNote);
+        Assert.Equal(reviewedUtc, loadedConduit.InteropMetadata.LastReviewedUtc);
     }
 
     [Fact]

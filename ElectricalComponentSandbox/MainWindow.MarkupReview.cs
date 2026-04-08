@@ -43,11 +43,20 @@ public partial class MainWindow
     internal bool ExecuteAssignSelectedMarkupForTesting(string? assignee, string? actor = null)
         => TryAssignSelectedMarkup(assignee, actor ?? "Test Reviewer", showFeedbackIfUnavailable: false);
 
+    internal bool ExecuteClaimSelectedMarkupForTesting(string? actor = null)
+        => TryClaimSelectedMarkup(actor ?? "Test Reviewer", showFeedbackIfUnavailable: false);
+
     internal bool ExecuteSetSelectedIssueGroupStatusForTesting(MarkupStatus newStatus, string? author = null, string? reviewerNote = null)
         => TrySetSelectedIssueGroupStatus(newStatus, $"{MarkupRecord.GetStatusDisplayText(newStatus)} Bucket", author ?? "Test Reviewer", showFeedbackIfUnavailable: false, reviewerNote: reviewerNote);
 
     internal bool ExecuteAssignSelectedIssueGroupForTesting(string? assignee, string? actor = null)
         => TryAssignSelectedIssueGroup(assignee, actor ?? "Test Reviewer", showFeedbackIfUnavailable: false);
+
+    internal bool ExecuteClaimSelectedIssueGroupForTesting(string? actor = null)
+        => TryClaimSelectedIssueGroup(actor ?? "Test Reviewer", showFeedbackIfUnavailable: false);
+
+    internal bool ExecuteClaimVisibleMarkupsForTesting(string? actor = null)
+        => TryClaimVisibleMarkups(actor ?? "Test Reviewer");
 
     internal bool ExecuteApproveSelectedIssueGroupForTesting(string? author = null, string? reviewerNote = null)
         => TrySetSelectedIssueGroupStatus(MarkupStatus.Approved, "Approve Bucket", author ?? "Test Reviewer", showFeedbackIfUnavailable: false, reviewerNote: reviewerNote);
@@ -115,6 +124,11 @@ public partial class MainWindow
         TryAssignSelectedMarkup(input, Environment.UserName, showFeedbackIfUnavailable: true);
     }
 
+    private void ClaimSelectedMarkup_Click(object sender, RoutedEventArgs e)
+    {
+        TryClaimSelectedMarkup(Environment.UserName, showFeedbackIfUnavailable: true);
+    }
+
     private void AssignVisibleMarkups_Click(object sender, RoutedEventArgs e)
     {
         var input = PromptInput("Assign Visible Markups", "Enter assignee name for all visible issues. Leave blank to clear assignment:", Environment.UserName);
@@ -122,6 +136,11 @@ public partial class MainWindow
             return;
 
         TryAssignVisibleMarkups(input, Environment.UserName);
+    }
+
+    private void ClaimVisibleMarkups_Click(object sender, RoutedEventArgs e)
+    {
+        TryClaimVisibleMarkups(Environment.UserName);
     }
 
     private void ResolveVisibleMarkups_Click(object sender, RoutedEventArgs e)
@@ -141,6 +160,11 @@ public partial class MainWindow
             return;
 
         TryAssignSelectedIssueGroup(input, Environment.UserName, showFeedbackIfUnavailable: true);
+    }
+
+    private void ClaimSelectedIssueGroup_Click(object sender, RoutedEventArgs e)
+    {
+        TryClaimSelectedIssueGroup(Environment.UserName, showFeedbackIfUnavailable: true);
     }
 
     private void ResolveSelectedIssueGroup_Click(object sender, RoutedEventArgs e)
@@ -335,6 +359,12 @@ public partial class MainWindow
         return true;
     }
 
+    private bool TryClaimSelectedMarkup(string actor, bool showFeedbackIfUnavailable)
+    {
+        var normalizedActor = string.IsNullOrWhiteSpace(actor) ? Environment.UserName : actor.Trim();
+        return TryAssignSelectedMarkup(normalizedActor, normalizedActor, showFeedbackIfUnavailable);
+    }
+
     private bool TryAssignVisibleMarkups(string? assignee, string actor)
     {
         var updatedCount = _viewModel.ApplyFilteredMarkupAssignment(assignee, actor);
@@ -351,6 +381,12 @@ public partial class MainWindow
 
         QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
         return true;
+    }
+
+    private bool TryClaimVisibleMarkups(string actor)
+    {
+        var normalizedActor = string.IsNullOrWhiteSpace(actor) ? Environment.UserName : actor.Trim();
+        return TryAssignVisibleMarkups(normalizedActor, normalizedActor);
     }
 
     private bool TryAssignSelectedIssueGroup(string? assignee, string actor, bool showFeedbackIfUnavailable)
@@ -384,6 +420,12 @@ public partial class MainWindow
 
         QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
         return true;
+    }
+
+    private bool TryClaimSelectedIssueGroup(string actor, bool showFeedbackIfUnavailable)
+    {
+        var normalizedActor = string.IsNullOrWhiteSpace(actor) ? Environment.UserName : actor.Trim();
+        return TryAssignSelectedIssueGroup(normalizedActor, normalizedActor, showFeedbackIfUnavailable);
     }
 
     private void MarkupSummary_Click(object sender, RoutedEventArgs e)

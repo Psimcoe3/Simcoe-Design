@@ -409,6 +409,58 @@ public partial class MainViewModelTests
     }
 
     [Fact]
+    public void MarkupTool_AuthorFilter_RestrictsVisibleMarkupList()
+    {
+        var vm = new MainViewModel();
+        var authoredMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Metadata = new MarkupMetadata { Label = "Authored", Author = "Paul" }
+        };
+        var otherMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Metadata = new MarkupMetadata { Label = "Other", Author = "Casey" }
+        };
+
+        vm.Markups.Add(authoredMarkup);
+        vm.Markups.Add(otherMarkup);
+        vm.MarkupTool.RefreshReviewContext();
+
+        Assert.Contains("Paul", vm.MarkupTool.AuthorFilterOptions);
+        Assert.Contains("Casey", vm.MarkupTool.AuthorFilterOptions);
+
+        vm.MarkupTool.AuthorFilter = "Paul";
+
+        var filtered = Assert.Single(vm.MarkupTool.FilteredMarkups);
+        Assert.Same(authoredMarkup, filtered);
+    }
+
+    [Fact]
+    public void MarkupTool_AuthorFilter_MatchesUnassignedMarkup()
+    {
+        var vm = new MainViewModel();
+        var authoredMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            Metadata = new MarkupMetadata { Label = "Authored", Author = "Paul" }
+        };
+        var unassignedMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            Metadata = new MarkupMetadata { Label = "Unassigned" }
+        };
+
+        vm.Markups.Add(authoredMarkup);
+        vm.Markups.Add(unassignedMarkup);
+
+        vm.MarkupTool.AuthorFilter = "(unassigned)";
+
+        var filtered = Assert.Single(vm.MarkupTool.FilteredMarkups);
+        Assert.Same(unassignedMarkup, filtered);
+    }
+
+    [Fact]
     public void MarkupTool_AssigneeFilter_MatchesUnassignedMarkup()
     {
         var vm = new MainViewModel();

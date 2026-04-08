@@ -119,6 +119,8 @@ public partial class MainWindow
     private int _dimensionInchFractionDenominator = DefaultDimensionInchFractionDenominator;
     private readonly Dictionary<FrameworkElement, int> _canvasToGripIndexMap = new();
     private bool _isWorkspaceOnboardingDismissed = false;
+    private string? _selectedInteropReviewGroupKey;
+    private string? _selectedMarkupReviewSnapshotId;
 
     public MainWindow(MainViewModel viewModel)
     {
@@ -142,6 +144,8 @@ public partial class MainWindow
         InitializeCanvasInteractionController();
         UpdateWorkspaceOverview();
         UpdateContextualInspector();
+        UpdateMarkupReviewSnapshotUi();
+        UpdateInteropReviewQueueUi();
         UpdateCanvasGuidance();
 
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;

@@ -62,6 +62,8 @@ public partial class MainWindow
                 Update2DCanvas();
             if (doProperties)
                 UpdatePropertiesPanel();
+            UpdateMarkupReviewSnapshotUi();
+            UpdateInteropReviewQueueUi();
             UpdateStatusBar();
         }));
     }
@@ -85,6 +87,8 @@ public partial class MainWindow
 
     private void MarkupTool_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        UpdateMarkupReviewSnapshotUi();
+
         if (e.PropertyName == nameof(MarkupToolViewModel.SelectedMarkup))
         {
             UpdateContextualInspector();

@@ -65,6 +65,7 @@ public class ProjectFileServiceTests : IDisposable
     public async Task SaveAndLoad_ProjectWithComponentInteropMetadata_RoundTrips()
     {
         var importedUtc = new DateTime(2026, 4, 7, 12, 30, 0, DateTimeKind.Utc);
+        var reviewedUtc = new DateTime(2026, 4, 7, 16, 45, 0, DateTimeKind.Utc);
         var project = new ProjectModel { Name = "Interop Project" };
         project.Components.Add(new ConduitComponent
         {
@@ -78,7 +79,11 @@ public class ProjectFileServiceTests : IDisposable
                 SourceFamilyName = "Conduit",
                 SourceTypeName = "EMT 3-4",
                 LastInterchangeFormat = "IFC4",
-                LastImportedUtc = importedUtc
+                LastImportedUtc = importedUtc,
+                ReviewStatus = ComponentInteropReviewStatus.NeedsChanges,
+                ReviewedBy = "BIM Coordinator",
+                ReviewNote = "Check conduit elevation offsets.",
+                LastReviewedUtc = reviewedUtc
             }
         });
         var filePath = Path.Combine(_tempDir, "interop.ecproj");
@@ -96,6 +101,10 @@ public class ProjectFileServiceTests : IDisposable
         Assert.Equal("EMT 3-4", loadedConduit.InteropMetadata.SourceTypeName);
         Assert.Equal("IFC4", loadedConduit.InteropMetadata.LastInterchangeFormat);
         Assert.Equal(importedUtc, loadedConduit.InteropMetadata.LastImportedUtc);
+        Assert.Equal(ComponentInteropReviewStatus.NeedsChanges, loadedConduit.InteropMetadata.ReviewStatus);
+        Assert.Equal("BIM Coordinator", loadedConduit.InteropMetadata.ReviewedBy);
+        Assert.Equal("Check conduit elevation offsets.", loadedConduit.InteropMetadata.ReviewNote);
+        Assert.Equal(reviewedUtc, loadedConduit.InteropMetadata.LastReviewedUtc);
     }
 
     [Fact]

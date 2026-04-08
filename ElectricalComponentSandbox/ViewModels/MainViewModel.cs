@@ -65,6 +65,9 @@ public class MainViewModel : INotifyPropertyChanged
     /// <summary>Saved AutoCAD-style page setup presets for plot layouts.</summary>
     public ObservableCollection<PlotLayout> SavedPageSetups { get; } = new();
 
+    /// <summary>Published review-set snapshots stored with the current project.</summary>
+    public ObservableCollection<MarkupReviewSnapshot> MarkupReviewSnapshots { get; } = new();
+
     /// <summary>IDs of all currently selected components (multi-select)</summary>
     public HashSet<string> SelectedComponentIds { get; } = new();
 
@@ -1075,6 +1078,12 @@ public class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(Sheets));
     }
 
+    public void ClearMarkupReviewSnapshots()
+    {
+        MarkupReviewSnapshots.Clear();
+        OnPropertyChanged(nameof(MarkupReviewSnapshots));
+    }
+
     public void RefreshProjectBrowserItems()
     {
         ProjectBrowserItems.Clear();
@@ -1110,6 +1119,36 @@ public class MainViewModel : INotifyPropertyChanged
 
     public IReadOnlyList<MarkupRecord> GetSelectedIssueGroupReviewMarkups()
         => MarkupTool.GetSelectedIssueGroupMarkups();
+
+    public MarkupReviewSnapshot PublishMarkupReviewSnapshot(string name, string actor, string filterSummary)
+    {
+        var normalizedName = string.IsNullOrWhiteSpace(name)
+            ? BuildDefaultMarkupReviewSnapshotName()
+            : name.Trim();
+        var normalizedActor = string.IsNullOrWhiteSpace(actor)
+            ? Environment.UserName
+            : actor.Trim();
+
+        var snapshot = new MarkupReviewSnapshot
+        {
+            Name = normalizedName,
+            PublishedBy = normalizedActor,
+            PublishedUtc = DateTime.UtcNow,
+            Scope = MarkupTool.ReviewScope == MarkupReviewScope.AllSheets
+                ? MarkupReviewSnapshotScope.AllSheets
+                : MarkupReviewSnapshotScope.CurrentSheet,
+            SourceSheetId = MarkupTool.ReviewScope == MarkupReviewScope.CurrentSheet
+                ? SelectedSheet?.Id ?? string.Empty
+                : string.Empty,
+            SourceSheetDisplayName = SelectedSheet?.DisplayName ?? string.Empty,
+            FilterSummary = filterSummary?.Trim() ?? string.Empty,
+            Markups = GetFilteredReviewMarkups().Select(markup => markup.Clone()).ToList()
+        };
+
+        MarkupReviewSnapshots.Insert(0, snapshot);
+        OnPropertyChanged(nameof(MarkupReviewSnapshots));
+        return snapshot;
+    }
 
     public bool TryApplySelectedMarkupStatus(MarkupStatus newStatus, string actor)
     {
@@ -1743,6 +1782,7 @@ public class MainViewModel : INotifyPropertyChanged
             PdfUnderlay = activeSheet?.PdfUnderlay ?? PdfUnderlay,
             PlotLayout = activeSheet?.PlotLayout ?? ActivePlotLayout,
             SavedPageSetups = SavedPageSetups.Select(pageSetup => pageSetup.Clone()).ToList(),
+            MarkupReviewSnapshots = MarkupReviewSnapshots.Select(snapshot => snapshot.Clone()).ToList(),
             UnitSystem = UnitSystemName,
             GridSize = GridSize,
             ShowGrid = ShowGrid,
@@ -1786,6 +1826,10 @@ public class MainViewModel : INotifyPropertyChanged
         SavedPageSetups.Clear();
         foreach (var savedPageSetup in project.SavedPageSetups)
             SavedPageSetups.Add(savedPageSetup.Clone());
+
+        MarkupReviewSnapshots.Clear();
+        foreach (var snapshot in project.MarkupReviewSnapshots)
+            MarkupReviewSnapshots.Add(snapshot.Clone());
 
         foreach (var sheet in sheets)
         {
@@ -2447,5 +2491,13 @@ public class MainViewModel : INotifyPropertyChanged
     {
         foreach (var markup in sheet.Markups)
             markup.ReviewSheetDisplayText = sheet.DisplayName;
+    }
+
+    private string BuildDefaultMarkupReviewSnapshotName()
+    {
+        var scopePrefix = MarkupTool.ReviewScope == MarkupReviewScope.AllSheets
+            ? "All Sheets"
+            : SelectedSheet?.DisplayName ?? "Current Sheet";
+        return $"{scopePrefix} Review Set {DateTime.Now:yyyy-MM-dd HH:mm}";
     }
 }

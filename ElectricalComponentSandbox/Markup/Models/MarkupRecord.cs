@@ -1,8 +1,22 @@
 using System.Globalization;
+using System.Linq;
 using System.Text.Json.Serialization;
 using System.Windows;
 
 namespace ElectricalComponentSandbox.Markup.Models;
+    public MarkupReply Clone()
+    {
+        return new MarkupReply
+        {
+            Id = Id,
+            ParentReplyId = ParentReplyId,
+            Author = Author,
+            Text = Text,
+            Kind = Kind,
+            CreatedUtc = CreatedUtc,
+            ModifiedUtc = ModifiedUtc
+        };
+    }
 
 /// <summary>
 /// Enumerates the types of markup annotations
@@ -10,6 +24,50 @@ namespace ElectricalComponentSandbox.Markup.Models;
 public enum MarkupType
 {
     // ── Basic drawing primitives ──────────────────────────────────────────────
+    public MarkupRecord Clone()
+    {
+        return new MarkupRecord
+        {
+            Id = Id,
+            Type = Type,
+            Vertices = Vertices.ToList(),
+            BoundingRect = BoundingRect,
+            Radius = Radius,
+            ArcStartDeg = ArcStartDeg,
+            ArcSweepDeg = ArcSweepDeg,
+            RotationDegrees = RotationDegrees,
+            TextContent = TextContent,
+            HyperlinkUrl = HyperlinkUrl,
+            Status = Status,
+            StatusNote = StatusNote,
+            Replies = Replies.Select(reply => reply.Clone()).ToList(),
+            AssignedTo = AssignedTo,
+            LayerId = LayerId,
+            Appearance = new MarkupAppearance
+            {
+                StrokeColor = Appearance.StrokeColor,
+                StrokeWidth = Appearance.StrokeWidth,
+                FillColor = Appearance.FillColor,
+                Opacity = Appearance.Opacity,
+                FontFamily = Appearance.FontFamily,
+                FontSize = Appearance.FontSize,
+                HatchPattern = Appearance.HatchPattern,
+                DashArray = Appearance.DashArray
+            },
+            Metadata = new MarkupMetadata
+            {
+                Label = Metadata.Label,
+                Depth = Metadata.Depth,
+                Subject = Metadata.Subject,
+                Author = Metadata.Author,
+                CreatedUtc = Metadata.CreatedUtc,
+                ModifiedUtc = Metadata.ModifiedUtc,
+                CustomFields = Metadata.CustomFields.ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal)
+            },
+            ReviewSheetDisplayText = ReviewSheetDisplayText,
+            CutoutIds = CutoutIds.ToList()
+        };
+    }
     Polyline,
     Polygon,
     Rectangle,

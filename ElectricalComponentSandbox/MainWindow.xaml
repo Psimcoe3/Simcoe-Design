@@ -810,6 +810,56 @@
                                 <TextBlock Text="Reference URL:"/>
                                 <TextBox x:Name="ReferenceUrlTextBox"/>
                                 <Button Content="Open Reference" Click="OpenReference_Click" Margin="0,4,0,0"/>
+
+                                <TextBlock Text="Source &amp; Interop" FontWeight="Bold" Margin="0,10,0,0"/>
+                                <Border BorderBrush="#FFD7E0E7"
+                                        BorderThickness="1"
+                                        Background="#FFF8FBFD"
+                                        Padding="8"
+                                        Margin="0,4,0,0">
+                                    <StackPanel>
+                                        <TextBlock x:Name="ComponentInteropSummaryTextBlock"
+                                                   TextWrapping="Wrap"
+                                                   FontWeight="SemiBold"/>
+                                        <TextBlock Text="Source Document:" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                                        <TextBlock x:Name="ComponentInteropDocumentTextBlock"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="DimGray"/>
+                                        <TextBlock Text="Source Element:" FontWeight="SemiBold" Margin="0,6,0,0"/>
+                                        <TextBlock x:Name="ComponentInteropElementTextBlock"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="DimGray"/>
+                                        <TextBlock Text="Family / Type:" FontWeight="SemiBold" Margin="0,6,0,0"/>
+                                        <TextBlock x:Name="ComponentInteropFamilyTypeTextBlock"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="DimGray"/>
+                                        <TextBlock Text="Interchange Activity:" FontWeight="SemiBold" Margin="0,6,0,0"/>
+                                        <TextBlock x:Name="ComponentInteropExchangeTextBlock"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="DimGray"/>
+                                        <TextBlock Text="Source Review:" FontWeight="SemiBold" Margin="0,6,0,0"/>
+                                        <TextBlock x:Name="ComponentInteropReviewTextBlock"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="DimGray"/>
+                                        <WrapPanel Margin="0,8,0,0">
+                                            <Button x:Name="MarkInteropReviewedButton"
+                                                Content="Mark Reviewed"
+                                                Click="MarkInteropReviewed_Click"
+                                                Padding="8,2"
+                                                Margin="0,0,6,4"/>
+                                            <Button x:Name="MarkInteropNeedsChangesButton"
+                                                Content="Needs Changes"
+                                                Click="MarkInteropNeedsChanges_Click"
+                                                Padding="8,2"
+                                                Margin="0,0,6,4"/>
+                                            <Button x:Name="ClearInteropReviewButton"
+                                                Content="Clear Review"
+                                                Click="ClearInteropReview_Click"
+                                                Padding="8,2"
+                                                Margin="0,0,6,4"/>
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </Border>
                                 
                                 <!-- Conduit-specific Properties -->
                                 <StackPanel x:Name="ConduitProperties" Visibility="Collapsed">
@@ -851,6 +901,16 @@
                                           ItemsSource="{Binding MarkupTool.LayerFilterOptions}"
                                           SelectedItem="{Binding MarkupTool.LayerFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                           SelectionChanged="MarkupLayerFilter_Changed"/>
+                                <TextBlock Text="Author:" VerticalAlignment="Center" FontSize="11"/>
+                                <ComboBox x:Name="MarkupAuthorFilterCombo" Width="112" FontSize="11" Margin="3,0,8,0"
+                                          ItemsSource="{Binding MarkupTool.AuthorFilterOptions}"
+                                          SelectedItem="{Binding MarkupTool.AuthorFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          SelectionChanged="MarkupAuthorFilter_Changed"/>
+                                <TextBlock Text="Assignee:" VerticalAlignment="Center" FontSize="11"/>
+                                <ComboBox x:Name="MarkupAssigneeFilterCombo" Width="112" FontSize="11" Margin="3,0,8,0"
+                                          ItemsSource="{Binding MarkupTool.AssigneeFilterOptions}"
+                                          SelectedItem="{Binding MarkupTool.AssigneeFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          SelectionChanged="MarkupAssigneeFilter_Changed"/>
                                 <TextBlock Text="Search:" VerticalAlignment="Center" FontSize="11"/>
                                 <TextBox x:Name="MarkupSearchBox" Width="122" FontSize="11" Margin="3,0,8,0"
                                          ToolTip="Search labels, subjects, layers, and authors"
@@ -905,6 +965,26 @@
                                         ToolTip="{Binding MarkupTool.SelectedMarkupPathDeleteSummary}"/>
                                 <Button Content="Delete" Click="DeleteComponent_Click" Padding="8,2" Margin="0,0,6,4"/>
                                 <Button Content="Clear Filters" Command="{Binding MarkupTool.ClearFiltersCommand}" Padding="8,2" Margin="0,0,6,4"/>
+                                <Button x:Name="AssignVisibleMarkupsButton"
+                                    Content="Assign Visible"
+                                    Click="AssignVisibleMarkups_Click"
+                                    Padding="8,2"
+                                    Margin="0,0,6,4"/>
+                                <Button x:Name="ClaimVisibleMarkupsButton"
+                                    Content="Claim Visible"
+                                    Click="ClaimVisibleMarkups_Click"
+                                    Padding="8,2"
+                                    Margin="0,0,6,4"/>
+                                <Button x:Name="ResolveVisibleMarkupsButton"
+                                    Content="Resolve Visible"
+                                    Click="ResolveVisibleMarkups_Click"
+                                    Padding="8,2"
+                                    Margin="0,0,6,4"/>
+                                <Button x:Name="VoidVisibleMarkupsButton"
+                                    Content="Void Visible"
+                                    Click="VoidVisibleMarkups_Click"
+                                    Padding="8,2"
+                                    Margin="0,0,6,4"/>
                             </WrapPanel>
                             <Border x:Name="MarkupReviewBucketsCard"
                                     DockPanel.Dock="Top"
@@ -1031,6 +1111,12 @@
                                                             Padding="8,2"
                                                             Margin="0,0,6,4"
                                                             IsEnabled="{Binding MarkupTool.HasSelectedIssueGroup}"/>
+                                                    <Button x:Name="ClaimSelectedIssueGroupButton"
+                                                        Content="Claim"
+                                                        Click="ClaimSelectedIssueGroup_Click"
+                                                        Padding="8,2"
+                                                        Margin="0,0,6,4"
+                                                        IsEnabled="{Binding MarkupTool.HasSelectedIssueGroup}"/>
                                                     <Button x:Name="ApproveSelectedIssueGroupButton"
                                                             Content="Approve"
                                                             Click="ApproveSelectedIssueGroup_Click"
@@ -1056,7 +1142,200 @@
                                                             Margin="0,0,6,4"
                                                             IsEnabled="{Binding MarkupTool.HasSelectedIssueGroup}"/>
                                                 </WrapPanel>
-                                                <TextBlock Text="Batch status actions prompt for an optional reviewer note and add it to each affected issue thread."
+                                                <TextBlock Text="Assign and Claim update ownership immediately. Batch status actions prompt for an optional reviewer note and add it to each affected issue thread."
+                                                           Foreground="Gray"
+                                                           FontSize="10"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                            <Border x:Name="MarkupReviewSnapshotsCard"
+                                    DockPanel.Dock="Top"
+                                    Margin="4,0,4,6"
+                                    Padding="8"
+                                    Background="#FFF7F7F8"
+                                    BorderBrush="#FFD0D7DE"
+                                    BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock Text="Published Review Sets" FontWeight="Bold" FontSize="11" Margin="0,0,0,4"/>
+                                    <TextBlock x:Name="MarkupReviewSnapshotSummaryTextBlock"
+                                               TextWrapping="Wrap"
+                                               Margin="0,0,0,6"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="2*"/>
+                                            <ColumnDefinition Width="3*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Margin="0,0,8,0"
+                                                Padding="6"
+                                                Background="White"
+                                                BorderBrush="#FFE5E7EB"
+                                                BorderThickness="1">
+                                            <DockPanel>
+                                                <TextBlock DockPanel.Dock="Top"
+                                                           Text="Publish the current filtered review set to preserve an immutable issue snapshot in the project file, then compare it against the live review context as issues move or close."
+                                                           Foreground="Gray"
+                                                           FontSize="10"
+                                                           Margin="0,0,0,6"
+                                                           TextWrapping="Wrap"/>
+                                                <ListBox x:Name="MarkupReviewSnapshotListBox"
+                                                         BorderThickness="0"
+                                                         Background="Transparent"
+                                                         MinHeight="120"
+                                                         MaxHeight="200"
+                                                         SelectionChanged="MarkupReviewSnapshotListBox_SelectionChanged">
+                                                    <ListBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Margin="0,0,0,6"
+                                                                    Padding="6"
+                                                                    Background="#FFF9FAFB"
+                                                                    BorderBrush="#FFE5E7EB"
+                                                                    BorderThickness="1">
+                                                                <StackPanel>
+                                                                    <TextBlock TextWrapping="Wrap">
+                                                                        <Run Text="{Binding DisplayName}" FontWeight="SemiBold"/>
+                                                                    </TextBlock>
+                                                                    <TextBlock Text="{Binding SecondaryText}" Foreground="Gray" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                                                    <TextBlock Text="{Binding BreakdownText}" Foreground="#FF4B5563" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ListBox.ItemTemplate>
+                                                </ListBox>
+                                            </DockPanel>
+                                        </Border>
+                                        <Border Grid.Column="1"
+                                                Margin="8,0,0,0"
+                                                Padding="6"
+                                                Background="White"
+                                                BorderBrush="#FFE5E7EB"
+                                                BorderThickness="1">
+                                            <StackPanel>
+                                                <TextBlock Text="Snapshot Actions" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock x:Name="SelectedMarkupReviewSnapshotSummaryTextBlock"
+                                                           TextWrapping="Wrap"
+                                                           Margin="0,0,0,4"/>
+                                                <TextBlock x:Name="SelectedMarkupReviewSnapshotComparisonTextBlock"
+                                                           Foreground="Gray"
+                                                           FontSize="10"
+                                                           TextWrapping="Wrap"
+                                                           Margin="0,0,0,6"/>
+                                                <WrapPanel Margin="0,0,0,6">
+                                                    <Button x:Name="PublishMarkupReviewSnapshotButton"
+                                                            Content="Publish Current Review Set"
+                                                            Click="PublishMarkupReviewSnapshot_Click"
+                                                            Padding="8,2"
+                                                            Margin="0,0,6,4"/>
+                                                </WrapPanel>
+                                                <TextBlock Text="Published review sets stay immutable in the project file, which makes them safe baselines for handoff, coordination, and later issue-set comparisons."
+                                                           Foreground="Gray"
+                                                           FontSize="10"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                            <Border x:Name="InteropReviewQueueCard"
+                                    DockPanel.Dock="Top"
+                                    Margin="4,0,4,6"
+                                    Padding="8"
+                                    Background="#FFF7F7F8"
+                                    BorderBrush="#FFD0D7DE"
+                                    BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock Text="Imported Component Review" FontWeight="Bold" FontSize="11" Margin="0,0,0,4"/>
+                                    <TextBlock x:Name="InteropReviewSummaryTextBlock"
+                                               TextWrapping="Wrap"
+                                               Margin="0,0,0,6"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="2*"/>
+                                            <ColumnDefinition Width="3*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Margin="0,0,8,0"
+                                                Padding="6"
+                                                Background="White"
+                                                BorderBrush="#FFE5E7EB"
+                                                BorderThickness="1">
+                                            <DockPanel>
+                                                <TextBlock DockPanel.Dock="Top"
+                                                           Text="Group imported components by source document or source system, then select the affected source group or only the items still needing review."
+                                                           Foreground="Gray"
+                                                           FontSize="10"
+                                                           Margin="0,0,0,6"
+                                                           TextWrapping="Wrap"/>
+                                                <ListBox x:Name="InteropReviewGroupListBox"
+                                                         BorderThickness="0"
+                                                         Background="Transparent"
+                                                         MinHeight="120"
+                                                         MaxHeight="200"
+                                                         SelectionChanged="InteropReviewGroupListBox_SelectionChanged">
+                                                    <ListBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Margin="0,0,0,6"
+                                                                    Padding="6"
+                                                                    Background="#FFF9FAFB"
+                                                                    BorderBrush="#FFE5E7EB"
+                                                                    BorderThickness="1">
+                                                                <StackPanel>
+                                                                    <TextBlock TextWrapping="Wrap">
+                                                                        <Run Text="{Binding DisplayName}" FontWeight="SemiBold"/>
+                                                                        <Run Text="  |  "/>
+                                                                        <Run Text="{Binding Count}"/>
+                                                                        <Run Text=" component(s)"/>
+                                                                    </TextBlock>
+                                                                    <TextBlock Text="{Binding SecondaryText}" Foreground="Gray" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                                                    <TextBlock Text="{Binding BreakdownText}" Foreground="#FF4B5563" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ListBox.ItemTemplate>
+                                                </ListBox>
+                                            </DockPanel>
+                                        </Border>
+                                        <Border x:Name="SelectedInteropReviewGroupCard"
+                                                Grid.Column="1"
+                                                Margin="8,0,0,0"
+                                                Padding="6"
+                                                Background="White"
+                                                BorderBrush="#FFE5E7EB"
+                                                BorderThickness="1">
+                                            <StackPanel>
+                                                <TextBlock Text="Imported Review Actions" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock x:Name="SelectedInteropReviewGroupSummaryTextBlock"
+                                                           TextWrapping="Wrap"
+                                                           Margin="0,0,0,4"/>
+                                                <TextBlock x:Name="SelectedInteropReviewGroupActionSummaryTextBlock"
+                                                           Foreground="Gray"
+                                                           FontSize="10"
+                                                           TextWrapping="Wrap"
+                                                           Margin="0,0,0,6"/>
+                                                <WrapPanel Margin="0,0,0,6">
+                                                    <Button x:Name="SelectInteropReviewGroupButton"
+                                                            Content="Select Source Group"
+                                                            Click="SelectInteropReviewGroup_Click"
+                                                            Padding="8,2"
+                                                            Margin="0,0,6,4"/>
+                                                    <Button x:Name="SelectInteropReviewCandidatesButton"
+                                                            Content="Select Review Candidates"
+                                                            Click="SelectInteropReviewCandidates_Click"
+                                                            Padding="8,2"
+                                                            Margin="0,0,6,4"/>
+                                                    <Button x:Name="MarkInteropReviewGroupReviewedButton"
+                                                        Content="Mark Group Reviewed"
+                                                        Click="MarkInteropReviewGroupReviewed_Click"
+                                                        Padding="8,2"
+                                                        Margin="0,0,6,4"/>
+                                                    <Button x:Name="MarkInteropReviewGroupNeedsChangesButton"
+                                                        Content="Flag Group Needs Changes"
+                                                        Click="MarkInteropReviewGroupNeedsChanges_Click"
+                                                        Padding="8,2"
+                                                        Margin="0,0,6,4"/>
+                                                </WrapPanel>
+                                                <TextBlock Text="After selecting a group, use Component Details to mark the imported components reviewed or flag them as needing changes."
                                                            Foreground="Gray"
                                                            FontSize="10"
                                                            TextWrapping="Wrap"/>
@@ -1096,6 +1375,12 @@
                                                 Padding="8,2"
                                                 Margin="0,0,6,4"
                                                 IsEnabled="{Binding MarkupTool.HasSelectedMarkup}"/>
+                                        <Button x:Name="ClaimSelectedMarkupButton"
+                                            Content="Claim"
+                                            Click="ClaimSelectedMarkup_Click"
+                                            Padding="8,2"
+                                            Margin="0,0,6,4"
+                                            IsEnabled="{Binding MarkupTool.HasSelectedMarkup}"/>
                                         <Button x:Name="ApproveSelectedMarkupButton"
                                                 Content="Approve"
                                                 Click="ApproveMarkup_Click"
