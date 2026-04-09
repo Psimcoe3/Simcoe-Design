@@ -639,7 +639,7 @@ public partial class MainWindow
             CategoryKey: "header",
             CategoryDisplayText: string.Empty,
             Title: string.Empty,
-            SheetContextText: BuildMarkupReviewSnapshotDiffHeaderText(sheetContextText, issueCount),
+            SheetContextText: BuildMarkupReviewSnapshotDiffGroupHeaderText(sheetContextText, issueCount),
             DisplaySheetContextText: string.Empty,
             DetailText: string.Empty,
             RevealHintText: string.Empty,
@@ -649,8 +649,20 @@ public partial class MainWindow
             IsGroupHeader: true);
     }
 
-    private static string BuildMarkupReviewSnapshotDiffHeaderText(string sheetContextText, int issueCount)
-        => $"{sheetContextText} ({issueCount} issue{(issueCount == 1 ? string.Empty : "s")})";
+    private static string BuildMarkupReviewSnapshotDiffGroupHeaderText(string sheetContextText, int issueCount)
+        => $"{BuildMarkupReviewSnapshotDiffGroupHeaderSheetText(sheetContextText)} ({issueCount} issue{(issueCount == 1 ? string.Empty : "s")})";
+
+    private static string BuildMarkupReviewSnapshotDiffGroupHeaderSheetText(string sheetContextText)
+    {
+        const string snapshotSheetPrefix = "Snapshot sheet:";
+        if (!sheetContextText.StartsWith(snapshotSheetPrefix, StringComparison.Ordinal))
+            return sheetContextText;
+
+        var snapshotSheetName = sheetContextText[snapshotSheetPrefix.Length..].Trim();
+        return string.IsNullOrWhiteSpace(snapshotSheetName)
+            ? "Snapshot-only sheet"
+            : $"Snapshot-only sheet: {snapshotSheetName}";
+    }
 
     private static string NormalizeMarkupReviewSnapshotDiffSheetContextSortKey(string? sheetDisplayName)
         => string.IsNullOrWhiteSpace(sheetDisplayName) ? "~" : sheetDisplayName.Trim();

@@ -1681,13 +1681,14 @@ public partial class MainWindowMarkupInteractionTests
                 var deletedSheetDisplayName = secondSheet.DisplayName;
                 var deleted = viewModel.DeleteSheet(secondSheet);
                 var selectedSnapshot = window.SelectMarkupReviewSnapshotForTesting("All Sheets Snapshot");
+                var diffHeaders = window.GetMarkupReviewSnapshotDiffHeaderTextsForTesting();
                 var revealHint = window.GetMarkupReviewSnapshotDiffRevealHintForTesting("Missing on deleted lighting");
                 var sheetContext = window.GetMarkupReviewSnapshotDiffSheetContextForTesting("Missing on deleted lighting");
                 var selectedMissingIssue = window.SelectMarkupReviewSnapshotDiffEntryForTesting("Missing on deleted lighting");
                 var selectedSheetDisplayName = viewModel.SelectedSheet?.DisplayName;
                 var selectedMarkupId = viewModel.MarkupTool.SelectedMarkup?.Id;
 
-                return (published, deleted, selectedSnapshot, revealHint, sheetContext, selectedMissingIssue, selectedSheetDisplayName, selectedMarkupId, firstSheet.DisplayName, deletedSheetDisplayName);
+                return (published, deleted, selectedSnapshot, diffHeaders, revealHint, sheetContext, selectedMissingIssue, selectedSheetDisplayName, selectedMarkupId, firstSheet.DisplayName, deletedSheetDisplayName);
             }
             finally
             {
@@ -1698,6 +1699,7 @@ public partial class MainWindowMarkupInteractionTests
         Assert.True(outcome.published);
         Assert.True(outcome.deleted);
         Assert.True(outcome.selectedSnapshot);
+        Assert.Equal(new[] { $"Snapshot-only sheet: {outcome.deletedSheetDisplayName} (1 issue)" }, outcome.diffHeaders);
         Assert.Equal("Recorded sheet no longer exists in the current project.", outcome.revealHint);
         Assert.Equal($"Snapshot sheet: {outcome.deletedSheetDisplayName}", outcome.sheetContext);
         Assert.True(outcome.selectedMissingIssue);
