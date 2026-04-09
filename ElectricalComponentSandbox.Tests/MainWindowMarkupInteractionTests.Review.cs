@@ -1704,4 +1704,77 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(outcome.DisplayName, outcome.selectedSheetDisplayName);
         Assert.Null(outcome.selectedMarkupId);
     }
+
+    [Fact]
+    public void GetMarkupReviewSnapshotDiffTitlesForTesting_AllSheetsSnapshot_AreOrderedBySheetContext()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var firstSheet = viewModel.SelectedSheet ?? throw new InvalidOperationException("Expected a default sheet.");
+            firstSheet.Number = "E101";
+            firstSheet.Name = "Power Plan";
+
+            var secondSheet = viewModel.AddSheet("Lighting Plan");
+            secondSheet.Number = "E201";
+
+            var lightingMarkup = new MarkupRecord
+            {
+                Id = "snapshot-sort-lighting",
+                Type = MarkupType.Rectangle,
+                Status = MarkupStatus.Open,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Alpha lighting change",
+                    Author = "Casey"
+                }
+            };
+            lightingMarkup.UpdateBoundingRect();
+            viewModel.Markups.Add(lightingMarkup);
+
+            viewModel.MarkupTool.ReviewScope = MarkupReviewScope.AllSheets;
+            viewModel.MarkupTool.RefreshReviewContext();
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var published = window.PublishMarkupReviewSnapshotForTesting("All Sheets Snapshot", "Coordinator");
+
+                lightingMarkup.Status = MarkupStatus.Resolved;
+                viewModel.MarkupTool.RefreshReviewContext();
+
+                viewModel.SelectSheet(firstSheet);
+                var powerNewMarkup = new MarkupRecord
+                {
+                    Id = "snapshot-sort-power-new",
+                    Type = MarkupType.Text,
+                    Status = MarkupStatus.Open,
+                    TextContent = "New power issue",
+                    Vertices = { new Point(12, 6) },
+                    Metadata = new MarkupMetadata
+                    {
+                        Label = "Zulu power new",
+                        Author = "Paul"
+                    }
+                };
+                powerNewMarkup.UpdateBoundingRect();
+                viewModel.Markups.Add(powerNewMarkup);
+                viewModel.MarkupTool.RefreshReviewContext();
+
+                var selectedSnapshot = window.SelectMarkupReviewSnapshotForTesting("All Sheets Snapshot");
+                var diffTitles = window.GetMarkupReviewSnapshotDiffTitlesForTesting();
+
+                return (published, selectedSnapshot, diffTitles);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.published);
+        Assert.True(outcome.selectedSnapshot);
+        Assert.Equal(new[] { "Zulu power new", "Alpha lighting change" }, outcome.diffTitles);
+    }
 }

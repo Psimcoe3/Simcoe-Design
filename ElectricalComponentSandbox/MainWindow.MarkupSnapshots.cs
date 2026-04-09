@@ -402,6 +402,7 @@ public partial class MainWindow
 
         diffEntries.AddRange(newIssues.Select(BuildMarkupReviewSnapshotNewIssueEntry));
         diffEntries.AddRange(missingIssues.Select(markup => BuildMarkupReviewSnapshotMissingIssueEntry(markup, snapshot)));
+        diffEntries = SortMarkupReviewSnapshotDiffEntries(diffEntries);
 
         return new MarkupReviewSnapshotComparisonResult(
             IsEmptySnapshot: false,
@@ -490,23 +491,27 @@ public partial class MainWindow
             CategoryKey: "changed",
             CategoryDisplayText: "Changed",
             Title: BuildMarkupReviewSnapshotIssueLabel(currentMarkup),
-                SheetContextText: BuildMarkupReviewSnapshotLiveIssueSheetContextText(currentMarkup),
+            SheetContextText: BuildMarkupReviewSnapshotLiveIssueSheetContextText(currentMarkup),
             DetailText: string.Join("  |  ", deltas),
             RevealHintText: "Select to focus the live review issue.",
-            CurrentMarkupId: currentMarkup.Id);
+            CurrentMarkupId: currentMarkup.Id,
+            SheetContextSortKey: BuildMarkupReviewSnapshotLiveIssueSheetContextSortKey(currentMarkup),
+            CategorySortOrder: 0);
     }
 
-            private MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotNewIssueEntry(MarkupRecord markup)
+    private MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotNewIssueEntry(MarkupRecord markup)
     {
         return new MarkupReviewSnapshotDiffEntry(
             Key: $"new:{markup.Id}",
             CategoryKey: "new",
             CategoryDisplayText: "New",
             Title: BuildMarkupReviewSnapshotIssueLabel(markup),
-                SheetContextText: BuildMarkupReviewSnapshotLiveIssueSheetContextText(markup),
+            SheetContextText: BuildMarkupReviewSnapshotLiveIssueSheetContextText(markup),
             DetailText: "Added after snapshot publication.",
             RevealHintText: "Select to focus the live review issue.",
-            CurrentMarkupId: markup.Id);
+            CurrentMarkupId: markup.Id,
+            SheetContextSortKey: BuildMarkupReviewSnapshotLiveIssueSheetContextSortKey(markup),
+            CategorySortOrder: 1);
     }
 
     private MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotMissingIssueEntry(MarkupRecord markup, MarkupReviewSnapshot snapshot)
@@ -536,7 +541,9 @@ public partial class MainWindow
             RevealHintText: revealHintText,
             CurrentMarkupId: null,
             SourceSheetId: sourceSheetId,
-            SourceSheetDisplayName: sourceSheetDisplayName);
+            SourceSheetDisplayName: sourceSheetDisplayName,
+            SheetContextSortKey: BuildMarkupReviewSnapshotMissingIssueSheetContextSortKey(sourceSheetId, sourceSheetDisplayName),
+            CategorySortOrder: 2);
     }
 
     private string BuildMarkupReviewSnapshotLiveIssueSheetContextText(MarkupRecord markup)
@@ -546,6 +553,9 @@ public partial class MainWindow
             ? "Sheet: (unknown)"
             : $"Sheet: {sheetDisplayName}";
     }
+
+    private string BuildMarkupReviewSnapshotLiveIssueSheetContextSortKey(MarkupRecord markup)
+        => NormalizeMarkupReviewSnapshotDiffSheetContextSortKey(_viewModel.GetMarkupSheetDisplayName(markup));
 
     private string BuildMarkupReviewSnapshotMissingIssueSheetContextText(string? sourceSheetId, string? sourceSheetDisplayName)
     {
@@ -558,6 +568,24 @@ public partial class MainWindow
 
         return "Snapshot sheet: (unknown)";
     }
+
+    private string BuildMarkupReviewSnapshotMissingIssueSheetContextSortKey(string? sourceSheetId, string? sourceSheetDisplayName)
+    {
+        var resolvedSheet = ResolveMarkupReviewSnapshotDiffSheet(sourceSheetId, sourceSheetDisplayName);
+        return NormalizeMarkupReviewSnapshotDiffSheetContextSortKey(resolvedSheet?.DisplayName ?? sourceSheetDisplayName);
+    }
+
+    private static List<MarkupReviewSnapshotDiffEntry> SortMarkupReviewSnapshotDiffEntries(IEnumerable<MarkupReviewSnapshotDiffEntry> diffEntries)
+    {
+        return diffEntries
+            .OrderBy(entry => entry.SheetContextSortKey, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(entry => entry.CategorySortOrder)
+            .ThenBy(entry => entry.Title, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string NormalizeMarkupReviewSnapshotDiffSheetContextSortKey(string? sheetDisplayName)
+        => string.IsNullOrWhiteSpace(sheetDisplayName) ? "~" : sheetDisplayName.Trim();
 
     private void RevealMarkupReviewSnapshotSheetContext(MarkupReviewSnapshotDiffEntry entry)
     {
@@ -684,7 +712,9 @@ internal sealed record MarkupReviewSnapshotDiffEntry(
     string RevealHintText,
     string? CurrentMarkupId,
     string? SourceSheetId = null,
-    string? SourceSheetDisplayName = null)
+    string? SourceSheetDisplayName = null,
+    string SheetContextSortKey = "~",
+    int CategorySortOrder = int.MaxValue)
 {
     public bool CanRevealLiveMarkup => !string.IsNullOrWhiteSpace(CurrentMarkupId);
 }
