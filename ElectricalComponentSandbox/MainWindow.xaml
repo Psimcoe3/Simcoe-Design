@@ -1228,7 +1228,7 @@
                                                            TextWrapping="Wrap"
                                                            Margin="0,0,0,6"/>
                                                 <TextBlock Text="Issue Diff" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                                                <TextBlock Text="Select a changed or new issue to focus the live markup. Missing issues stay snapshot-only for comparison."
+                                                <TextBlock Text="Select a changed or new issue to focus the live markup. Missing issues switch to their recorded sheet context when that sheet still exists; otherwise they stay snapshot-only."
                                                            Foreground="Gray"
                                                            FontSize="10"
                                                            TextWrapping="Wrap"
@@ -1267,6 +1267,12 @@
                                                             Click="PublishMarkupReviewSnapshot_Click"
                                                             Padding="8,2"
                                                             Margin="0,0,6,4"/>
+                                                    <Button x:Name="RenameMarkupReviewSnapshotButton"
+                                                        Content="Rename Selected Review Set"
+                                                        Click="RenameSelectedMarkupReviewSnapshot_Click"
+                                                        Padding="8,2"
+                                                        Margin="0,0,6,4"
+                                                        IsEnabled="False"/>
                                                     <Button x:Name="DeleteMarkupReviewSnapshotButton"
                                                         Content="Delete Selected Review Set"
                                                         Click="DeleteSelectedMarkupReviewSnapshot_Click"

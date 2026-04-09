@@ -920,7 +920,10 @@ public class MainViewModel : INotifyPropertyChanged
         sheet.PdfUnderlay = project.PdfUnderlay;
         sheet.PlotLayout = project.PlotLayout;
         foreach (var markup in sheet.Markups)
+        {
+            markup.ReviewSheetId = sheet.Id;
             markup.ReviewSheetDisplayText = sheet.DisplayName;
+        }
         return sheet;
     }
 
@@ -1129,6 +1132,10 @@ public class MainViewModel : INotifyPropertyChanged
             ? Environment.UserName
             : actor.Trim();
 
+        var snapshotMarkups = GetFilteredReviewMarkups()
+            .Select(CreateMarkupReviewSnapshotMarkupClone)
+            .ToList();
+
         var snapshot = new MarkupReviewSnapshot
         {
             Name = normalizedName,
@@ -1142,7 +1149,7 @@ public class MainViewModel : INotifyPropertyChanged
                 : string.Empty,
             SourceSheetDisplayName = SelectedSheet?.DisplayName ?? string.Empty,
             FilterSummary = filterSummary?.Trim() ?? string.Empty,
-            Markups = GetFilteredReviewMarkups().Select(markup => markup.Clone()).ToList()
+            Markups = snapshotMarkups
         };
 
         MarkupReviewSnapshots.Insert(0, snapshot);
@@ -1160,6 +1167,20 @@ public class MainViewModel : INotifyPropertyChanged
             return false;
 
         MarkupReviewSnapshots.Remove(snapshot);
+        OnPropertyChanged(nameof(MarkupReviewSnapshots));
+        return true;
+    }
+
+    public bool RenameMarkupReviewSnapshot(string snapshotId, string? name)
+    {
+        if (string.IsNullOrWhiteSpace(snapshotId))
+            return false;
+
+        var snapshot = MarkupReviewSnapshots.FirstOrDefault(candidate => string.Equals(candidate.Id, snapshotId, StringComparison.Ordinal));
+        if (snapshot == null)
+            return false;
+
+        snapshot.Name = name?.Trim() ?? string.Empty;
         OnPropertyChanged(nameof(MarkupReviewSnapshots));
         return true;
     }
@@ -1258,6 +1279,14 @@ public class MainViewModel : INotifyPropertyChanged
 
     public string GetMarkupSheetDisplayName(MarkupRecord markup)
     {
+        var markupSheetId = GetMarkupSheetId(markup);
+        if (!string.IsNullOrWhiteSpace(markupSheetId))
+        {
+            var sheetById = Sheets.FirstOrDefault(sheet => string.Equals(sheet.Id, markupSheetId, StringComparison.Ordinal));
+            if (sheetById != null)
+                return sheetById.DisplayName;
+        }
+
         if (!string.IsNullOrWhiteSpace(markup.ReviewSheetDisplayText))
             return markup.ReviewSheetDisplayText;
 
@@ -1268,6 +1297,31 @@ public class MainViewModel : INotifyPropertyChanged
         }
 
         return SelectedSheet?.DisplayName ?? string.Empty;
+    }
+
+    public string GetMarkupSheetId(MarkupRecord markup)
+    {
+        if (!string.IsNullOrWhiteSpace(markup.ReviewSheetId))
+            return markup.ReviewSheetId;
+
+        foreach (var sheet in Sheets)
+        {
+            if (sheet.Markups.Any(candidate => string.Equals(candidate.Id, markup.Id, StringComparison.Ordinal)))
+                return sheet.Id;
+        }
+
+        if (SelectedSheet != null && Markups.Any(candidate => string.Equals(candidate.Id, markup.Id, StringComparison.Ordinal)))
+            return SelectedSheet.Id;
+
+        return string.Empty;
+    }
+
+    private MarkupRecord CreateMarkupReviewSnapshotMarkupClone(MarkupRecord markup)
+    {
+        var clone = markup.Clone();
+        clone.ReviewSheetId = GetMarkupSheetId(markup);
+        clone.ReviewSheetDisplayText = GetMarkupSheetDisplayName(markup);
+        return clone;
     }
 
     public bool RevealMarkup(MarkupRecord? markup)
@@ -2496,15 +2550,27 @@ public class MainViewModel : INotifyPropertyChanged
     private void RefreshMarkupReviewContext()
     {
         foreach (var sheet in Sheets)
-            UpdateSheetMarkupReviewContext(sheet);
+        {
+            if (ReferenceEquals(sheet, SelectedSheet))
+            {
+                UpdateSheetMarkupReviewContext(sheet, Markups);
+            }
+            else
+            {
+                UpdateSheetMarkupReviewContext(sheet);
+            }
+        }
 
         MarkupTool?.RefreshReviewContext();
     }
 
-    private static void UpdateSheetMarkupReviewContext(DrawingSheet sheet)
+    private static void UpdateSheetMarkupReviewContext(DrawingSheet sheet, IEnumerable<MarkupRecord>? markups = null)
     {
-        foreach (var markup in sheet.Markups)
+        foreach (var markup in markups ?? sheet.Markups)
+        {
+            markup.ReviewSheetId = sheet.Id;
             markup.ReviewSheetDisplayText = sheet.DisplayName;
+        }
     }
 
     private string BuildDefaultMarkupReviewSnapshotName()

@@ -284,6 +284,7 @@ public class MarkupRecord
     public string ModifiedDisplayText => FormatUtcForDisplay(Metadata.ModifiedUtc);
     public int ReplyCount => Replies.Count;
     public string ReplyCountDisplayText => ReplyCount.ToString(CultureInfo.CurrentCulture);
+    public string ReviewSheetId { get; set; } = string.Empty;
     [JsonIgnore]
     public string ReviewSheetDisplayText { get; set; } = string.Empty;
 
@@ -367,6 +368,7 @@ public class MarkupRecord
                 ModifiedUtc = Metadata.ModifiedUtc,
                 CustomFields = Metadata.CustomFields.ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal)
             },
+            ReviewSheetId = ReviewSheetId,
             ReviewSheetDisplayText = ReviewSheetDisplayText,
             CutoutIds = CutoutIds.ToList()
         };

@@ -1304,7 +1304,7 @@ public partial class MainWindowMarkupInteractionTests
         Assert.True(outcome.selectedNewIssue);
         Assert.Equal("snapshot-new", outcome.selectedMarkupIdAfterNewIssue);
         Assert.True(outcome.selectedMissingIssue);
-        Assert.Equal("snapshot-new", outcome.selectedMarkupIdAfterMissingIssue);
+        Assert.Null(outcome.selectedMarkupIdAfterMissingIssue);
     }
 
     [Fact]
@@ -1410,5 +1410,290 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Single(outcome.displayNames);
         Assert.Equal("Snapshot A", outcome.displayNames[0]);
         Assert.Contains("Snapshot A", outcome.selectedSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RenameSelectedMarkupReviewSnapshotForTesting_UpdatesDisplayNameAndRetainsSelection()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var markup = new MarkupRecord
+            {
+                Id = "snapshot-rename",
+                Type = MarkupType.Rectangle,
+                Status = MarkupStatus.Open,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Rename candidate",
+                    Author = "Paul"
+                }
+            };
+            markup.UpdateBoundingRect();
+            viewModel.Markups.Add(markup);
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var firstPublished = window.PublishMarkupReviewSnapshotForTesting("Snapshot A", "Coordinator");
+
+                markup.Status = MarkupStatus.Resolved;
+                viewModel.MarkupTool.RefreshReviewContext();
+
+                var secondPublished = window.PublishMarkupReviewSnapshotForTesting("Snapshot B", "Coordinator");
+                var selected = window.SelectMarkupReviewSnapshotForTesting("Snapshot A");
+                var renamed = window.RenameSelectedMarkupReviewSnapshotForTesting("Coordination Baseline");
+                var displayNames = window.GetMarkupReviewSnapshotDisplayNamesForTesting();
+                var selectedSummary = window.GetSelectedMarkupReviewSnapshotSummaryForTesting();
+
+                return (firstPublished, secondPublished, selected, renamed, displayNames, selectedSummary);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.firstPublished);
+        Assert.True(outcome.secondPublished);
+        Assert.True(outcome.selected);
+        Assert.True(outcome.renamed);
+        Assert.Equal(new[] { "Snapshot B", "Coordination Baseline" }, outcome.displayNames);
+        Assert.Contains("Coordination Baseline", outcome.selectedSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SelectMarkupReviewSnapshotDiffEntryForTesting_MissingIssue_SwitchesToRecordedSheetContext()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var firstSheet = viewModel.SelectedSheet ?? throw new InvalidOperationException("Expected a default sheet.");
+            firstSheet.Number = "E101";
+            firstSheet.Name = "Power Plan";
+
+            var liveMarkup = new MarkupRecord
+            {
+                Id = "snapshot-live",
+                Type = MarkupType.Rectangle,
+                Status = MarkupStatus.Open,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Live issue",
+                    Author = "Paul"
+                }
+            };
+            liveMarkup.UpdateBoundingRect();
+            viewModel.Markups.Add(liveMarkup);
+
+            var secondSheet = viewModel.AddSheet("Lighting Plan");
+            secondSheet.Number = "E201";
+
+            var missingMarkup = new MarkupRecord
+            {
+                Id = "snapshot-missing-sheet",
+                Type = MarkupType.Rectangle,
+                Status = MarkupStatus.Open,
+                Vertices = { new Point(12, 0), new Point(22, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Missing on lighting",
+                    Author = "Casey"
+                }
+            };
+            missingMarkup.UpdateBoundingRect();
+            viewModel.Markups.Add(missingMarkup);
+
+            viewModel.MarkupTool.ReviewScope = MarkupReviewScope.AllSheets;
+            viewModel.MarkupTool.RefreshReviewContext();
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var published = window.PublishMarkupReviewSnapshotForTesting("All Sheets Snapshot", "Coordinator");
+
+                viewModel.Markups.Remove(missingMarkup);
+                viewModel.MarkupTool.RefreshReviewContext();
+
+                viewModel.SelectSheet(firstSheet);
+                viewModel.MarkupTool.SelectedMarkup = viewModel.Markups.FirstOrDefault(markup => string.Equals(markup.Id, liveMarkup.Id, StringComparison.Ordinal));
+
+                var selectedSnapshot = window.SelectMarkupReviewSnapshotForTesting("All Sheets Snapshot");
+                var selectedMissingIssue = window.SelectMarkupReviewSnapshotDiffEntryForTesting("Missing on lighting");
+                var selectedSheetDisplayName = viewModel.SelectedSheet?.DisplayName;
+                var selectedMarkupId = viewModel.MarkupTool.SelectedMarkup?.Id;
+
+                return (published, selectedSnapshot, selectedMissingIssue, selectedSheetDisplayName, selectedMarkupId, secondSheet.DisplayName);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.published);
+        Assert.True(outcome.selectedSnapshot);
+        Assert.True(outcome.selectedMissingIssue);
+        Assert.Equal(outcome.DisplayName, outcome.selectedSheetDisplayName);
+        Assert.Null(outcome.selectedMarkupId);
+    }
+
+    [Fact]
+    public void SelectMarkupReviewSnapshotDiffEntryForTesting_MissingIssue_UsesRecordedSheetIdAfterSheetRename()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var firstSheet = viewModel.SelectedSheet ?? throw new InvalidOperationException("Expected a default sheet.");
+            firstSheet.Number = "E101";
+            firstSheet.Name = "Power Plan";
+
+            var liveMarkup = new MarkupRecord
+            {
+                Id = "snapshot-live-rename",
+                Type = MarkupType.Rectangle,
+                Status = MarkupStatus.Open,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Live issue",
+                    Author = "Paul"
+                }
+            };
+            liveMarkup.UpdateBoundingRect();
+            viewModel.Markups.Add(liveMarkup);
+
+            var secondSheet = viewModel.AddSheet("Lighting Plan");
+            secondSheet.Number = "E201";
+
+            var missingMarkup = new MarkupRecord
+            {
+                Id = "snapshot-missing-renamed-sheet",
+                Type = MarkupType.Rectangle,
+                Status = MarkupStatus.Open,
+                Vertices = { new Point(12, 0), new Point(22, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Missing on renamed lighting",
+                    Author = "Casey"
+                }
+            };
+            missingMarkup.UpdateBoundingRect();
+            viewModel.Markups.Add(missingMarkup);
+
+            viewModel.MarkupTool.ReviewScope = MarkupReviewScope.AllSheets;
+            viewModel.MarkupTool.RefreshReviewContext();
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var published = window.PublishMarkupReviewSnapshotForTesting("All Sheets Snapshot", "Coordinator");
+
+                secondSheet.Name = "Renamed Lighting Plan";
+                viewModel.MarkupTool.RefreshReviewContext();
+
+                viewModel.Markups.Remove(missingMarkup);
+                viewModel.MarkupTool.RefreshReviewContext();
+
+                viewModel.SelectSheet(firstSheet);
+                viewModel.MarkupTool.SelectedMarkup = viewModel.Markups.FirstOrDefault(markup => string.Equals(markup.Id, liveMarkup.Id, StringComparison.Ordinal));
+
+                var selectedSnapshot = window.SelectMarkupReviewSnapshotForTesting("All Sheets Snapshot");
+                var selectedMissingIssue = window.SelectMarkupReviewSnapshotDiffEntryForTesting("Missing on renamed lighting");
+                var selectedSheetDisplayName = viewModel.SelectedSheet?.DisplayName;
+                var selectedMarkupId = viewModel.MarkupTool.SelectedMarkup?.Id;
+
+                return (published, selectedSnapshot, selectedMissingIssue, selectedSheetDisplayName, selectedMarkupId, secondSheet.DisplayName);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.published);
+        Assert.True(outcome.selectedSnapshot);
+        Assert.True(outcome.selectedMissingIssue);
+        Assert.Equal(outcome.DisplayName, outcome.selectedSheetDisplayName);
+        Assert.Null(outcome.selectedMarkupId);
+    }
+
+    [Fact]
+    public void SelectMarkupReviewSnapshotDiffEntryForTesting_MissingIssue_WithDeletedSheet_ShowsUnavailableHintAndClearsSelection()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var firstSheet = viewModel.SelectedSheet ?? throw new InvalidOperationException("Expected a default sheet.");
+            firstSheet.Number = "E101";
+            firstSheet.Name = "Power Plan";
+
+            var liveMarkup = new MarkupRecord
+            {
+                Id = "snapshot-live-deleted-sheet",
+                Type = MarkupType.Rectangle,
+                Status = MarkupStatus.Open,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Live issue",
+                    Author = "Paul"
+                }
+            };
+            liveMarkup.UpdateBoundingRect();
+            viewModel.Markups.Add(liveMarkup);
+
+            var secondSheet = viewModel.AddSheet("Lighting Plan");
+            secondSheet.Number = "E201";
+
+            var missingMarkup = new MarkupRecord
+            {
+                Id = "snapshot-missing-deleted-sheet",
+                Type = MarkupType.Rectangle,
+                Status = MarkupStatus.Open,
+                Vertices = { new Point(12, 0), new Point(22, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Missing on deleted lighting",
+                    Author = "Casey"
+                }
+            };
+            missingMarkup.UpdateBoundingRect();
+            viewModel.Markups.Add(missingMarkup);
+
+            viewModel.MarkupTool.ReviewScope = MarkupReviewScope.AllSheets;
+            viewModel.MarkupTool.RefreshReviewContext();
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var published = window.PublishMarkupReviewSnapshotForTesting("All Sheets Snapshot", "Coordinator");
+
+                viewModel.SelectSheet(firstSheet);
+                viewModel.MarkupTool.SelectedMarkup = viewModel.Markups.FirstOrDefault(markup => string.Equals(markup.Id, liveMarkup.Id, StringComparison.Ordinal));
+                var deleted = viewModel.DeleteSheet(secondSheet);
+                var selectedSnapshot = window.SelectMarkupReviewSnapshotForTesting("All Sheets Snapshot");
+                var revealHint = window.GetMarkupReviewSnapshotDiffRevealHintForTesting("Missing on deleted lighting");
+                var selectedMissingIssue = window.SelectMarkupReviewSnapshotDiffEntryForTesting("Missing on deleted lighting");
+                var selectedSheetDisplayName = viewModel.SelectedSheet?.DisplayName;
+                var selectedMarkupId = viewModel.MarkupTool.SelectedMarkup?.Id;
+
+                return (published, deleted, selectedSnapshot, revealHint, selectedMissingIssue, selectedSheetDisplayName, selectedMarkupId, firstSheet.DisplayName);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.published);
+        Assert.True(outcome.deleted);
+        Assert.True(outcome.selectedSnapshot);
+        Assert.Equal("Recorded sheet no longer exists in the current project.", outcome.revealHint);
+        Assert.True(outcome.selectedMissingIssue);
+        Assert.Equal(outcome.DisplayName, outcome.selectedSheetDisplayName);
+        Assert.Null(outcome.selectedMarkupId);
     }
 }

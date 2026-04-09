@@ -17,6 +17,9 @@ public partial class MainWindow
     internal bool DeleteSelectedMarkupReviewSnapshotForTesting()
         => TryDeleteSelectedMarkupReviewSnapshot(confirmDeletion: false, showFeedbackIfUnavailable: false);
 
+    internal bool RenameSelectedMarkupReviewSnapshotForTesting(string name)
+        => TryRenameSelectedMarkupReviewSnapshot(name, showFeedbackIfUnavailable: false);
+
     internal IReadOnlyList<string> GetMarkupReviewSnapshotDisplayNamesForTesting()
     {
         UpdateMarkupReviewSnapshotUi();
@@ -63,6 +66,15 @@ public partial class MainWindow
             .ToList() ?? new List<string>();
     }
 
+    internal string GetMarkupReviewSnapshotDiffRevealHintForTesting(string title)
+    {
+        UpdateMarkupReviewSnapshotUi();
+        return MarkupReviewSnapshotDiffListBox?.Items
+            .OfType<MarkupReviewSnapshotDiffEntry>()
+            .FirstOrDefault(candidate => string.Equals(candidate.Title, title, StringComparison.OrdinalIgnoreCase))
+            ?.RevealHintText ?? string.Empty;
+    }
+
     internal bool SelectMarkupReviewSnapshotDiffEntryForTesting(string title)
     {
         UpdateMarkupReviewSnapshotUi();
@@ -94,6 +106,26 @@ public partial class MainWindow
     private void DeleteSelectedMarkupReviewSnapshot_Click(object sender, RoutedEventArgs e)
         => TryDeleteSelectedMarkupReviewSnapshot(confirmDeletion: true, showFeedbackIfUnavailable: true);
 
+    private void RenameSelectedMarkupReviewSnapshot_Click(object sender, RoutedEventArgs e)
+    {
+        var snapshot = GetSelectedMarkupReviewSnapshot();
+        if (snapshot == null)
+        {
+            MessageBox.Show("Select a published review set first.", "Rename Review Set",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var input = PromptInput(
+            "Rename Review Set",
+            "Enter a new title for the selected published review set. Leave blank to use the default timestamp label:",
+            snapshot.Name);
+        if (input == null)
+            return;
+
+        TryRenameSelectedMarkupReviewSnapshot(input, showFeedbackIfUnavailable: true);
+    }
+
     private bool TryPublishMarkupReviewSnapshot(string name, string actor, bool showFeedbackIfUnavailable)
     {
         var reviewMarkups = _viewModel.GetFilteredReviewMarkups();
@@ -119,8 +151,7 @@ public partial class MainWindow
 
     private bool TryDeleteSelectedMarkupReviewSnapshot(bool confirmDeletion, bool showFeedbackIfUnavailable)
     {
-        var snapshot = MarkupReviewSnapshotListBox?.SelectedItem as MarkupReviewSnapshot
-            ?? _viewModel.MarkupReviewSnapshots.FirstOrDefault(candidate => string.Equals(candidate.Id, _selectedMarkupReviewSnapshotId, StringComparison.Ordinal));
+        var snapshot = GetSelectedMarkupReviewSnapshot();
         if (snapshot == null)
         {
             if (showFeedbackIfUnavailable)
@@ -156,6 +187,38 @@ public partial class MainWindow
         return true;
     }
 
+    private bool TryRenameSelectedMarkupReviewSnapshot(string name, bool showFeedbackIfUnavailable)
+    {
+        var snapshot = GetSelectedMarkupReviewSnapshot();
+        if (snapshot == null)
+        {
+            if (showFeedbackIfUnavailable)
+            {
+                MessageBox.Show("Select a published review set first.", "Rename Review Set",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return false;
+        }
+
+        var previousDisplayName = snapshot.DisplayName;
+        var renamed = _viewModel.RenameMarkupReviewSnapshot(snapshot.Id, name);
+        if (!renamed)
+            return false;
+
+        _selectedMarkupReviewSnapshotId = snapshot.Id;
+        UpdateMarkupReviewSnapshotUi();
+        ActionLogService.Instance.Log(LogCategory.Component,
+            "Review snapshot renamed", $"Id: {snapshot.Id}, Name: {previousDisplayName} -> {snapshot.DisplayName}");
+        return true;
+    }
+
+    private MarkupReviewSnapshot? GetSelectedMarkupReviewSnapshot()
+    {
+        return MarkupReviewSnapshotListBox?.SelectedItem as MarkupReviewSnapshot
+            ?? _viewModel.MarkupReviewSnapshots.FirstOrDefault(candidate => string.Equals(candidate.Id, _selectedMarkupReviewSnapshotId, StringComparison.Ordinal));
+    }
+
     private void MarkupReviewSnapshotListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         _selectedMarkupReviewSnapshotId = (MarkupReviewSnapshotListBox?.SelectedItem as MarkupReviewSnapshot)?.Id;
@@ -164,24 +227,29 @@ public partial class MainWindow
 
     private void MarkupReviewSnapshotDiffListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (MarkupReviewSnapshotDiffListBox?.SelectedItem is not MarkupReviewSnapshotDiffEntry entry ||
-            !entry.CanRevealLiveMarkup ||
-            string.IsNullOrWhiteSpace(entry.CurrentMarkupId))
+        if (MarkupReviewSnapshotDiffListBox?.SelectedItem is not MarkupReviewSnapshotDiffEntry entry)
         {
             return;
         }
 
-        var markup = _viewModel.GetFilteredReviewMarkups()
-            .FirstOrDefault(candidate => string.Equals(candidate.Id, entry.CurrentMarkupId, StringComparison.Ordinal));
-        if (markup == null)
-            return;
-
-        if (_viewModel.RevealMarkup(markup))
+        if (entry.CanRevealLiveMarkup && !string.IsNullOrWhiteSpace(entry.CurrentMarkupId))
         {
-            SelectInspectorTab(MarkupsInspectorTab);
-            MarkupListView?.ScrollIntoView(_viewModel.MarkupTool.SelectedMarkup);
-            QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+            var markup = _viewModel.GetFilteredReviewMarkups()
+                .FirstOrDefault(candidate => string.Equals(candidate.Id, entry.CurrentMarkupId, StringComparison.Ordinal));
+            if (markup == null)
+                return;
+
+            if (_viewModel.RevealMarkup(markup))
+            {
+                SelectInspectorTab(MarkupsInspectorTab);
+                MarkupListView?.ScrollIntoView(_viewModel.MarkupTool.SelectedMarkup);
+                QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+            }
+
+            return;
         }
+
+        RevealMarkupReviewSnapshotSheetContext(entry);
     }
 
     private void UpdateMarkupReviewSnapshotUi()
@@ -193,6 +261,7 @@ public partial class MainWindow
             SelectedMarkupReviewSnapshotDetailsTextBlock == null ||
             MarkupReviewSnapshotDiffListBox == null ||
             PublishMarkupReviewSnapshotButton == null ||
+            RenameMarkupReviewSnapshotButton == null ||
             DeleteMarkupReviewSnapshotButton == null)
         {
             return;
@@ -208,6 +277,7 @@ public partial class MainWindow
         var selectedSnapshot = snapshots.FirstOrDefault(snapshot => string.Equals(snapshot.Id, retainedSnapshotId, StringComparison.Ordinal))
             ?? snapshots.FirstOrDefault();
         MarkupReviewSnapshotListBox.SelectedItem = selectedSnapshot;
+        RenameMarkupReviewSnapshotButton.IsEnabled = selectedSnapshot != null;
         DeleteMarkupReviewSnapshotButton.IsEnabled = selectedSnapshot != null;
         _selectedMarkupReviewSnapshotId = selectedSnapshot?.Id;
         UpdateSelectedMarkupReviewSnapshotUi(selectedSnapshot);
@@ -232,6 +302,7 @@ public partial class MainWindow
             SelectedMarkupReviewSnapshotComparisonTextBlock == null ||
             SelectedMarkupReviewSnapshotDetailsTextBlock == null ||
             MarkupReviewSnapshotDiffListBox == null ||
+            RenameMarkupReviewSnapshotButton == null ||
             DeleteMarkupReviewSnapshotButton == null)
         {
             return;
@@ -239,6 +310,7 @@ public partial class MainWindow
 
         if (snapshot == null)
         {
+            RenameMarkupReviewSnapshotButton.IsEnabled = false;
             DeleteMarkupReviewSnapshotButton.IsEnabled = false;
             SelectedMarkupReviewSnapshotSummaryTextBlock.Text = "Select a published review set to inspect its saved scope, filters, and issue counts.";
             SelectedMarkupReviewSnapshotComparisonTextBlock.Text = string.Empty;
@@ -247,6 +319,7 @@ public partial class MainWindow
             return;
         }
 
+        RenameMarkupReviewSnapshotButton.IsEnabled = true;
         DeleteMarkupReviewSnapshotButton.IsEnabled = true;
         var comparison = BuildMarkupReviewSnapshotComparison(snapshot);
         SelectedMarkupReviewSnapshotSummaryTextBlock.Text = BuildSelectedMarkupReviewSnapshotSummary(snapshot);
@@ -319,7 +392,7 @@ public partial class MainWindow
             .ToList();
 
         diffEntries.AddRange(newIssues.Select(BuildMarkupReviewSnapshotNewIssueEntry));
-        diffEntries.AddRange(missingIssues.Select(BuildMarkupReviewSnapshotMissingIssueEntry));
+        diffEntries.AddRange(missingIssues.Select(markup => BuildMarkupReviewSnapshotMissingIssueEntry(markup, snapshot)));
 
         return new MarkupReviewSnapshotComparisonResult(
             IsEmptySnapshot: false,
@@ -425,16 +498,78 @@ public partial class MainWindow
             CurrentMarkupId: markup.Id);
     }
 
-    private static MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotMissingIssueEntry(MarkupRecord markup)
+    private MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotMissingIssueEntry(MarkupRecord markup, MarkupReviewSnapshot snapshot)
     {
+        var sourceSheetDisplayName = string.IsNullOrWhiteSpace(markup.ReviewSheetDisplayText)
+            ? snapshot.SourceSheetDisplayName
+            : markup.ReviewSheetDisplayText.Trim();
+        var sourceSheetId = !string.IsNullOrWhiteSpace(markup.ReviewSheetId)
+            ? markup.ReviewSheetId.Trim()
+            : (snapshot.Scope == MarkupReviewSnapshotScope.CurrentSheet ? snapshot.SourceSheetId : string.Empty);
+        var canResolveRecordedSheet = CanResolveMarkupReviewSnapshotDiffSheet(sourceSheetId, sourceSheetDisplayName);
+        var detailText = string.IsNullOrWhiteSpace(sourceSheetDisplayName)
+            ? "Not present in the current filtered review set."
+            : $"Not present in the current filtered review set. Snapshot sheet: {sourceSheetDisplayName}.";
+        var revealHintText = string.IsNullOrWhiteSpace(sourceSheetDisplayName) && string.IsNullOrWhiteSpace(sourceSheetId)
+            ? "Snapshot only - no sheet context is available to focus."
+            : canResolveRecordedSheet
+                ? "Select to switch to the recorded sheet context."
+                : "Recorded sheet no longer exists in the current project.";
+
         return new MarkupReviewSnapshotDiffEntry(
             Key: $"missing:{markup.Id}",
             CategoryKey: "missing",
             CategoryDisplayText: "Missing",
             Title: BuildMarkupReviewSnapshotIssueLabel(markup),
-            DetailText: "Not present in the current filtered review set.",
-            RevealHintText: "Snapshot only - no live issue to focus.",
-            CurrentMarkupId: null);
+            DetailText: detailText,
+            RevealHintText: revealHintText,
+            CurrentMarkupId: null,
+            SourceSheetId: sourceSheetId,
+            SourceSheetDisplayName: sourceSheetDisplayName);
+    }
+
+    private void RevealMarkupReviewSnapshotSheetContext(MarkupReviewSnapshotDiffEntry entry)
+    {
+        var targetSheet = ResolveMarkupReviewSnapshotDiffSheet(entry.SourceSheetId, entry.SourceSheetDisplayName);
+        if (targetSheet == null)
+        {
+            ClearMarkupReviewSnapshotLiveSelection();
+            return;
+        }
+
+        if (!ReferenceEquals(_viewModel.SelectedSheet, targetSheet))
+            _viewModel.SelectSheet(targetSheet);
+
+        ClearMarkupReviewSnapshotLiveSelection();
+    }
+
+    private void ClearMarkupReviewSnapshotLiveSelection()
+    {
+        _viewModel.MarkupTool.SelectedMarkup = null;
+        SelectInspectorTab(MarkupsInspectorTab);
+        QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+    }
+
+    private bool CanResolveMarkupReviewSnapshotDiffSheet(string? sourceSheetId, string? sourceSheetDisplayName)
+        => ResolveMarkupReviewSnapshotDiffSheet(sourceSheetId, sourceSheetDisplayName) != null;
+
+    private DrawingSheet? ResolveMarkupReviewSnapshotDiffSheet(string? sourceSheetId, string? sourceSheetDisplayName)
+    {
+        if (!string.IsNullOrWhiteSpace(sourceSheetId))
+        {
+            var sheetById = _viewModel.Sheets.FirstOrDefault(sheet => string.Equals(sheet.Id, sourceSheetId, StringComparison.Ordinal));
+            if (sheetById != null)
+                return sheetById;
+        }
+
+        if (!string.IsNullOrWhiteSpace(sourceSheetDisplayName))
+        {
+            var sheetByDisplayName = _viewModel.Sheets.FirstOrDefault(sheet => string.Equals(sheet.DisplayName, sourceSheetDisplayName, StringComparison.Ordinal));
+            if (sheetByDisplayName != null)
+                return sheetByDisplayName;
+        }
+
+        return null;
     }
 
     private static string BuildMarkupReviewSnapshotIssueLabel(MarkupRecord markup)
@@ -515,7 +650,9 @@ internal sealed record MarkupReviewSnapshotDiffEntry(
     string Title,
     string DetailText,
     string RevealHintText,
-    string? CurrentMarkupId)
+    string? CurrentMarkupId,
+    string? SourceSheetId = null,
+    string? SourceSheetDisplayName = null)
 {
     public bool CanRevealLiveMarkup => !string.IsNullOrWhiteSpace(CurrentMarkupId);
 }
