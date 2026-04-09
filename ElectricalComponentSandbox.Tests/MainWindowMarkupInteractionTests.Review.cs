@@ -1699,7 +1699,7 @@ public partial class MainWindowMarkupInteractionTests
         Assert.True(outcome.published);
         Assert.True(outcome.deleted);
         Assert.True(outcome.selectedSnapshot);
-        Assert.Equal(new[] { $"Snapshot-only sheet: {outcome.deletedSheetDisplayName} (1 issue)" }, outcome.diffHeaders);
+        Assert.Equal(new[] { $"Snapshot-only sheet: {outcome.deletedSheetDisplayName} (1 issue: 1 missing)" }, outcome.diffHeaders);
         Assert.Equal("Recorded sheet no longer exists in the current project.", outcome.revealHint);
         Assert.Equal($"Snapshot sheet: {outcome.deletedSheetDisplayName}", outcome.sheetContext);
         Assert.True(outcome.selectedMissingIssue);
@@ -1878,8 +1878,8 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(
             new[]
             {
-                $"Sheet: {outcome.firstSheetDisplayName} (2 issues)",
-                $"Sheet: {outcome.secondSheetDisplayName} (1 issue)"
+                $"Sheet: {outcome.firstSheetDisplayName} (2 issues: 2 new)",
+                $"Sheet: {outcome.secondSheetDisplayName} (1 issue: 1 changed)"
             },
             outcome.diffHeaders);
         Assert.Equal(string.Empty, outcome.displayedSheetContext);
