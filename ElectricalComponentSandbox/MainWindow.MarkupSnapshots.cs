@@ -62,7 +62,18 @@ public partial class MainWindow
         UpdateMarkupReviewSnapshotUi();
         return MarkupReviewSnapshotDiffListBox?.Items
             .OfType<MarkupReviewSnapshotDiffEntry>()
+            .Where(entry => !entry.IsGroupHeader)
             .Select(entry => entry.Title)
+            .ToList() ?? new List<string>();
+    }
+
+    internal IReadOnlyList<string> GetMarkupReviewSnapshotDiffHeaderTextsForTesting()
+    {
+        UpdateMarkupReviewSnapshotUi();
+        return MarkupReviewSnapshotDiffListBox?.Items
+            .OfType<MarkupReviewSnapshotDiffEntry>()
+            .Where(entry => entry.IsGroupHeader)
+            .Select(entry => entry.SheetContextText)
             .ToList() ?? new List<string>();
     }
 
@@ -241,6 +252,12 @@ public partial class MainWindow
             return;
         }
 
+        if (entry.IsGroupHeader)
+        {
+            MarkupReviewSnapshotDiffListBox.SelectedItem = null;
+            return;
+        }
+
         if (entry.CanRevealLiveMarkup && !string.IsNullOrWhiteSpace(entry.CurrentMarkupId))
         {
             var markup = _viewModel.GetFilteredReviewMarkups()
@@ -402,7 +419,7 @@ public partial class MainWindow
 
         diffEntries.AddRange(newIssues.Select(BuildMarkupReviewSnapshotNewIssueEntry));
         diffEntries.AddRange(missingIssues.Select(markup => BuildMarkupReviewSnapshotMissingIssueEntry(markup, snapshot)));
-        diffEntries = SortMarkupReviewSnapshotDiffEntries(diffEntries);
+        diffEntries = BuildMarkupReviewSnapshotDiffDisplayEntries(diffEntries);
 
         return new MarkupReviewSnapshotComparisonResult(
             IsEmptySnapshot: false,
@@ -584,6 +601,44 @@ public partial class MainWindow
             .ToList();
     }
 
+    private static List<MarkupReviewSnapshotDiffEntry> BuildMarkupReviewSnapshotDiffDisplayEntries(IEnumerable<MarkupReviewSnapshotDiffEntry> diffEntries)
+    {
+        var sortedEntries = SortMarkupReviewSnapshotDiffEntries(diffEntries);
+        var displayEntries = new List<MarkupReviewSnapshotDiffEntry>(sortedEntries.Count * 2);
+        foreach (var sheetGroup in sortedEntries.GroupBy(entry => entry.SheetContextSortKey, StringComparer.OrdinalIgnoreCase))
+        {
+            var sheetEntries = sheetGroup.ToList();
+            var headerEntry = sheetEntries[0];
+            displayEntries.Add(BuildMarkupReviewSnapshotDiffHeaderEntry(
+                headerEntry.SheetContextText,
+                headerEntry.SheetContextSortKey,
+                sheetEntries.Count));
+
+            displayEntries.AddRange(sheetEntries);
+        }
+
+        return displayEntries;
+    }
+
+    private static MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotDiffHeaderEntry(string sheetContextText, string sheetContextSortKey, int issueCount)
+    {
+        return new MarkupReviewSnapshotDiffEntry(
+            Key: $"header:{sheetContextSortKey}",
+            CategoryKey: "header",
+            CategoryDisplayText: string.Empty,
+            Title: string.Empty,
+            SheetContextText: BuildMarkupReviewSnapshotDiffHeaderText(sheetContextText, issueCount),
+            DetailText: string.Empty,
+            RevealHintText: string.Empty,
+            CurrentMarkupId: null,
+            SheetContextSortKey: sheetContextSortKey,
+            CategorySortOrder: -1,
+            IsGroupHeader: true);
+    }
+
+    private static string BuildMarkupReviewSnapshotDiffHeaderText(string sheetContextText, int issueCount)
+        => $"{sheetContextText} ({issueCount} issue{(issueCount == 1 ? string.Empty : "s")})";
+
     private static string NormalizeMarkupReviewSnapshotDiffSheetContextSortKey(string? sheetDisplayName)
         => string.IsNullOrWhiteSpace(sheetDisplayName) ? "~" : sheetDisplayName.Trim();
 
@@ -714,7 +769,8 @@ internal sealed record MarkupReviewSnapshotDiffEntry(
     string? SourceSheetId = null,
     string? SourceSheetDisplayName = null,
     string SheetContextSortKey = "~",
-    int CategorySortOrder = int.MaxValue)
+    int CategorySortOrder = int.MaxValue,
+    bool IsGroupHeader = false)
 {
     public bool CanRevealLiveMarkup => !string.IsNullOrWhiteSpace(CurrentMarkupId);
 }

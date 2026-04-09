@@ -1777,4 +1777,104 @@ public partial class MainWindowMarkupInteractionTests
         Assert.True(outcome.selectedSnapshot);
         Assert.Equal(new[] { "Zulu power new", "Alpha lighting change" }, outcome.diffTitles);
     }
+
+    [Fact]
+    public void GetMarkupReviewSnapshotDiffHeaderTextsForTesting_AllSheetsSnapshot_EmitsVisibleSheetGroupHeaders()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var firstSheet = viewModel.SelectedSheet ?? throw new InvalidOperationException("Expected a default sheet.");
+            firstSheet.Number = "E101";
+            firstSheet.Name = "Power Plan";
+
+            var secondSheet = viewModel.AddSheet("Lighting Plan");
+            secondSheet.Number = "E201";
+
+            var lightingMarkup = new MarkupRecord
+            {
+                Id = "snapshot-header-lighting",
+                Type = MarkupType.Rectangle,
+                Status = MarkupStatus.Open,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Alpha lighting change",
+                    Author = "Casey"
+                }
+            };
+            lightingMarkup.UpdateBoundingRect();
+            viewModel.Markups.Add(lightingMarkup);
+
+            viewModel.MarkupTool.ReviewScope = MarkupReviewScope.AllSheets;
+            viewModel.MarkupTool.RefreshReviewContext();
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var published = window.PublishMarkupReviewSnapshotForTesting("All Sheets Snapshot", "Coordinator");
+
+                lightingMarkup.Status = MarkupStatus.Resolved;
+                viewModel.MarkupTool.RefreshReviewContext();
+
+                viewModel.SelectSheet(firstSheet);
+                var powerNewMarkup = new MarkupRecord
+                {
+                    Id = "snapshot-header-power-new",
+                    Type = MarkupType.Text,
+                    Status = MarkupStatus.Open,
+                    TextContent = "New power issue",
+                    Vertices = { new Point(12, 6) },
+                    Metadata = new MarkupMetadata
+                    {
+                        Label = "Zulu power new",
+                        Author = "Paul"
+                    }
+                };
+                powerNewMarkup.UpdateBoundingRect();
+                viewModel.Markups.Add(powerNewMarkup);
+
+                var secondPowerMarkup = new MarkupRecord
+                {
+                    Id = "snapshot-header-power-new-2",
+                    Type = MarkupType.Text,
+                    Status = MarkupStatus.Open,
+                    TextContent = "Another power issue",
+                    Vertices = { new Point(18, 6) },
+                    Metadata = new MarkupMetadata
+                    {
+                        Label = "Beta power new",
+                        Author = "Jordan"
+                    }
+                };
+                secondPowerMarkup.UpdateBoundingRect();
+                viewModel.Markups.Add(secondPowerMarkup);
+                viewModel.MarkupTool.RefreshReviewContext();
+
+                var selectedSnapshot = window.SelectMarkupReviewSnapshotForTesting("All Sheets Snapshot");
+                var diffHeaders = window.GetMarkupReviewSnapshotDiffHeaderTextsForTesting();
+
+                return (
+                    published,
+                    selectedSnapshot,
+                    diffHeaders,
+                    firstSheetDisplayName: firstSheet.DisplayName,
+                    secondSheetDisplayName: secondSheet.DisplayName);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.published);
+        Assert.True(outcome.selectedSnapshot);
+        Assert.Equal(
+            new[]
+            {
+                $"Sheet: {outcome.firstSheetDisplayName} (2 issues)",
+                $"Sheet: {outcome.secondSheetDisplayName} (1 issue)"
+            },
+            outcome.diffHeaders);
+    }
 }

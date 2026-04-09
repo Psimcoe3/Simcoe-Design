@@ -1240,25 +1240,58 @@
                                                          MaxHeight="180"
                                                          Margin="0,0,0,6"
                                                          SelectionChanged="MarkupReviewSnapshotDiffListBox_SelectionChanged">
+                                                    <ListBox.ItemContainerStyle>
+                                                        <Style TargetType="ListBoxItem">
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsGroupHeader}" Value="True">
+                                                                    <Setter Property="Focusable" Value="False"/>
+                                                                    <Setter Property="IsHitTestVisible" Value="False"/>
+                                                                    <Setter Property="Padding" Value="0"/>
+                                                                    <Setter Property="Margin" Value="0"/>
+                                                                    <Setter Property="BorderThickness" Value="0"/>
+                                                                    <Setter Property="Background" Value="Transparent"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </ListBox.ItemContainerStyle>
                                                     <ListBox.ItemTemplate>
                                                         <DataTemplate>
-                                                            <Border Margin="0,0,0,6"
-                                                                    Padding="6"
-                                                                    Background="#FFF9FAFB"
-                                                                    BorderBrush="#FFE5E7EB"
-                                                                    BorderThickness="1">
-                                                                <StackPanel>
-                                                                    <TextBlock TextWrapping="Wrap">
-                                                                        <Run Text="[" Foreground="#FF6B7280"/>
-                                                                        <Run Text="{Binding CategoryDisplayText}" FontWeight="SemiBold" Foreground="#FF6B7280"/>
-                                                                        <Run Text="] " Foreground="#FF6B7280"/>
-                                                                        <Run Text="{Binding Title}" FontWeight="SemiBold"/>
-                                                                    </TextBlock>
-                                                                    <TextBlock Text="{Binding SheetContextText}" Foreground="#FF6B7280" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
-                                                                    <TextBlock Text="{Binding DetailText}" Foreground="#FF4B5563" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
-                                                                    <TextBlock Text="{Binding RevealHintText}" Foreground="Gray" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
-                                                                </StackPanel>
-                                                            </Border>
+                                                            <Grid>
+                                                                <Border x:Name="MarkupReviewSnapshotDiffHeaderBorder"
+                                                                        Margin="0,0,0,4"
+                                                                        Padding="2,0,2,2"
+                                                                        Visibility="Collapsed">
+                                                                    <TextBlock Text="{Binding SheetContextText}"
+                                                                               FontWeight="SemiBold"
+                                                                               Foreground="#FF374151"
+                                                                               FontSize="10"
+                                                                               TextWrapping="Wrap"/>
+                                                                </Border>
+                                                                <Border x:Name="MarkupReviewSnapshotDiffEntryBorder"
+                                                                        Margin="0,0,0,6"
+                                                                        Padding="6"
+                                                                        Background="#FFF9FAFB"
+                                                                        BorderBrush="#FFE5E7EB"
+                                                                        BorderThickness="1">
+                                                                    <StackPanel>
+                                                                        <TextBlock TextWrapping="Wrap">
+                                                                            <Run Text="[" Foreground="#FF6B7280"/>
+                                                                            <Run Text="{Binding CategoryDisplayText}" FontWeight="SemiBold" Foreground="#FF6B7280"/>
+                                                                            <Run Text="] " Foreground="#FF6B7280"/>
+                                                                            <Run Text="{Binding Title}" FontWeight="SemiBold"/>
+                                                                        </TextBlock>
+                                                                        <TextBlock Text="{Binding SheetContextText}" Foreground="#FF6B7280" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                                                        <TextBlock Text="{Binding DetailText}" Foreground="#FF4B5563" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                                                        <TextBlock Text="{Binding RevealHintText}" Foreground="Gray" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                                                    </StackPanel>
+                                                                </Border>
+                                                            </Grid>
+                                                            <DataTemplate.Triggers>
+                                                                <DataTrigger Binding="{Binding IsGroupHeader}" Value="True">
+                                                                    <Setter TargetName="MarkupReviewSnapshotDiffHeaderBorder" Property="Visibility" Value="Visible"/>
+                                                                    <Setter TargetName="MarkupReviewSnapshotDiffEntryBorder" Property="Visibility" Value="Collapsed"/>
+                                                                </DataTrigger>
+                                                            </DataTemplate.Triggers>
                                                         </DataTemplate>
                                                     </ListBox.ItemTemplate>
                                                 </ListBox>
