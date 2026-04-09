@@ -75,6 +75,15 @@ public partial class MainWindow
             ?.RevealHintText ?? string.Empty;
     }
 
+    internal string GetMarkupReviewSnapshotDiffSheetContextForTesting(string title)
+    {
+        UpdateMarkupReviewSnapshotUi();
+        return MarkupReviewSnapshotDiffListBox?.Items
+            .OfType<MarkupReviewSnapshotDiffEntry>()
+            .FirstOrDefault(candidate => string.Equals(candidate.Title, title, StringComparison.OrdinalIgnoreCase))
+            ?.SheetContextText ?? string.Empty;
+    }
+
     internal bool SelectMarkupReviewSnapshotDiffEntryForTesting(string title)
     {
         UpdateMarkupReviewSnapshotUi();
@@ -468,7 +477,7 @@ public partial class MainWindow
         return $"{BuildMarkupReviewSnapshotIssueLabel(currentMarkup)} [{string.Join("; ", deltas)}]";
     }
 
-    private static MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotChangedIssueEntry(MarkupRecord snapshotMarkup, MarkupRecord currentMarkup, bool sameStatus, bool sameAssignee)
+    private MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotChangedIssueEntry(MarkupRecord snapshotMarkup, MarkupRecord currentMarkup, bool sameStatus, bool sameAssignee)
     {
         var deltas = new List<string>(2);
         if (!sameStatus)
@@ -481,18 +490,20 @@ public partial class MainWindow
             CategoryKey: "changed",
             CategoryDisplayText: "Changed",
             Title: BuildMarkupReviewSnapshotIssueLabel(currentMarkup),
+                SheetContextText: BuildMarkupReviewSnapshotLiveIssueSheetContextText(currentMarkup),
             DetailText: string.Join("  |  ", deltas),
             RevealHintText: "Select to focus the live review issue.",
             CurrentMarkupId: currentMarkup.Id);
     }
 
-    private static MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotNewIssueEntry(MarkupRecord markup)
+            private MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotNewIssueEntry(MarkupRecord markup)
     {
         return new MarkupReviewSnapshotDiffEntry(
             Key: $"new:{markup.Id}",
             CategoryKey: "new",
             CategoryDisplayText: "New",
             Title: BuildMarkupReviewSnapshotIssueLabel(markup),
+                SheetContextText: BuildMarkupReviewSnapshotLiveIssueSheetContextText(markup),
             DetailText: "Added after snapshot publication.",
             RevealHintText: "Select to focus the live review issue.",
             CurrentMarkupId: markup.Id);
@@ -507,9 +518,8 @@ public partial class MainWindow
             ? markup.ReviewSheetId.Trim()
             : (snapshot.Scope == MarkupReviewSnapshotScope.CurrentSheet ? snapshot.SourceSheetId : string.Empty);
         var canResolveRecordedSheet = CanResolveMarkupReviewSnapshotDiffSheet(sourceSheetId, sourceSheetDisplayName);
-        var detailText = string.IsNullOrWhiteSpace(sourceSheetDisplayName)
-            ? "Not present in the current filtered review set."
-            : $"Not present in the current filtered review set. Snapshot sheet: {sourceSheetDisplayName}.";
+        var detailText = "Not present in the current filtered review set.";
+        var sheetContextText = BuildMarkupReviewSnapshotMissingIssueSheetContextText(sourceSheetId, sourceSheetDisplayName);
         var revealHintText = string.IsNullOrWhiteSpace(sourceSheetDisplayName) && string.IsNullOrWhiteSpace(sourceSheetId)
             ? "Snapshot only - no sheet context is available to focus."
             : canResolveRecordedSheet
@@ -521,11 +531,32 @@ public partial class MainWindow
             CategoryKey: "missing",
             CategoryDisplayText: "Missing",
             Title: BuildMarkupReviewSnapshotIssueLabel(markup),
+            SheetContextText: sheetContextText,
             DetailText: detailText,
             RevealHintText: revealHintText,
             CurrentMarkupId: null,
             SourceSheetId: sourceSheetId,
             SourceSheetDisplayName: sourceSheetDisplayName);
+    }
+
+    private string BuildMarkupReviewSnapshotLiveIssueSheetContextText(MarkupRecord markup)
+    {
+        var sheetDisplayName = _viewModel.GetMarkupSheetDisplayName(markup);
+        return string.IsNullOrWhiteSpace(sheetDisplayName)
+            ? "Sheet: (unknown)"
+            : $"Sheet: {sheetDisplayName}";
+    }
+
+    private string BuildMarkupReviewSnapshotMissingIssueSheetContextText(string? sourceSheetId, string? sourceSheetDisplayName)
+    {
+        var resolvedSheet = ResolveMarkupReviewSnapshotDiffSheet(sourceSheetId, sourceSheetDisplayName);
+        if (resolvedSheet != null)
+            return $"Sheet: {resolvedSheet.DisplayName}";
+
+        if (!string.IsNullOrWhiteSpace(sourceSheetDisplayName))
+            return $"Snapshot sheet: {sourceSheetDisplayName}";
+
+        return "Snapshot sheet: (unknown)";
     }
 
     private void RevealMarkupReviewSnapshotSheetContext(MarkupReviewSnapshotDiffEntry entry)
@@ -648,6 +679,7 @@ internal sealed record MarkupReviewSnapshotDiffEntry(
     string CategoryKey,
     string CategoryDisplayText,
     string Title,
+    string SheetContextText,
     string DetailText,
     string RevealHintText,
     string? CurrentMarkupId,

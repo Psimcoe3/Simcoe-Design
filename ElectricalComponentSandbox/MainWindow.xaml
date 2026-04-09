@@ -1254,6 +1254,7 @@
                                                                         <Run Text="] " Foreground="#FF6B7280"/>
                                                                         <Run Text="{Binding Title}" FontWeight="SemiBold"/>
                                                                     </TextBlock>
+                                                                    <TextBlock Text="{Binding SheetContextText}" Foreground="#FF6B7280" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
                                                                     <TextBlock Text="{Binding DetailText}" Foreground="#FF4B5563" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
                                                                     <TextBlock Text="{Binding RevealHintText}" Foreground="Gray" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
                                                                 </StackPanel>

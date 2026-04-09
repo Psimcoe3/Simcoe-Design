@@ -1265,12 +1265,14 @@ public partial class MainWindowMarkupInteractionTests
                 var comparison = window.GetSelectedMarkupReviewSnapshotComparisonForTesting();
                 var details = window.GetSelectedMarkupReviewSnapshotDetailsForTesting();
                 var diffTitles = window.GetMarkupReviewSnapshotDiffTitlesForTesting();
+                var addedLaterSheetContext = window.GetMarkupReviewSnapshotDiffSheetContextForTesting("Added later");
                 var selectedNewIssue = window.SelectMarkupReviewSnapshotDiffEntryForTesting("Added later");
                 var selectedMarkupIdAfterNewIssue = viewModel.MarkupTool.SelectedMarkup?.Id;
                 var selectedMissingIssue = window.SelectMarkupReviewSnapshotDiffEntryForTesting("Missing later");
                 var selectedMarkupIdAfterMissingIssue = viewModel.MarkupTool.SelectedMarkup?.Id;
+                var selectedSheetDisplayName = viewModel.SelectedSheet?.DisplayName;
 
-                return (published, displayNames, selected, summary, selectedSummary, comparison, details, diffTitles, selectedNewIssue, selectedMarkupIdAfterNewIssue, selectedMissingIssue, selectedMarkupIdAfterMissingIssue);
+                return (published, displayNames, selected, summary, selectedSummary, comparison, details, diffTitles, addedLaterSheetContext, selectedNewIssue, selectedMarkupIdAfterNewIssue, selectedMissingIssue, selectedMarkupIdAfterMissingIssue, selectedSheetDisplayName);
             }
             finally
             {
@@ -1301,6 +1303,7 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Contains("Ownership change", outcome.diffTitles, StringComparer.Ordinal);
         Assert.Contains("Added later", outcome.diffTitles, StringComparer.Ordinal);
         Assert.Contains("Missing later", outcome.diffTitles, StringComparer.Ordinal);
+        Assert.Equal($"Sheet: {outcome.selectedSheetDisplayName}", outcome.addedLaterSheetContext);
         Assert.True(outcome.selectedNewIssue);
         Assert.Equal("snapshot-new", outcome.selectedMarkupIdAfterNewIssue);
         Assert.True(outcome.selectedMissingIssue);
@@ -1601,11 +1604,12 @@ public partial class MainWindowMarkupInteractionTests
                 viewModel.MarkupTool.SelectedMarkup = viewModel.Markups.FirstOrDefault(markup => string.Equals(markup.Id, liveMarkup.Id, StringComparison.Ordinal));
 
                 var selectedSnapshot = window.SelectMarkupReviewSnapshotForTesting("All Sheets Snapshot");
+                var sheetContext = window.GetMarkupReviewSnapshotDiffSheetContextForTesting("Missing on renamed lighting");
                 var selectedMissingIssue = window.SelectMarkupReviewSnapshotDiffEntryForTesting("Missing on renamed lighting");
                 var selectedSheetDisplayName = viewModel.SelectedSheet?.DisplayName;
                 var selectedMarkupId = viewModel.MarkupTool.SelectedMarkup?.Id;
 
-                return (published, selectedSnapshot, selectedMissingIssue, selectedSheetDisplayName, selectedMarkupId, secondSheet.DisplayName);
+                return (published, selectedSnapshot, sheetContext, selectedMissingIssue, selectedSheetDisplayName, selectedMarkupId, secondSheet.DisplayName);
             }
             finally
             {
@@ -1615,6 +1619,7 @@ public partial class MainWindowMarkupInteractionTests
 
         Assert.True(outcome.published);
         Assert.True(outcome.selectedSnapshot);
+        Assert.Equal($"Sheet: {outcome.DisplayName}", outcome.sheetContext);
         Assert.True(outcome.selectedMissingIssue);
         Assert.Equal(outcome.DisplayName, outcome.selectedSheetDisplayName);
         Assert.Null(outcome.selectedMarkupId);
@@ -1673,14 +1678,16 @@ public partial class MainWindowMarkupInteractionTests
 
                 viewModel.SelectSheet(firstSheet);
                 viewModel.MarkupTool.SelectedMarkup = viewModel.Markups.FirstOrDefault(markup => string.Equals(markup.Id, liveMarkup.Id, StringComparison.Ordinal));
+                var deletedSheetDisplayName = secondSheet.DisplayName;
                 var deleted = viewModel.DeleteSheet(secondSheet);
                 var selectedSnapshot = window.SelectMarkupReviewSnapshotForTesting("All Sheets Snapshot");
                 var revealHint = window.GetMarkupReviewSnapshotDiffRevealHintForTesting("Missing on deleted lighting");
+                var sheetContext = window.GetMarkupReviewSnapshotDiffSheetContextForTesting("Missing on deleted lighting");
                 var selectedMissingIssue = window.SelectMarkupReviewSnapshotDiffEntryForTesting("Missing on deleted lighting");
                 var selectedSheetDisplayName = viewModel.SelectedSheet?.DisplayName;
                 var selectedMarkupId = viewModel.MarkupTool.SelectedMarkup?.Id;
 
-                return (published, deleted, selectedSnapshot, revealHint, selectedMissingIssue, selectedSheetDisplayName, selectedMarkupId, firstSheet.DisplayName);
+                return (published, deleted, selectedSnapshot, revealHint, sheetContext, selectedMissingIssue, selectedSheetDisplayName, selectedMarkupId, firstSheet.DisplayName, deletedSheetDisplayName);
             }
             finally
             {
@@ -1692,6 +1699,7 @@ public partial class MainWindowMarkupInteractionTests
         Assert.True(outcome.deleted);
         Assert.True(outcome.selectedSnapshot);
         Assert.Equal("Recorded sheet no longer exists in the current project.", outcome.revealHint);
+        Assert.Equal($"Snapshot sheet: {outcome.deletedSheetDisplayName}", outcome.sheetContext);
         Assert.True(outcome.selectedMissingIssue);
         Assert.Equal(outcome.DisplayName, outcome.selectedSheetDisplayName);
         Assert.Null(outcome.selectedMarkupId);
