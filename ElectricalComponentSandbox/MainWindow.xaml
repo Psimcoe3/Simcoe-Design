@@ -1260,12 +1260,62 @@
                                                                 <Border x:Name="MarkupReviewSnapshotDiffHeaderBorder"
                                                                         Margin="0,0,0,4"
                                                                         Padding="2,0,2,2"
+                                                                        Background="#FFF8FAFC"
+                                                                        BorderBrush="#FFCBD5E1"
+                                                                        BorderThickness="3,0,0,0"
+                                                                        CornerRadius="6"
                                                                         Visibility="Collapsed">
-                                                                    <TextBlock Text="{Binding SheetContextText}"
-                                                                               FontWeight="SemiBold"
-                                                                               Foreground="#FF374151"
-                                                                               FontSize="10"
-                                                                               TextWrapping="Wrap"/>
+                                                                    <StackPanel>
+                                                                        <TextBlock Text="{Binding HeaderSheetTitleText}"
+                                                                                   FontWeight="SemiBold"
+                                                                                   Foreground="#FF374151"
+                                                                                   FontSize="10"
+                                                                                   TextWrapping="Wrap"/>
+                                                                        <WrapPanel Margin="0,3,0,0">
+                                                                            <Border Background="#FFE5E7EB"
+                                                                                    CornerRadius="9"
+                                                                                    Padding="6,1"
+                                                                                    Margin="0,0,4,4">
+                                                                                <TextBlock Text="{Binding HeaderIssueCountText}"
+                                                                                           Foreground="#FF374151"
+                                                                                           FontSize="9"
+                                                                                           FontWeight="SemiBold"/>
+                                                                            </Border>
+                                                                            <Border x:Name="MarkupReviewSnapshotDiffHeaderChangedBadge"
+                                                                                    Background="#FFFEF3C7"
+                                                                                    CornerRadius="9"
+                                                                                    Padding="6,1"
+                                                                                    Margin="0,0,4,4"
+                                                                                    Visibility="Collapsed">
+                                                                                <TextBlock Text="{Binding HeaderChangedCountText}"
+                                                                                           Foreground="#FF92400E"
+                                                                                           FontSize="9"
+                                                                                           FontWeight="SemiBold"/>
+                                                                            </Border>
+                                                                            <Border x:Name="MarkupReviewSnapshotDiffHeaderNewBadge"
+                                                                                    Background="#FFDBEAFE"
+                                                                                    CornerRadius="9"
+                                                                                    Padding="6,1"
+                                                                                    Margin="0,0,4,4"
+                                                                                    Visibility="Collapsed">
+                                                                                <TextBlock Text="{Binding HeaderNewCountText}"
+                                                                                           Foreground="#FF1D4ED8"
+                                                                                           FontSize="9"
+                                                                                           FontWeight="SemiBold"/>
+                                                                            </Border>
+                                                                            <Border x:Name="MarkupReviewSnapshotDiffHeaderMissingBadge"
+                                                                                    Background="#FFF3F4F6"
+                                                                                    CornerRadius="9"
+                                                                                    Padding="6,1"
+                                                                                    Margin="0,0,4,4"
+                                                                                    Visibility="Collapsed">
+                                                                                <TextBlock Text="{Binding HeaderMissingCountText}"
+                                                                                           Foreground="#FF4B5563"
+                                                                                           FontSize="9"
+                                                                                           FontWeight="SemiBold"/>
+                                                                            </Border>
+                                                                        </WrapPanel>
+                                                                    </StackPanel>
                                                                 </Border>
                                                                 <Border x:Name="MarkupReviewSnapshotDiffEntryBorder"
                                                                         Margin="0,0,0,6"
@@ -1295,6 +1345,27 @@
                                                                 <DataTrigger Binding="{Binding IsGroupHeader}" Value="True">
                                                                     <Setter TargetName="MarkupReviewSnapshotDiffHeaderBorder" Property="Visibility" Value="Visible"/>
                                                                     <Setter TargetName="MarkupReviewSnapshotDiffEntryBorder" Property="Visibility" Value="Collapsed"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding HeaderPriorityKey}" Value="new">
+                                                                    <Setter TargetName="MarkupReviewSnapshotDiffHeaderBorder" Property="Background" Value="#FFF0F9FF"/>
+                                                                    <Setter TargetName="MarkupReviewSnapshotDiffHeaderBorder" Property="BorderBrush" Value="#FF0284C7"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding HeaderPriorityKey}" Value="changed">
+                                                                    <Setter TargetName="MarkupReviewSnapshotDiffHeaderBorder" Property="Background" Value="#FFFFFBEB"/>
+                                                                    <Setter TargetName="MarkupReviewSnapshotDiffHeaderBorder" Property="BorderBrush" Value="#FFD97706"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding HeaderPriorityKey}" Value="missing">
+                                                                    <Setter TargetName="MarkupReviewSnapshotDiffHeaderBorder" Property="Background" Value="#FFFFF1F2"/>
+                                                                    <Setter TargetName="MarkupReviewSnapshotDiffHeaderBorder" Property="BorderBrush" Value="#FFE11D48"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding HasHeaderChangedCount}" Value="True">
+                                                                    <Setter TargetName="MarkupReviewSnapshotDiffHeaderChangedBadge" Property="Visibility" Value="Visible"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding HasHeaderNewCount}" Value="True">
+                                                                    <Setter TargetName="MarkupReviewSnapshotDiffHeaderNewBadge" Property="Visibility" Value="Visible"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding HasHeaderMissingCount}" Value="True">
+                                                                    <Setter TargetName="MarkupReviewSnapshotDiffHeaderMissingBadge" Property="Visibility" Value="Visible"/>
                                                                 </DataTrigger>
                                                                 <DataTrigger Binding="{Binding DisplaySheetContextText}" Value="">
                                                                     <Setter TargetName="MarkupReviewSnapshotDiffEntrySheetContextTextBlock" Property="Visibility" Value="Collapsed"/>

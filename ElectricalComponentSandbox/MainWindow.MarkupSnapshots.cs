@@ -77,6 +77,26 @@ public partial class MainWindow
             .ToList() ?? new List<string>();
     }
 
+    internal IReadOnlyList<string> GetMarkupReviewSnapshotDiffHeaderBadgeTextsForTesting()
+    {
+        UpdateMarkupReviewSnapshotUi();
+        return MarkupReviewSnapshotDiffListBox?.Items
+            .OfType<MarkupReviewSnapshotDiffEntry>()
+            .Where(entry => entry.IsGroupHeader)
+            .Select(BuildMarkupReviewSnapshotDiffHeaderBadgeTextForTesting)
+            .ToList() ?? new List<string>();
+    }
+
+    internal IReadOnlyList<string> GetMarkupReviewSnapshotDiffHeaderPriorityKeysForTesting()
+    {
+        UpdateMarkupReviewSnapshotUi();
+        return MarkupReviewSnapshotDiffListBox?.Items
+            .OfType<MarkupReviewSnapshotDiffEntry>()
+            .Where(entry => entry.IsGroupHeader)
+            .Select(entry => entry.HeaderPriorityKey)
+            .ToList() ?? new List<string>();
+    }
+
     internal string GetMarkupReviewSnapshotDiffRevealHintForTesting(string title)
     {
         UpdateMarkupReviewSnapshotUi();
@@ -634,6 +654,13 @@ public partial class MainWindow
 
     private static MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotDiffHeaderEntry(string sheetContextText, string sheetContextSortKey, IReadOnlyList<MarkupReviewSnapshotDiffEntry> sheetEntries)
     {
+        var groupHeaderSheetText = BuildMarkupReviewSnapshotDiffGroupHeaderSheetText(sheetContextText);
+        var groupHeaderPriorityKey = BuildMarkupReviewSnapshotDiffHeaderPriorityKey(sheetEntries);
+        var groupHeaderIssueCountText = BuildMarkupReviewSnapshotDiffGroupHeaderIssueCountText(sheetEntries.Count);
+        var groupHeaderChangedCountText = BuildMarkupReviewSnapshotDiffGroupHeaderCategoryCountText(sheetEntries, "changed", "changed");
+        var groupHeaderNewCountText = BuildMarkupReviewSnapshotDiffGroupHeaderCategoryCountText(sheetEntries, "new", "new");
+        var groupHeaderMissingCountText = BuildMarkupReviewSnapshotDiffGroupHeaderCategoryCountText(sheetEntries, "missing", "missing");
+
         return new MarkupReviewSnapshotDiffEntry(
             Key: $"header:{sheetContextSortKey}",
             CategoryKey: "header",
@@ -646,33 +673,73 @@ public partial class MainWindow
             CurrentMarkupId: null,
             SheetContextSortKey: sheetContextSortKey,
             CategorySortOrder: -1,
-            IsGroupHeader: true);
+            IsGroupHeader: true,
+            HeaderPriorityKey: groupHeaderPriorityKey,
+            HeaderSheetTitleText: groupHeaderSheetText,
+            HeaderIssueCountText: groupHeaderIssueCountText,
+            HeaderChangedCountText: groupHeaderChangedCountText,
+            HeaderNewCountText: groupHeaderNewCountText,
+            HeaderMissingCountText: groupHeaderMissingCountText);
     }
 
     private static string BuildMarkupReviewSnapshotDiffGroupHeaderText(string sheetContextText, IReadOnlyList<MarkupReviewSnapshotDiffEntry> sheetEntries)
     {
-        var issueCount = sheetEntries.Count;
+        var issueCountText = BuildMarkupReviewSnapshotDiffGroupHeaderIssueCountText(sheetEntries.Count);
         var categorySummary = BuildMarkupReviewSnapshotDiffGroupCategorySummary(sheetEntries);
-        var issueCountText = $"{issueCount} issue{(issueCount == 1 ? string.Empty : "s")}";
         return string.IsNullOrWhiteSpace(categorySummary)
             ? $"{BuildMarkupReviewSnapshotDiffGroupHeaderSheetText(sheetContextText)} ({issueCountText})"
             : $"{BuildMarkupReviewSnapshotDiffGroupHeaderSheetText(sheetContextText)} ({issueCountText}: {categorySummary})";
     }
 
+    private static string BuildMarkupReviewSnapshotDiffGroupHeaderIssueCountText(int issueCount)
+        => $"{issueCount} issue{(issueCount == 1 ? string.Empty : "s")}";
+
+    private static string BuildMarkupReviewSnapshotDiffHeaderPriorityKey(IReadOnlyList<MarkupReviewSnapshotDiffEntry> sheetEntries)
+    {
+        if (sheetEntries.Any(entry => string.Equals(entry.CategoryKey, "missing", StringComparison.Ordinal)))
+            return "missing";
+
+        if (sheetEntries.Any(entry => string.Equals(entry.CategoryKey, "changed", StringComparison.Ordinal)))
+            return "changed";
+
+        if (sheetEntries.Any(entry => string.Equals(entry.CategoryKey, "new", StringComparison.Ordinal)))
+            return "new";
+
+        return string.Empty;
+    }
+
     private static string BuildMarkupReviewSnapshotDiffGroupCategorySummary(IReadOnlyList<MarkupReviewSnapshotDiffEntry> sheetEntries)
     {
         var summaryParts = new List<string>(3);
-        AppendMarkupReviewSnapshotDiffGroupCategorySummary(summaryParts, sheetEntries, "changed", "changed");
-        AppendMarkupReviewSnapshotDiffGroupCategorySummary(summaryParts, sheetEntries, "new", "new");
-        AppendMarkupReviewSnapshotDiffGroupCategorySummary(summaryParts, sheetEntries, "missing", "missing");
+        AppendMarkupReviewSnapshotDiffGroupCategorySummary(summaryParts, BuildMarkupReviewSnapshotDiffGroupHeaderCategoryCountText(sheetEntries, "changed", "changed"));
+        AppendMarkupReviewSnapshotDiffGroupCategorySummary(summaryParts, BuildMarkupReviewSnapshotDiffGroupHeaderCategoryCountText(sheetEntries, "new", "new"));
+        AppendMarkupReviewSnapshotDiffGroupCategorySummary(summaryParts, BuildMarkupReviewSnapshotDiffGroupHeaderCategoryCountText(sheetEntries, "missing", "missing"));
         return string.Join(", ", summaryParts);
     }
 
-    private static void AppendMarkupReviewSnapshotDiffGroupCategorySummary(List<string> summaryParts, IReadOnlyList<MarkupReviewSnapshotDiffEntry> sheetEntries, string categoryKey, string label)
+    private static void AppendMarkupReviewSnapshotDiffGroupCategorySummary(List<string> summaryParts, string categorySummary)
+    {
+        if (!string.IsNullOrWhiteSpace(categorySummary))
+            summaryParts.Add(categorySummary);
+    }
+
+    private static string BuildMarkupReviewSnapshotDiffGroupHeaderCategoryCountText(IReadOnlyList<MarkupReviewSnapshotDiffEntry> sheetEntries, string categoryKey, string label)
     {
         var count = sheetEntries.Count(entry => string.Equals(entry.CategoryKey, categoryKey, StringComparison.Ordinal));
-        if (count > 0)
-            summaryParts.Add($"{count} {label}");
+        return count > 0 ? $"{count} {label}" : string.Empty;
+    }
+
+    private static string BuildMarkupReviewSnapshotDiffHeaderBadgeTextForTesting(MarkupReviewSnapshotDiffEntry entry)
+    {
+        var badges = new[]
+        {
+            entry.HeaderIssueCountText,
+            entry.HeaderChangedCountText,
+            entry.HeaderNewCountText,
+            entry.HeaderMissingCountText
+        };
+
+        return string.Join(" | ", badges.Where(text => !string.IsNullOrWhiteSpace(text)));
     }
 
     private static string BuildMarkupReviewSnapshotDiffGroupHeaderSheetText(string sheetContextText)
@@ -819,7 +886,16 @@ internal sealed record MarkupReviewSnapshotDiffEntry(
     string? SourceSheetDisplayName = null,
     string SheetContextSortKey = "~",
     int CategorySortOrder = int.MaxValue,
-    bool IsGroupHeader = false)
+    bool IsGroupHeader = false,
+    string HeaderPriorityKey = "",
+    string HeaderSheetTitleText = "",
+    string HeaderIssueCountText = "",
+    string HeaderChangedCountText = "",
+    string HeaderNewCountText = "",
+    string HeaderMissingCountText = "")
 {
     public bool CanRevealLiveMarkup => !string.IsNullOrWhiteSpace(CurrentMarkupId);
+    public bool HasHeaderChangedCount => !string.IsNullOrWhiteSpace(HeaderChangedCountText);
+    public bool HasHeaderNewCount => !string.IsNullOrWhiteSpace(HeaderNewCountText);
+    public bool HasHeaderMissingCount => !string.IsNullOrWhiteSpace(HeaderMissingCountText);
 }

@@ -1682,13 +1682,15 @@ public partial class MainWindowMarkupInteractionTests
                 var deleted = viewModel.DeleteSheet(secondSheet);
                 var selectedSnapshot = window.SelectMarkupReviewSnapshotForTesting("All Sheets Snapshot");
                 var diffHeaders = window.GetMarkupReviewSnapshotDiffHeaderTextsForTesting();
+                var headerBadges = window.GetMarkupReviewSnapshotDiffHeaderBadgeTextsForTesting();
+                var headerPriorities = window.GetMarkupReviewSnapshotDiffHeaderPriorityKeysForTesting();
                 var revealHint = window.GetMarkupReviewSnapshotDiffRevealHintForTesting("Missing on deleted lighting");
                 var sheetContext = window.GetMarkupReviewSnapshotDiffSheetContextForTesting("Missing on deleted lighting");
                 var selectedMissingIssue = window.SelectMarkupReviewSnapshotDiffEntryForTesting("Missing on deleted lighting");
                 var selectedSheetDisplayName = viewModel.SelectedSheet?.DisplayName;
                 var selectedMarkupId = viewModel.MarkupTool.SelectedMarkup?.Id;
 
-                return (published, deleted, selectedSnapshot, diffHeaders, revealHint, sheetContext, selectedMissingIssue, selectedSheetDisplayName, selectedMarkupId, firstSheet.DisplayName, deletedSheetDisplayName);
+                return (published, deleted, selectedSnapshot, diffHeaders, headerBadges, headerPriorities, revealHint, sheetContext, selectedMissingIssue, selectedSheetDisplayName, selectedMarkupId, firstSheet.DisplayName, deletedSheetDisplayName);
             }
             finally
             {
@@ -1700,6 +1702,8 @@ public partial class MainWindowMarkupInteractionTests
         Assert.True(outcome.deleted);
         Assert.True(outcome.selectedSnapshot);
         Assert.Equal(new[] { $"Snapshot-only sheet: {outcome.deletedSheetDisplayName} (1 issue: 1 missing)" }, outcome.diffHeaders);
+        Assert.Equal(new[] { "1 issue | 1 missing" }, outcome.headerBadges);
+        Assert.Equal(new[] { "missing" }, outcome.headerPriorities);
         Assert.Equal("Recorded sheet no longer exists in the current project.", outcome.revealHint);
         Assert.Equal($"Snapshot sheet: {outcome.deletedSheetDisplayName}", outcome.sheetContext);
         Assert.True(outcome.selectedMissingIssue);
@@ -1855,6 +1859,8 @@ public partial class MainWindowMarkupInteractionTests
 
                 var selectedSnapshot = window.SelectMarkupReviewSnapshotForTesting("All Sheets Snapshot");
                 var diffHeaders = window.GetMarkupReviewSnapshotDiffHeaderTextsForTesting();
+                var headerBadges = window.GetMarkupReviewSnapshotDiffHeaderBadgeTextsForTesting();
+                var headerPriorities = window.GetMarkupReviewSnapshotDiffHeaderPriorityKeysForTesting();
                 var displayedSheetContext = window.GetMarkupReviewSnapshotDiffDisplayedSheetContextForTesting("Zulu power new");
                 var underlyingSheetContext = window.GetMarkupReviewSnapshotDiffSheetContextForTesting("Zulu power new");
 
@@ -1862,6 +1868,8 @@ public partial class MainWindowMarkupInteractionTests
                     published,
                     selectedSnapshot,
                     diffHeaders,
+                    headerBadges,
+                    headerPriorities,
                     displayedSheetContext,
                     underlyingSheetContext,
                     firstSheetDisplayName: firstSheet.DisplayName,
@@ -1882,6 +1890,8 @@ public partial class MainWindowMarkupInteractionTests
                 $"Sheet: {outcome.secondSheetDisplayName} (1 issue: 1 changed)"
             },
             outcome.diffHeaders);
+        Assert.Equal(new[] { "2 issues | 2 new", "1 issue | 1 changed" }, outcome.headerBadges);
+        Assert.Equal(new[] { "new", "changed" }, outcome.headerPriorities);
         Assert.Equal(string.Empty, outcome.displayedSheetContext);
         Assert.Equal($"Sheet: {outcome.firstSheetDisplayName}", outcome.underlyingSheetContext);
     }
