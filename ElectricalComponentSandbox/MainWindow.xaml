@@ -1280,7 +1280,12 @@
                                                                             <Run Text="] " Foreground="#FF6B7280"/>
                                                                             <Run Text="{Binding Title}" FontWeight="SemiBold"/>
                                                                         </TextBlock>
-                                                                        <TextBlock Text="{Binding SheetContextText}" Foreground="#FF6B7280" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                                                        <TextBlock x:Name="MarkupReviewSnapshotDiffEntrySheetContextTextBlock"
+                                                                                   Text="{Binding DisplaySheetContextText}"
+                                                                                   Foreground="#FF6B7280"
+                                                                                   FontSize="10"
+                                                                                   Margin="0,2,0,0"
+                                                                                   TextWrapping="Wrap"/>
                                                                         <TextBlock Text="{Binding DetailText}" Foreground="#FF4B5563" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
                                                                         <TextBlock Text="{Binding RevealHintText}" Foreground="Gray" FontSize="10" Margin="0,2,0,0" TextWrapping="Wrap"/>
                                                                     </StackPanel>
@@ -1290,6 +1295,9 @@
                                                                 <DataTrigger Binding="{Binding IsGroupHeader}" Value="True">
                                                                     <Setter TargetName="MarkupReviewSnapshotDiffHeaderBorder" Property="Visibility" Value="Visible"/>
                                                                     <Setter TargetName="MarkupReviewSnapshotDiffEntryBorder" Property="Visibility" Value="Collapsed"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding DisplaySheetContextText}" Value="">
+                                                                    <Setter TargetName="MarkupReviewSnapshotDiffEntrySheetContextTextBlock" Property="Visibility" Value="Collapsed"/>
                                                                 </DataTrigger>
                                                             </DataTemplate.Triggers>
                                                         </DataTemplate>

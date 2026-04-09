@@ -1853,11 +1853,15 @@ public partial class MainWindowMarkupInteractionTests
 
                 var selectedSnapshot = window.SelectMarkupReviewSnapshotForTesting("All Sheets Snapshot");
                 var diffHeaders = window.GetMarkupReviewSnapshotDiffHeaderTextsForTesting();
+                var displayedSheetContext = window.GetMarkupReviewSnapshotDiffDisplayedSheetContextForTesting("Zulu power new");
+                var underlyingSheetContext = window.GetMarkupReviewSnapshotDiffSheetContextForTesting("Zulu power new");
 
                 return (
                     published,
                     selectedSnapshot,
                     diffHeaders,
+                    displayedSheetContext,
+                    underlyingSheetContext,
                     firstSheetDisplayName: firstSheet.DisplayName,
                     secondSheetDisplayName: secondSheet.DisplayName);
             }
@@ -1876,5 +1880,7 @@ public partial class MainWindowMarkupInteractionTests
                 $"Sheet: {outcome.secondSheetDisplayName} (1 issue)"
             },
             outcome.diffHeaders);
+        Assert.Equal(string.Empty, outcome.displayedSheetContext);
+        Assert.Equal($"Sheet: {outcome.firstSheetDisplayName}", outcome.underlyingSheetContext);
     }
 }

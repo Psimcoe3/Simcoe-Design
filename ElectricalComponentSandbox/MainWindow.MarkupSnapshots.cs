@@ -95,6 +95,15 @@ public partial class MainWindow
             ?.SheetContextText ?? string.Empty;
     }
 
+    internal string GetMarkupReviewSnapshotDiffDisplayedSheetContextForTesting(string title)
+    {
+        UpdateMarkupReviewSnapshotUi();
+        return MarkupReviewSnapshotDiffListBox?.Items
+            .OfType<MarkupReviewSnapshotDiffEntry>()
+            .FirstOrDefault(candidate => string.Equals(candidate.Title, title, StringComparison.OrdinalIgnoreCase))
+            ?.DisplaySheetContextText ?? string.Empty;
+    }
+
     internal bool SelectMarkupReviewSnapshotDiffEntryForTesting(string title)
     {
         UpdateMarkupReviewSnapshotUi();
@@ -509,6 +518,7 @@ public partial class MainWindow
             CategoryDisplayText: "Changed",
             Title: BuildMarkupReviewSnapshotIssueLabel(currentMarkup),
             SheetContextText: BuildMarkupReviewSnapshotLiveIssueSheetContextText(currentMarkup),
+            DisplaySheetContextText: BuildMarkupReviewSnapshotLiveIssueSheetContextText(currentMarkup),
             DetailText: string.Join("  |  ", deltas),
             RevealHintText: "Select to focus the live review issue.",
             CurrentMarkupId: currentMarkup.Id,
@@ -524,6 +534,7 @@ public partial class MainWindow
             CategoryDisplayText: "New",
             Title: BuildMarkupReviewSnapshotIssueLabel(markup),
             SheetContextText: BuildMarkupReviewSnapshotLiveIssueSheetContextText(markup),
+            DisplaySheetContextText: BuildMarkupReviewSnapshotLiveIssueSheetContextText(markup),
             DetailText: "Added after snapshot publication.",
             RevealHintText: "Select to focus the live review issue.",
             CurrentMarkupId: markup.Id,
@@ -554,6 +565,7 @@ public partial class MainWindow
             CategoryDisplayText: "Missing",
             Title: BuildMarkupReviewSnapshotIssueLabel(markup),
             SheetContextText: sheetContextText,
+            DisplaySheetContextText: sheetContextText,
             DetailText: detailText,
             RevealHintText: revealHintText,
             CurrentMarkupId: null,
@@ -614,7 +626,7 @@ public partial class MainWindow
                 headerEntry.SheetContextSortKey,
                 sheetEntries.Count));
 
-            displayEntries.AddRange(sheetEntries);
+            displayEntries.AddRange(sheetEntries.Select(entry => entry with { DisplaySheetContextText = string.Empty }));
         }
 
         return displayEntries;
@@ -628,6 +640,7 @@ public partial class MainWindow
             CategoryDisplayText: string.Empty,
             Title: string.Empty,
             SheetContextText: BuildMarkupReviewSnapshotDiffHeaderText(sheetContextText, issueCount),
+            DisplaySheetContextText: string.Empty,
             DetailText: string.Empty,
             RevealHintText: string.Empty,
             CurrentMarkupId: null,
@@ -763,6 +776,7 @@ internal sealed record MarkupReviewSnapshotDiffEntry(
     string CategoryDisplayText,
     string Title,
     string SheetContextText,
+    string DisplaySheetContextText,
     string DetailText,
     string RevealHintText,
     string? CurrentMarkupId,
