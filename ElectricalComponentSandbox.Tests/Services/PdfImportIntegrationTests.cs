@@ -6,26 +6,33 @@ using PDFtoImage;
 
 namespace ElectricalComponentSandbox.Tests.Services;
 
+public sealed class RequiresPdfFactAttribute : FactAttribute
+{
+    public RequiresPdfFactAttribute()
+    {
+        if (!File.Exists(PdfImportIntegrationTests.TestPdfPath))
+            Skip = $"Test PDF not found: '{PdfImportIntegrationTests.TestPdfPath}'. Copy the file there to enable these tests.";
+    }
+}
+
 /// <summary>
 /// Integration tests for PDF import and rendering using the actual PDFtoImage pipeline.
-/// Requires the target PDF to be present on disk.
-/// These tests are skipped (via xUnit 2.x [Fact(Skip=...)] on missing file)
-/// but since we confirmed the file exists, all should run.
+/// Requires the target PDF to be present on disk and skips dynamically at discovery when missing.
 /// </summary>
 public class PdfImportIntegrationTests
 {
-    private const string TestPdfPath = @"C:\Users\Paul\Downloads\E1-L37-Level 37 Conduit.pdf";
+    internal const string TestPdfPath = @"C:\Users\Paul\Downloads\E1-L37-Level 37 Conduit.pdf";
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    /// <summary>Guard: fail fast with a clear message if the PDF is not present.</summary>
+    /// <summary>Guard: fail fast with a clear message if discovery-time skipping did not apply.</summary>
     private static void RequirePdf() =>
         Assert.True(File.Exists(TestPdfPath),
             $"Test PDF not found: '{TestPdfPath}'. Copy the file there to enable these tests.");
 
     // ── PdfUnderlay model ────────────────────────────────────────────────────
 
-    [Fact]
+    [RequiresPdfFact]
     public void PdfUnderlay_CanBeCreatedWithRealFilePath()
     {
         RequirePdf();
@@ -46,7 +53,7 @@ public class PdfImportIntegrationTests
 
     // ── Rendering via PDFtoImage ─────────────────────────────────────────────
 
-    [Fact]
+    [RequiresPdfFact]
     public void Pdf_CanBeReadFromDisk()
     {
         RequirePdf();
@@ -57,7 +64,7 @@ public class PdfImportIntegrationTests
         Assert.True(bytes.Length > 0, "PDF file should not be empty");
     }
 
-    [Fact]
+    [RequiresPdfFact]
     public void Pdf_HasValidPageCount()
     {
         RequirePdf();
@@ -69,7 +76,7 @@ public class PdfImportIntegrationTests
         Console.WriteLine($"[INFO] Page count: {pageCount}");
     }
 
-    [Fact]
+    [RequiresPdfFact]
     public void Pdf_FirstPageDimensions_AreNonZero()
     {
         RequirePdf();
@@ -82,7 +89,7 @@ public class PdfImportIntegrationTests
         Console.WriteLine($"[INFO] Page 1 dimensions (pts): {size.Width} x {size.Height}");
     }
 
-    [Fact]
+    [RequiresPdfFact]
     public void Pdf_FirstPage_RendersToImage()
     {
         RequirePdf();
@@ -97,7 +104,7 @@ public class PdfImportIntegrationTests
         Console.WriteLine($"[INFO] Rendered bitmap size: {skBitmap.Width} x {skBitmap.Height} px");
     }
 
-    [Fact]
+    [RequiresPdfFact]
     public void Pdf_FirstPage_RendersToValidPngStream()
     {
         RequirePdf();
@@ -113,7 +120,7 @@ public class PdfImportIntegrationTests
         Console.WriteLine($"[INFO] PNG stream size: {ms.Length / 1024} KB");
     }
 
-    [Fact]
+    [RequiresPdfFact]
     public void Pdf_AllPages_CanBeRendered()
     {
         RequirePdf();
@@ -138,7 +145,7 @@ public class PdfImportIntegrationTests
 
     // ── PdfUnderlay model round-trip ─────────────────────────────────────────
 
-    [Fact]
+    [RequiresPdfFact]
     public void PdfUnderlay_DefaultsAndCalibration_Workflow()
     {
         RequirePdf();
@@ -178,7 +185,7 @@ public class PdfImportIntegrationTests
 
     // ── Page number bounds ────────────────────────────────────────────────────
 
-    [Fact]
+    [RequiresPdfFact]
     public void Pdf_InvalidPageNumber_ThrowsOrHandled()
     {
         RequirePdf();

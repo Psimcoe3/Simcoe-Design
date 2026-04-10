@@ -833,21 +833,48 @@ public partial class MainWindow
         }
 
         var minCount = markup.Type == MarkupType.Polygon ? 3 : 2;
-        if (!TryExtractVertices(values, minCount, out var vertices, out errorMessage))
+        var hasVertexAssignments = HasVertexCoordinateAssignments(values);
+        var hasRotationAssignment = values.ContainsKey("rotation");
+        var vertices = new List<Point>();
+        if (hasVertexAssignments && !TryExtractVertices(values, minCount, out vertices, out errorMessage))
         {
             ShowGeometryValidationWarning(showValidationFeedback, errorMessage, $"Edit {markup.TypeDisplayText} Geometry");
             return true;
         }
 
+        if (!hasVertexAssignments && !hasRotationAssignment)
+        {
+            ShowGeometryValidationWarning(showValidationFeedback, "Enter at least one vertex coordinate pair or a rotation value.", $"Edit {markup.TypeDisplayText} Geometry");
+            return true;
+        }
+
         var before = _markupInteractionService.Capture(markup);
-        if (!_markupInteractionService.SetPolylineGeometry(markup, vertices))
+        if (hasVertexAssignments && !_markupInteractionService.SetPolylineGeometry(markup, vertices))
             return false;
+
+        if (hasRotationAssignment)
+        {
+            if (!TryGetAssignment(values, "rotation", markup.RotationDegrees, out var rotationDegrees))
+            {
+                ShowGeometryValidationWarning(showValidationFeedback, "Rotation must be numeric.", $"Edit {markup.TypeDisplayText} Geometry");
+                return true;
+            }
+
+            var rotationSnapshot = hasVertexAssignments ? _markupInteractionService.Capture(markup) : before;
+            var bounds = _markupInteractionService.GetAggregateBounds(new[] { markup });
+            if (bounds == Rect.Empty)
+                return false;
+
+            var rotationCenter = GetMarkupBoundsCenter(bounds);
+            var deltaDegrees = NormalizeSignedMarkupAngleDelta(rotationDegrees - rotationSnapshot.RotationDegrees);
+            _markupInteractionService.Rotate(markup, rotationSnapshot, rotationCenter, deltaDegrees);
+        }
 
         return CommitMarkupGeometryEdit(
             markup,
             before,
             $"Edit {markup.TypeDisplayText.ToLowerInvariant()} geometry",
-            FormattableString.Invariant($"Type: {markup.TypeDisplayText}, Vertices: {vertices.Count}"));
+            FormattableString.Invariant($"Type: {markup.TypeDisplayText}, Vertices: {markup.Vertices.Count}, Rotation: {NormalizeMarkupAngle(markup.RotationDegrees):0.##}"));
     }
 
     private static bool TryExtractVertices(Dictionary<string, double> values, int minimumCount, out List<Point> vertices, out string errorMessage)
@@ -879,6 +906,17 @@ public partial class MainWindow
         }
 
         return true;
+    }
+
+    private static bool HasVertexCoordinateAssignments(Dictionary<string, double> values)
+    {
+        foreach (var key in values.Keys)
+        {
+            if (key.Length > 1 && (key[0] == 'x' || key[0] == 'y') && int.TryParse(key[1..], out _))
+                return true;
+        }
+
+        return false;
     }
 
     private bool TryEditSelectedBoundsGeometry(MarkupRecord markup, string input, bool showValidationFeedback)
@@ -1320,12 +1358,14 @@ public partial class MainWindow
 
     private static string BuildPolylineGeometryDefaultValue(MarkupRecord markup)
     {
-        var lines = new List<string>(markup.Vertices.Count * 2);
+        var lines = new List<string>(markup.Vertices.Count * 2 + 1);
         for (int i = 0; i < markup.Vertices.Count; i++)
         {
             lines.Add(FormattableString.Invariant($"x{i + 1}={markup.Vertices[i].X:0.##}"));
             lines.Add(FormattableString.Invariant($"y{i + 1}={markup.Vertices[i].Y:0.##}"));
         }
+
+        lines.Add(FormattableString.Invariant($"rotation={NormalizeMarkupAngle(markup.RotationDegrees):0.##}"));
 
         return string.Join(Environment.NewLine, lines);
     }
@@ -1396,7 +1436,7 @@ public partial class MainWindow
             case MarkupType.Polygon:
                 var minVerts = markup.Type == MarkupType.Polygon ? 3 : 2;
                 title = $"Edit {markup.TypeDisplayText} Geometry";
-                prompt = $"Enter vertex coordinates as x1=…, y1=…, x2=…, y2=…, etc. At least {minVerts} vertices are required.\n\nExamples:\nx1=10\ny1=20\nx2=30\ny2=40";
+                prompt = $"Enter vertex coordinates as x1=…, y1=…, x2=…, y2=…, etc. Optional rotation applies around the markup center after coordinates are updated. At least {minVerts} vertices are required.\n\nExamples:\nx1=10\ny1=20\nx2=30\ny2=40\nrotation=30";
                 defaultValue = BuildPolylineGeometryDefaultValue(markup);
                 return true;
             case MarkupType.Dimension:

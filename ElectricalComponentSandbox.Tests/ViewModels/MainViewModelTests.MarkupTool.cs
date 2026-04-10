@@ -1029,6 +1029,31 @@ public partial class MainViewModelTests
     }
 
     [Fact]
+    public void MarkupTool_SelectedPolylineMarkup_ReportsGeometryEditability()
+    {
+        var vm = new MainViewModel();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Polyline,
+            RotationDegrees = 30,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(20, 5) }
+        };
+        markup.UpdateBoundingRect();
+
+        vm.Markups.Add(markup);
+        vm.MarkupTool.SelectedMarkup = markup;
+
+        Assert.True(vm.MarkupTool.HasGeometryEditableSelection);
+        Assert.True(vm.MarkupTool.HasGeometryShortcutHint);
+        Assert.True(vm.MarkupTool.HasSelectedMarkupGeometryDetails);
+        Assert.Equal("Numeric edit available: 3 vertex coordinates and rotation", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.Equal("Shortcut: Ctrl+Shift+G", vm.MarkupTool.SelectedMarkupGeometryShortcutHint);
+        Assert.Equal(
+            $"Vertices: 3{Environment.NewLine}  [1] (0, 0){Environment.NewLine}  [2] (10, 0){Environment.NewLine}  [3] (20, 5){Environment.NewLine}Rotation: 30 deg",
+            vm.MarkupTool.SelectedMarkupGeometryDetails);
+    }
+
+    [Fact]
     public void MarkupTool_SelectedTextMarkup_ReportsAppearanceEditability()
     {
         var vm = new MainViewModel();

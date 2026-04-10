@@ -296,6 +296,24 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void TryBuildGeometryPromptForTesting_Polyline_UsesVertexAndRotationPromptAndDefaults()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Polyline,
+            RotationDegrees = 30,
+            Vertices = { new Point(0, 0), new Point(10, 0), new Point(10, 10) }
+        };
+
+        var built = MainWindow.TryBuildGeometryPromptForTesting(markup, out var title, out var prompt, out var defaultValue);
+
+        Assert.True(built);
+        Assert.Equal("Edit Polyline Geometry", title);
+        Assert.Equal("Enter vertex coordinates as x1=…, y1=…, x2=…, y2=…, etc. Optional rotation applies around the markup center after coordinates are updated. At least 2 vertices are required.\n\nExamples:\nx1=10\ny1=20\nx2=30\ny2=40\nrotation=30", prompt);
+        Assert.Equal($"x1=0{Environment.NewLine}y1=0{Environment.NewLine}x2=10{Environment.NewLine}y2=0{Environment.NewLine}x3=10{Environment.NewLine}y3=10{Environment.NewLine}rotation=30", defaultValue);
+    }
+
+    [Fact]
     public void TryBuildGeometryPromptForTesting_RadialMeasurement_UsesRadiusPromptAndDefaults()
     {
         var markup = new MarkupRecord

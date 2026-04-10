@@ -724,6 +724,104 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_Polyline_RotationOnly_RotatesAndSupportsUndo()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(10, 10) }
+            },
+            (window, viewModel, markup) =>
+            {
+                var edited = window.ExecuteEditMarkupGeometryCommandForTesting("rotation=90");
+                var editedState = (Vertices: markup.Vertices.ToList(), markup.RotationDegrees);
+
+                viewModel.Undo();
+                var undoneState = (Vertices: markup.Vertices.ToList(), markup.RotationDegrees);
+                return (edited, editedState, undoneState);
+            });
+
+        Assert.True(outcome.edited);
+        Assert.Equal(90, outcome.editedState.RotationDegrees, 6);
+        Assert.Equal(10, outcome.editedState.Vertices[0].X, 6);
+        Assert.Equal(0, outcome.editedState.Vertices[0].Y, 6);
+        Assert.Equal(10, outcome.editedState.Vertices[1].X, 6);
+        Assert.Equal(10, outcome.editedState.Vertices[1].Y, 6);
+        Assert.Equal(0, outcome.editedState.Vertices[2].X, 6);
+        Assert.Equal(10, outcome.editedState.Vertices[2].Y, 6);
+
+        Assert.Equal(0, outcome.undoneState.RotationDegrees, 6);
+        Assert.Equal(0, outcome.undoneState.Vertices[0].X, 6);
+        Assert.Equal(0, outcome.undoneState.Vertices[0].Y, 6);
+        Assert.Equal(10, outcome.undoneState.Vertices[1].X, 6);
+        Assert.Equal(0, outcome.undoneState.Vertices[1].Y, 6);
+        Assert.Equal(10, outcome.undoneState.Vertices[2].X, 6);
+        Assert.Equal(10, outcome.undoneState.Vertices[2].Y, 6);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_Polyline_VerticesAndRotation_ApplyInOneUndoableEdit()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(10, 10) }
+            },
+            (window, viewModel, markup) =>
+            {
+                var edited = window.ExecuteEditMarkupGeometryCommandForTesting("x1=0\ny1=0\nx2=20\ny2=0\nx3=20\ny3=10\nrotation=90");
+                var editedState = (Vertices: markup.Vertices.ToList(), markup.RotationDegrees);
+
+                viewModel.Undo();
+                var undoneState = (Vertices: markup.Vertices.ToList(), markup.RotationDegrees);
+                return (edited, editedState, undoneState);
+            });
+
+        Assert.True(outcome.edited);
+        Assert.Equal(90, outcome.editedState.RotationDegrees, 6);
+        Assert.Equal(15, outcome.editedState.Vertices[0].X, 6);
+        Assert.Equal(-5, outcome.editedState.Vertices[0].Y, 6);
+        Assert.Equal(15, outcome.editedState.Vertices[1].X, 6);
+        Assert.Equal(15, outcome.editedState.Vertices[1].Y, 6);
+        Assert.Equal(5, outcome.editedState.Vertices[2].X, 6);
+        Assert.Equal(15, outcome.editedState.Vertices[2].Y, 6);
+
+        Assert.Equal(0, outcome.undoneState.RotationDegrees, 6);
+        Assert.Equal(0, outcome.undoneState.Vertices[0].X, 6);
+        Assert.Equal(0, outcome.undoneState.Vertices[0].Y, 6);
+        Assert.Equal(10, outcome.undoneState.Vertices[1].X, 6);
+        Assert.Equal(0, outcome.undoneState.Vertices[1].Y, 6);
+        Assert.Equal(10, outcome.undoneState.Vertices[2].X, 6);
+        Assert.Equal(10, outcome.undoneState.Vertices[2].Y, 6);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_Polyline_InvalidRotation_DoesNotChangeGeometry()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Polyline,
+                RotationDegrees = 15,
+                Vertices = { new Point(0, 0), new Point(10, 0), new Point(10, 10) }
+            },
+            (window, viewModel, markup) =>
+            {
+                var handled = window.ExecuteEditMarkupGeometryCommandForTesting("rotation=abc");
+                return (handled, Vertices: markup.Vertices.ToList(), markup.RotationDegrees, CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.True(outcome.handled);
+        Assert.Equal(15, outcome.RotationDegrees, 6);
+        Assert.Equal(new Point(0, 0), outcome.Vertices[0]);
+        Assert.Equal(new Point(10, 0), outcome.Vertices[1]);
+        Assert.Equal(new Point(10, 10), outcome.Vertices[2]);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
     public void ExecuteEditMarkupAppearanceCommandForTesting_SameValues_IsHandledAsNoOp()
     {
         var outcome = RunOnSta(() =>
