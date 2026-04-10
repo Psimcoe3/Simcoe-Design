@@ -270,8 +270,8 @@ public partial class MainWindowMarkupInteractionTests
 
         Assert.True(built);
         Assert.Equal("Edit Text Geometry", title);
-        Assert.Equal("Enter width and height. The markup's top-left corner stays fixed and the text scales to fit.\n\nExamples:\nwidth=24\nheight=12", prompt);
-        Assert.Equal($"width=30{Environment.NewLine}height=12", defaultValue);
+        Assert.Equal("Enter width, height, and optional rotation. The markup's top-left corner stays fixed and the text scales to fit.\n\nExamples:\nwidth=24\nheight=12\nrotation=30", prompt);
+        Assert.Equal($"width=30{Environment.NewLine}height=12{Environment.NewLine}rotation=0", defaultValue);
     }
 
     [Fact]

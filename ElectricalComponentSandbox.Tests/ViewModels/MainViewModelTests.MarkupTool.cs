@@ -671,9 +671,9 @@ public partial class MainViewModelTests
         Assert.True(vm.MarkupTool.HasGeometryEditableSelection);
         Assert.True(vm.MarkupTool.HasGeometryShortcutHint);
         Assert.True(vm.MarkupTool.HasSelectedMarkupGeometryDetails);
-        Assert.Equal("Numeric edit available: width and height", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.Equal("Numeric edit available: width, height, and rotation", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
         Assert.Equal("Shortcut: Ctrl+Shift+G", vm.MarkupTool.SelectedMarkupGeometryShortcutHint);
-        Assert.Equal($"Width: 24{Environment.NewLine}Height: 12", vm.MarkupTool.SelectedMarkupGeometryDetails);
+        Assert.Equal($"Width: 24{Environment.NewLine}Height: 12{Environment.NewLine}Rotation: 0 deg", vm.MarkupTool.SelectedMarkupGeometryDetails);
     }
 
     [Fact]
@@ -694,9 +694,9 @@ public partial class MainViewModelTests
         Assert.True(vm.MarkupTool.HasGeometryEditableSelection);
         Assert.True(vm.MarkupTool.HasGeometryShortcutHint);
         Assert.True(vm.MarkupTool.HasSelectedMarkupGeometryDetails);
-        Assert.Equal("Numeric edit available: width and height", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.Equal("Numeric edit available: width, height, and rotation", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
         Assert.Equal("Shortcut: Ctrl+Shift+G", vm.MarkupTool.SelectedMarkupGeometryShortcutHint);
-        Assert.Equal($"Width: 120{Environment.NewLine}Height: 30", vm.MarkupTool.SelectedMarkupGeometryDetails);
+        Assert.Equal($"Width: 120{Environment.NewLine}Height: 30{Environment.NewLine}Rotation: 0 deg", vm.MarkupTool.SelectedMarkupGeometryDetails);
     }
 
     [Fact]
@@ -717,9 +717,9 @@ public partial class MainViewModelTests
         Assert.True(vm.MarkupTool.HasGeometryEditableSelection);
         Assert.True(vm.MarkupTool.HasGeometryShortcutHint);
         Assert.True(vm.MarkupTool.HasSelectedMarkupGeometryDetails);
-        Assert.Equal("Numeric edit available: width and height", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
+        Assert.Equal("Numeric edit available: width, height, and rotation", vm.MarkupTool.SelectedMarkupGeometryEditSummary);
         Assert.Equal("Shortcut: Ctrl+Shift+G", vm.MarkupTool.SelectedMarkupGeometryShortcutHint);
-        Assert.Equal($"Width: 40{Environment.NewLine}Height: 12", vm.MarkupTool.SelectedMarkupGeometryDetails);
+        Assert.Equal($"Width: 40{Environment.NewLine}Height: 12{Environment.NewLine}Rotation: 0 deg", vm.MarkupTool.SelectedMarkupGeometryDetails);
     }
 
     [Fact]

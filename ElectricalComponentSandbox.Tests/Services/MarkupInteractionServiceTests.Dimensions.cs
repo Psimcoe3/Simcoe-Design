@@ -95,6 +95,29 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void SetBoundsGeometry_WithRotation_NormalizesAngleAndRebuildsRotatedVertices()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Rectangle,
+            BoundingRect = new Rect(10, 20, 30, 40),
+            RotationDegrees = 15
+        };
+        markup.Vertices.Add(new Point(10, 20));
+        markup.Vertices.Add(new Point(40, 60));
+
+        var result = _sut.SetBoundsGeometry(markup, 55, 25, 450);
+
+        Assert.True(result);
+        Assert.Equal(new Rect(10, 20, 55, 25), markup.BoundingRect);
+        Assert.Equal(90, markup.RotationDegrees, 6);
+        Assert.Equal(50, markup.Vertices[0].X, 6);
+        Assert.Equal(5, markup.Vertices[0].Y, 6);
+        Assert.Equal(25, markup.Vertices[1].X, 6);
+        Assert.Equal(60, markup.Vertices[1].Y, 6);
+    }
+
+    [Fact]
     public void SetBoundsGeometry_NonPositiveDimensions_ClampToMinimumSize()
     {
         var markup = new MarkupRecord

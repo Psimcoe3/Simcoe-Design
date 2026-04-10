@@ -209,11 +209,11 @@ public partial class MainWindowMarkupInteractionTests
             var window = new MainWindow(viewModel);
             try
             {
-                var edited = window.ExecuteEditMarkupGeometryCommandForTesting("width=45\nheight=18");
-                var editedState = (markup.BoundingRect, Anchor: markup.Vertices[0], markup.Appearance.FontSize, markup.Appearance.StrokeWidth);
+                var edited = window.ExecuteEditMarkupGeometryCommandForTesting("width=45\nheight=18\nrotation=90");
+                var editedState = (markup.BoundingRect, Anchor: markup.Vertices[0], markup.Appearance.FontSize, markup.Appearance.StrokeWidth, markup.RotationDegrees);
 
                 viewModel.Undo();
-                var undoneState = (markup.BoundingRect, Anchor: markup.Vertices[0], markup.Appearance.FontSize, markup.Appearance.StrokeWidth);
+                var undoneState = (markup.BoundingRect, Anchor: markup.Vertices[0], markup.Appearance.FontSize, markup.Appearance.StrokeWidth, markup.RotationDegrees);
                 return (edited, editedState, undoneState);
             }
             finally
@@ -227,11 +227,13 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(new Point(10, 38), outcome.editedState.Anchor);
         Assert.Equal(15, outcome.editedState.FontSize, 6);
         Assert.Equal(3, outcome.editedState.StrokeWidth, 6);
+        Assert.Equal(90, outcome.editedState.RotationDegrees, 6);
 
         Assert.Equal(new Rect(10, 20, 30, 12), outcome.undoneState.BoundingRect);
         Assert.Equal(new Point(10, 32), outcome.undoneState.Anchor);
         Assert.Equal(10, outcome.undoneState.FontSize, 6);
         Assert.Equal(2, outcome.undoneState.StrokeWidth, 6);
+        Assert.Equal(0, outcome.undoneState.RotationDegrees, 6);
     }
 
     [Fact]
@@ -577,6 +579,29 @@ public partial class MainWindowMarkupInteractionTests
 
         Assert.True(outcome.handled);
         Assert.Equal(new Rect(0, 0, 10, 6), outcome.Bounds);
+        Assert.False(outcome.CanUndo);
+    }
+
+    [Fact]
+    public void ExecuteEditMarkupGeometryCommandForTesting_Rectangle_InvalidRotation_DoesNotChangeGeometry()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            new MarkupRecord
+            {
+                Type = MarkupType.Rectangle,
+                Vertices = { new Point(0, 0), new Point(10, 6) },
+                BoundingRect = new Rect(0, 0, 10, 6),
+                RotationDegrees = 15
+            },
+            (window, viewModel, markup) =>
+            {
+                var handled = window.ExecuteEditMarkupGeometryCommandForTesting("width=10\nheight=6\nrotation=abc");
+                return (handled, Bounds: markup.BoundingRect, markup.RotationDegrees, CanUndo: viewModel.UndoRedo.CanUndo);
+            });
+
+        Assert.True(outcome.handled);
+        Assert.Equal(new Rect(0, 0, 10, 6), outcome.Bounds);
+        Assert.Equal(15, outcome.RotationDegrees, 6);
         Assert.False(outcome.CanUndo);
     }
 

@@ -788,7 +788,7 @@ public sealed class MarkupInteractionService
         return true;
     }
 
-    public bool SetBoundsGeometry(MarkupRecord markup, double width, double height)
+    public bool SetBoundsGeometry(MarkupRecord markup, double width, double height, double? rotationDegrees = null)
     {
         if (!IsBoundsGeometryEditable(markup))
             return false;
@@ -805,6 +805,7 @@ public sealed class MarkupInteractionService
         var topLeft = bounds.TopLeft;
         var bottomRight = new Point(topLeft.X + nextWidth, topLeft.Y + nextHeight);
         var nextBounds = new Rect(topLeft, bottomRight);
+        var nextRotation = NormalizeAngleDegrees(rotationDegrees ?? markup.RotationDegrees);
 
         markup.BoundingRect = nextBounds;
         markup.Vertices.Clear();
@@ -823,10 +824,20 @@ public sealed class MarkupInteractionService
         }
         else
         {
-            markup.Vertices.Add(topLeft);
-            markup.Vertices.Add(bottomRight);
+            if (Math.Abs(nextRotation) > double.Epsilon)
+            {
+                var center = GetRectCenter(nextBounds);
+                markup.Vertices.Add(RotatePoint(topLeft, center, nextRotation));
+                markup.Vertices.Add(RotatePoint(bottomRight, center, nextRotation));
+            }
+            else
+            {
+                markup.Vertices.Add(topLeft);
+                markup.Vertices.Add(bottomRight);
+            }
         }
 
+        markup.RotationDegrees = nextRotation;
         markup.Metadata.ModifiedUtc = DateTime.UtcNow;
         return true;
     }

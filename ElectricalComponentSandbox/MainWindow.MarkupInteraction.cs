@@ -904,15 +904,21 @@ public partial class MainWindow
             return true;
         }
 
+        if (!TryGetAssignment(values, "rotation", markup.RotationDegrees, out var rotationDegrees))
+        {
+            ShowGeometryValidationWarning(showValidationFeedback, "Rotation must be numeric.", $"Edit {markup.TypeDisplayText} Geometry");
+            return true;
+        }
+
         var before = _markupInteractionService.Capture(markup);
-        if (!_markupInteractionService.SetBoundsGeometry(markup, width, height))
+        if (!_markupInteractionService.SetBoundsGeometry(markup, width, height, rotationDegrees))
             return false;
 
         return CommitMarkupGeometryEdit(
             markup,
             before,
             $"Edit {markup.TypeDisplayText.ToLowerInvariant()} geometry",
-            FormattableString.Invariant($"Type: {markup.TypeDisplayText}, Width: {markup.BoundingRect.Width:0.##}, Height: {markup.BoundingRect.Height:0.##}"));
+            FormattableString.Invariant($"Type: {markup.TypeDisplayText}, Width: {markup.BoundingRect.Width:0.##}, Height: {markup.BoundingRect.Height:0.##}, Rotation: {NormalizeMarkupAngle(markup.RotationDegrees):0.##}"));
     }
 
     private bool TryEditSelectedCircleGeometry(MarkupRecord markup, string input, bool showValidationFeedback)
@@ -1332,7 +1338,8 @@ public partial class MainWindow
         return string.Join(Environment.NewLine, new[]
         {
             FormattableString.Invariant($"width={bounds.Width:0.##}"),
-            FormattableString.Invariant($"height={bounds.Height:0.##}")
+            FormattableString.Invariant($"height={bounds.Height:0.##}"),
+            FormattableString.Invariant($"rotation={NormalizeMarkupAngle(markup.RotationDegrees):0.##}")
         });
     }
 
@@ -1371,8 +1378,8 @@ public partial class MainWindow
             case MarkupType.Panel:
                 title = $"Edit {markup.TypeDisplayText} Geometry";
                 prompt = markup.Type == MarkupType.Text
-                    ? "Enter width and height. The markup's top-left corner stays fixed and the text scales to fit.\n\nExamples:\nwidth=24\nheight=12"
-                    : "Enter width and height. The markup's top-left corner stays fixed.\n\nExamples:\nwidth=24\nheight=12";
+                    ? "Enter width, height, and optional rotation. The markup's top-left corner stays fixed and the text scales to fit.\n\nExamples:\nwidth=24\nheight=12\nrotation=30"
+                    : "Enter width, height, and optional rotation. The markup's top-left corner stays fixed.\n\nExamples:\nwidth=24\nheight=12\nrotation=30";
                 defaultValue = BuildBoundsGeometryDefaultValue(markup);
                 return true;
             case MarkupType.Circle:

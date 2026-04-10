@@ -683,7 +683,7 @@ public class MarkupToolViewModel : INotifyPropertyChanged
                     MarkupType.Arc => "Numeric edit available: radius, start, end, or sweep",
                     MarkupType.Polyline or MarkupType.Polygon => $"Numeric edit available: {_selectedMarkup.Vertices.Count} vertex coordinates",
                     MarkupType.Dimension or MarkupType.Measurement => GetLineGeometrySummary(_selectedMarkup),
-                    MarkupType.Rectangle or MarkupType.Text or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel => "Numeric edit available: width and height",
+                    MarkupType.Rectangle or MarkupType.Text or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel => "Numeric edit available: width, height, and rotation",
                     _ => string.Empty
                 };
             }
@@ -771,7 +771,8 @@ public class MarkupToolViewModel : INotifyPropertyChanged
                 return string.Join(Environment.NewLine, new[]
                 {
                     $"Width: {FormatGeometryValue(rect.Width)}",
-                    $"Height: {FormatGeometryValue(rect.Height)}"
+                    $"Height: {FormatGeometryValue(rect.Height)}",
+                    $"Rotation: {FormatGeometryValue(NormalizeMarkupAngle(_selectedMarkup.RotationDegrees))} deg"
                 });
             }
 
