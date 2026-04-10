@@ -1972,13 +1972,16 @@ public partial class MainWindowMarkupInteractionTests
                 var selectedSnapshot = window.SelectMarkupReviewSnapshotForTesting("All Sheets Snapshot");
                 var initialTitles = window.GetMarkupReviewSnapshotDiffTitlesForTesting();
                 var initialToggles = window.GetMarkupReviewSnapshotDiffHeaderToggleTextsForTesting();
+                var initialToggleToolTips = window.GetMarkupReviewSnapshotDiffHeaderToggleToolTipsForTesting();
                 var collapsed = window.ToggleMarkupReviewSnapshotDiffHeaderForTesting($"Sheet: {firstSheet.DisplayName}");
                 var collapsedTitles = window.GetMarkupReviewSnapshotDiffTitlesForTesting();
                 var collapsedToggles = window.GetMarkupReviewSnapshotDiffHeaderToggleTextsForTesting();
+                var collapsedToggleToolTips = window.GetMarkupReviewSnapshotDiffHeaderToggleToolTipsForTesting();
                 var selectHiddenIssue = window.SelectMarkupReviewSnapshotDiffEntryForTesting("Zulu power new");
                 var expanded = window.ToggleMarkupReviewSnapshotDiffHeaderForTesting($"Sheet: {firstSheet.DisplayName}");
                 var expandedTitles = window.GetMarkupReviewSnapshotDiffTitlesForTesting();
                 var expandedToggles = window.GetMarkupReviewSnapshotDiffHeaderToggleTextsForTesting();
+                var expandedToggleToolTips = window.GetMarkupReviewSnapshotDiffHeaderToggleToolTipsForTesting();
                 var selectRestoredIssue = window.SelectMarkupReviewSnapshotDiffEntryForTesting("Zulu power new");
 
                 return (
@@ -1986,13 +1989,16 @@ public partial class MainWindowMarkupInteractionTests
                     selectedSnapshot,
                     initialTitles,
                     initialToggles,
+                    initialToggleToolTips,
                     collapsed,
                     collapsedTitles,
                     collapsedToggles,
+                    collapsedToggleToolTips,
                     selectHiddenIssue,
                     expanded,
                     expandedTitles,
                     expandedToggles,
+                    expandedToggleToolTips,
                     selectRestoredIssue);
             }
             finally
@@ -2005,13 +2011,16 @@ public partial class MainWindowMarkupInteractionTests
         Assert.True(outcome.selectedSnapshot);
         Assert.Equal(new[] { "Beta power new", "Zulu power new", "Alpha lighting change" }, outcome.initialTitles);
         Assert.Equal(new[] { "[-]", "[-]" }, outcome.initialToggles);
+        Assert.Equal(new[] { "Collapse this sheet and hide 2 issues.", "Collapse this sheet and hide 1 issue." }, outcome.initialToggleToolTips);
         Assert.True(outcome.collapsed);
         Assert.Equal(new[] { "Alpha lighting change" }, outcome.collapsedTitles);
         Assert.Equal(new[] { "[+]", "[-]" }, outcome.collapsedToggles);
+        Assert.Equal(new[] { "Expand this sheet and show 2 issues.", "Collapse this sheet and hide 1 issue." }, outcome.collapsedToggleToolTips);
         Assert.False(outcome.selectHiddenIssue);
         Assert.True(outcome.expanded);
         Assert.Equal(new[] { "Beta power new", "Zulu power new", "Alpha lighting change" }, outcome.expandedTitles);
         Assert.Equal(new[] { "[-]", "[-]" }, outcome.expandedToggles);
+        Assert.Equal(new[] { "Collapse this sheet and hide 2 issues.", "Collapse this sheet and hide 1 issue." }, outcome.expandedToggleToolTips);
         Assert.True(outcome.selectRestoredIssue);
     }
 
@@ -2075,13 +2084,27 @@ public partial class MainWindowMarkupInteractionTests
                 var selectedSnapshot = window.SelectMarkupReviewSnapshotForTesting("All Sheets Snapshot");
                 var initialTitles = window.GetMarkupReviewSnapshotDiffTitlesForTesting();
                 var initialToggles = window.GetMarkupReviewSnapshotDiffHeaderToggleTextsForTesting();
+                var initialExpandAllText = window.GetExpandAllMarkupReviewSnapshotDiffGroupsTextForTesting();
+                var initialExpandAllToolTip = window.GetExpandAllMarkupReviewSnapshotDiffGroupsToolTipForTesting();
+                var initialCollapseAllText = window.GetCollapseAllMarkupReviewSnapshotDiffGroupsTextForTesting();
+                var initialCollapseAllToolTip = window.GetCollapseAllMarkupReviewSnapshotDiffGroupsToolTipForTesting();
                 var collapsed = window.CollapseAllMarkupReviewSnapshotDiffGroupsForTesting();
                 var collapsedTitles = window.GetMarkupReviewSnapshotDiffTitlesForTesting();
                 var collapsedToggles = window.GetMarkupReviewSnapshotDiffHeaderToggleTextsForTesting();
+                var collapsedExpandAllText = window.GetExpandAllMarkupReviewSnapshotDiffGroupsTextForTesting();
+                var collapsedExpandAllToolTip = window.GetExpandAllMarkupReviewSnapshotDiffGroupsToolTipForTesting();
+                var collapsedCollapseAllText = window.GetCollapseAllMarkupReviewSnapshotDiffGroupsTextForTesting();
+                var collapsedCollapseAllToolTip = window.GetCollapseAllMarkupReviewSnapshotDiffGroupsToolTipForTesting();
+                var collapsedCollapseOthersTexts = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersTextsForTesting();
+                var collapsedCollapseOthersToolTips = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersToolTipsForTesting();
                 var selectHiddenIssue = window.SelectMarkupReviewSnapshotDiffEntryForTesting("Zulu power new");
                 var expanded = window.ExpandAllMarkupReviewSnapshotDiffGroupsForTesting();
                 var expandedTitles = window.GetMarkupReviewSnapshotDiffTitlesForTesting();
                 var expandedToggles = window.GetMarkupReviewSnapshotDiffHeaderToggleTextsForTesting();
+                var expandedExpandAllText = window.GetExpandAllMarkupReviewSnapshotDiffGroupsTextForTesting();
+                var expandedExpandAllToolTip = window.GetExpandAllMarkupReviewSnapshotDiffGroupsToolTipForTesting();
+                var expandedCollapseAllText = window.GetCollapseAllMarkupReviewSnapshotDiffGroupsTextForTesting();
+                var expandedCollapseAllToolTip = window.GetCollapseAllMarkupReviewSnapshotDiffGroupsToolTipForTesting();
                 var selectRestoredIssue = window.SelectMarkupReviewSnapshotDiffEntryForTesting("Zulu power new");
 
                 return (
@@ -2089,13 +2112,27 @@ public partial class MainWindowMarkupInteractionTests
                     selectedSnapshot,
                     initialTitles,
                     initialToggles,
+                    initialExpandAllText,
+                    initialExpandAllToolTip,
+                    initialCollapseAllText,
+                    initialCollapseAllToolTip,
                     collapsed,
                     collapsedTitles,
                     collapsedToggles,
+                    collapsedExpandAllText,
+                    collapsedExpandAllToolTip,
+                    collapsedCollapseAllText,
+                    collapsedCollapseAllToolTip,
+                    collapsedCollapseOthersTexts,
+                    collapsedCollapseOthersToolTips,
                     selectHiddenIssue,
                     expanded,
                     expandedTitles,
                     expandedToggles,
+                    expandedExpandAllText,
+                    expandedExpandAllToolTip,
+                    expandedCollapseAllText,
+                    expandedCollapseAllToolTip,
                     selectRestoredIssue);
             }
             finally
@@ -2108,13 +2145,27 @@ public partial class MainWindowMarkupInteractionTests
         Assert.True(outcome.selectedSnapshot);
         Assert.Equal(new[] { "Zulu power new", "Alpha lighting change" }, outcome.initialTitles);
         Assert.Equal(new[] { "[-]", "[-]" }, outcome.initialToggles);
+        Assert.Equal("Expand All (0 hidden)", outcome.initialExpandAllText);
+        Assert.Equal("All sheet groups are already expanded.", outcome.initialExpandAllToolTip);
+        Assert.Equal("Collapse All (2 visible)", outcome.initialCollapseAllText);
+        Assert.Equal("Collapse 2 visible sheet groups.", outcome.initialCollapseAllToolTip);
         Assert.True(outcome.collapsed);
         Assert.Empty(outcome.collapsedTitles);
         Assert.Equal(new[] { "[+]", "[+]" }, outcome.collapsedToggles);
+        Assert.Equal("Expand All (2 hidden)", outcome.collapsedExpandAllText);
+        Assert.Equal("Expand 2 hidden sheet groups.", outcome.collapsedExpandAllToolTip);
+        Assert.Equal("Collapse All (0 visible)", outcome.collapsedCollapseAllText);
+        Assert.Equal("All sheet groups are already collapsed.", outcome.collapsedCollapseAllToolTip);
+        Assert.Equal(new[] { "Show Only This Sheet", "Show Only This Sheet" }, outcome.collapsedCollapseOthersTexts);
+        Assert.Equal(new[] { "Show only this sheet's issues.", "Show only this sheet's issues." }, outcome.collapsedCollapseOthersToolTips);
         Assert.False(outcome.selectHiddenIssue);
         Assert.True(outcome.expanded);
         Assert.Equal(new[] { "Zulu power new", "Alpha lighting change" }, outcome.expandedTitles);
         Assert.Equal(new[] { "[-]", "[-]" }, outcome.expandedToggles);
+        Assert.Equal("Expand All (0 hidden)", outcome.expandedExpandAllText);
+        Assert.Equal("All sheet groups are already expanded.", outcome.expandedExpandAllToolTip);
+        Assert.Equal("Collapse All (2 visible)", outcome.expandedCollapseAllText);
+        Assert.Equal("Collapse 2 visible sheet groups.", outcome.expandedCollapseAllToolTip);
         Assert.True(outcome.selectRestoredIssue);
     }
 
@@ -2350,12 +2401,16 @@ public partial class MainWindowMarkupInteractionTests
                 var initialCollapseOthersTexts = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersTextsForTesting();
                 var initialCollapseOthersEnabled = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersEnabledStatesForTesting();
                 var initialCollapseOthersVisible = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersVisibleStatesForTesting();
+                var initialCollapseOthersPresentation = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersPresentationKeysForTesting();
+                var initialCollapseOthersToolTips = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersToolTipsForTesting();
                 var collapsedOthers = window.CollapseOtherMarkupReviewSnapshotDiffGroupsForTesting($"Sheet: {secondSheet.DisplayName}");
                 var isolatedTitles = window.GetMarkupReviewSnapshotDiffTitlesForTesting();
                 var isolatedToggles = window.GetMarkupReviewSnapshotDiffHeaderToggleTextsForTesting();
                 var isolatedCollapseOthersTexts = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersTextsForTesting();
                 var isolatedCollapseOthersEnabled = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersEnabledStatesForTesting();
                 var isolatedCollapseOthersVisible = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersVisibleStatesForTesting();
+                var isolatedCollapseOthersPresentation = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersPresentationKeysForTesting();
+                var isolatedCollapseOthersToolTips = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersToolTipsForTesting();
                 var isolatedAgain = window.CollapseOtherMarkupReviewSnapshotDiffGroupsForTesting($"Sheet: {secondSheet.DisplayName}");
                 var hiddenPowerSelection = window.SelectMarkupReviewSnapshotDiffEntryForTesting("Zulu power new");
                 var visibleLightingSelection = window.SelectMarkupReviewSnapshotDiffEntryForTesting("Alpha lighting change");
@@ -2365,6 +2420,8 @@ public partial class MainWindowMarkupInteractionTests
                 var expandedCollapseOthersTexts = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersTextsForTesting();
                 var expandedCollapseOthersEnabled = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersEnabledStatesForTesting();
                 var expandedCollapseOthersVisible = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersVisibleStatesForTesting();
+                var expandedCollapseOthersPresentation = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersPresentationKeysForTesting();
+                var expandedCollapseOthersToolTips = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersToolTipsForTesting();
 
                 return (
                     published,
@@ -2374,12 +2431,16 @@ public partial class MainWindowMarkupInteractionTests
                     initialCollapseOthersTexts,
                     initialCollapseOthersEnabled,
                     initialCollapseOthersVisible,
+                    initialCollapseOthersPresentation,
+                    initialCollapseOthersToolTips,
                     collapsedOthers,
                     isolatedTitles,
                     isolatedToggles,
                     isolatedCollapseOthersTexts,
                     isolatedCollapseOthersEnabled,
                     isolatedCollapseOthersVisible,
+                    isolatedCollapseOthersPresentation,
+                    isolatedCollapseOthersToolTips,
                     isolatedAgain,
                     hiddenPowerSelection,
                     visibleLightingSelection,
@@ -2388,7 +2449,9 @@ public partial class MainWindowMarkupInteractionTests
                     expandedToggles,
                     expandedCollapseOthersTexts,
                     expandedCollapseOthersEnabled,
-                    expandedCollapseOthersVisible);
+                    expandedCollapseOthersVisible,
+                    expandedCollapseOthersPresentation,
+                    expandedCollapseOthersToolTips);
             }
             finally
             {
@@ -2403,12 +2466,16 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(new[] { "Collapse Others", "Collapse Others" }, outcome.initialCollapseOthersTexts);
         Assert.Equal(new[] { true, true }, outcome.initialCollapseOthersEnabled);
         Assert.Equal(new[] { true, true }, outcome.initialCollapseOthersVisible);
+        Assert.Equal(new[] { "action", "action" }, outcome.initialCollapseOthersPresentation);
+        Assert.Equal(new[] { "Collapse 1 other visible sheet group.", "Collapse 1 other visible sheet group." }, outcome.initialCollapseOthersToolTips);
         Assert.True(outcome.collapsedOthers);
         Assert.Equal(new[] { "Alpha lighting change" }, outcome.isolatedTitles);
         Assert.Equal(new[] { "[+]", "[-]" }, outcome.isolatedToggles);
-        Assert.Equal(new[] { "Collapse Others", "Isolated" }, outcome.isolatedCollapseOthersTexts);
+        Assert.Equal(new[] { "Show Only This Sheet", "Isolated" }, outcome.isolatedCollapseOthersTexts);
         Assert.Equal(new[] { true, false }, outcome.isolatedCollapseOthersEnabled);
         Assert.Equal(new[] { true, true }, outcome.isolatedCollapseOthersVisible);
+        Assert.Equal(new[] { "action", "status" }, outcome.isolatedCollapseOthersPresentation);
+        Assert.Equal(new[] { "Show this sheet and collapse 1 other visible sheet group.", "This sheet is already the only visible group." }, outcome.isolatedCollapseOthersToolTips);
         Assert.False(outcome.isolatedAgain);
         Assert.False(outcome.hiddenPowerSelection);
         Assert.True(outcome.visibleLightingSelection);
@@ -2418,6 +2485,8 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(new[] { "Collapse Others", "Collapse Others" }, outcome.expandedCollapseOthersTexts);
         Assert.Equal(new[] { true, true }, outcome.expandedCollapseOthersEnabled);
         Assert.Equal(new[] { true, true }, outcome.expandedCollapseOthersVisible);
+        Assert.Equal(new[] { "action", "action" }, outcome.expandedCollapseOthersPresentation);
+        Assert.Equal(new[] { "Collapse 1 other visible sheet group.", "Collapse 1 other visible sheet group." }, outcome.expandedCollapseOthersToolTips);
     }
 
     [Fact]
@@ -2460,6 +2529,8 @@ public partial class MainWindowMarkupInteractionTests
                 var collapseOthersTexts = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersTextsForTesting();
                 var collapseOthersEnabled = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersEnabledStatesForTesting();
                 var collapseOthersVisible = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersVisibleStatesForTesting();
+                var collapseOthersPresentation = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersPresentationKeysForTesting();
+                var collapseOthersToolTips = window.GetMarkupReviewSnapshotDiffHeaderCollapseOthersToolTipsForTesting();
 
                 return (
                     published,
@@ -2467,7 +2538,9 @@ public partial class MainWindowMarkupInteractionTests
                     headerTexts,
                     collapseOthersTexts,
                     collapseOthersEnabled,
-                    collapseOthersVisible);
+                    collapseOthersVisible,
+                    collapseOthersPresentation,
+                    collapseOthersToolTips);
             }
             finally
             {
@@ -2481,6 +2554,8 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(new[] { string.Empty }, outcome.collapseOthersTexts);
         Assert.Equal(new[] { false }, outcome.collapseOthersEnabled);
         Assert.Equal(new[] { false }, outcome.collapseOthersVisible);
+        Assert.Equal(new[] { "hidden" }, outcome.collapseOthersPresentation);
+        Assert.Equal(new[] { string.Empty }, outcome.collapseOthersToolTips);
     }
 
     [Fact]

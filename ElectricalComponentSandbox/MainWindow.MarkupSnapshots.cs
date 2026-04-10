@@ -114,6 +114,40 @@ public partial class MainWindow
             .ToList() ?? new List<string>();
     }
 
+    internal IReadOnlyList<string> GetMarkupReviewSnapshotDiffHeaderToggleToolTipsForTesting()
+    {
+        UpdateMarkupReviewSnapshotUi();
+        return MarkupReviewSnapshotDiffListBox?.Items
+            .OfType<MarkupReviewSnapshotDiffEntry>()
+            .Where(entry => entry.IsGroupHeader)
+            .Select(entry => entry.HeaderToggleToolTipText)
+            .ToList() ?? new List<string>();
+    }
+
+    internal string GetExpandAllMarkupReviewSnapshotDiffGroupsToolTipForTesting()
+    {
+        UpdateMarkupReviewSnapshotUi();
+        return ExpandAllMarkupReviewSnapshotDiffGroupsButton?.ToolTip as string ?? string.Empty;
+    }
+
+    internal string GetCollapseAllMarkupReviewSnapshotDiffGroupsToolTipForTesting()
+    {
+        UpdateMarkupReviewSnapshotUi();
+        return CollapseAllMarkupReviewSnapshotDiffGroupsButton?.ToolTip as string ?? string.Empty;
+    }
+
+    internal string GetExpandAllMarkupReviewSnapshotDiffGroupsTextForTesting()
+    {
+        UpdateMarkupReviewSnapshotUi();
+        return ExpandAllMarkupReviewSnapshotDiffGroupsButton?.Content as string ?? string.Empty;
+    }
+
+    internal string GetCollapseAllMarkupReviewSnapshotDiffGroupsTextForTesting()
+    {
+        UpdateMarkupReviewSnapshotUi();
+        return CollapseAllMarkupReviewSnapshotDiffGroupsButton?.Content as string ?? string.Empty;
+    }
+
     internal IReadOnlyList<string> GetMarkupReviewSnapshotDiffHeaderCollapseOthersTextsForTesting()
     {
         UpdateMarkupReviewSnapshotUi();
@@ -142,6 +176,26 @@ public partial class MainWindow
             .Where(entry => entry.IsGroupHeader)
             .Select(entry => entry.HeaderShowsCollapseOthers)
             .ToList() ?? new List<bool>();
+    }
+
+    internal IReadOnlyList<string> GetMarkupReviewSnapshotDiffHeaderCollapseOthersPresentationKeysForTesting()
+    {
+        UpdateMarkupReviewSnapshotUi();
+        return MarkupReviewSnapshotDiffListBox?.Items
+            .OfType<MarkupReviewSnapshotDiffEntry>()
+            .Where(entry => entry.IsGroupHeader)
+            .Select(entry => entry.HeaderCollapseOthersPresentationKey)
+            .ToList() ?? new List<string>();
+    }
+
+    internal IReadOnlyList<string> GetMarkupReviewSnapshotDiffHeaderCollapseOthersToolTipsForTesting()
+    {
+        UpdateMarkupReviewSnapshotUi();
+        return MarkupReviewSnapshotDiffListBox?.Items
+            .OfType<MarkupReviewSnapshotDiffEntry>()
+            .Where(entry => entry.IsGroupHeader)
+            .Select(entry => entry.HeaderCollapseOthersToolTipText)
+            .ToList() ?? new List<string>();
     }
 
     internal string GetMarkupReviewSnapshotDiffRevealHintForTesting(string title)
@@ -499,8 +553,12 @@ public partial class MainWindow
             SelectedMarkupReviewSnapshotComparisonTextBlock.Text = string.Empty;
             SelectedMarkupReviewSnapshotDetailsTextBlock.Text = string.Empty;
             MarkupReviewSnapshotDiffListBox.ItemsSource = null;
+            ExpandAllMarkupReviewSnapshotDiffGroupsButton.Content = "Expand All";
             ExpandAllMarkupReviewSnapshotDiffGroupsButton.IsEnabled = false;
+            ExpandAllMarkupReviewSnapshotDiffGroupsButton.ToolTip = "Select a published review set first.";
+            CollapseAllMarkupReviewSnapshotDiffGroupsButton.Content = "Collapse All";
             CollapseAllMarkupReviewSnapshotDiffGroupsButton.IsEnabled = false;
+            CollapseAllMarkupReviewSnapshotDiffGroupsButton.ToolTip = "Select a published review set first.";
             _pendingMarkupReviewSnapshotDiffAnchorGroupStateKey = null;
             _pendingMarkupReviewSnapshotDiffSelectedEntryKey = null;
             _pendingMarkupReviewSnapshotDiffListFocus = false;
@@ -511,12 +569,24 @@ public partial class MainWindow
         DeleteMarkupReviewSnapshotButton.IsEnabled = true;
         var comparison = BuildMarkupReviewSnapshotComparison(snapshot);
         var diffHeaderEntries = comparison.DiffEntries.Where(entry => entry.IsGroupHeader).ToList();
+        var hiddenGroupCount = diffHeaderEntries.Count(entry => string.Equals(entry.HeaderToggleText, "[+]", StringComparison.Ordinal));
+        var visibleGroupCount = diffHeaderEntries.Count(entry => string.Equals(entry.HeaderToggleText, "[-]", StringComparison.Ordinal));
+        var canExpandAll = hiddenGroupCount > 0;
+        var canCollapseAll = visibleGroupCount > 0;
         SelectedMarkupReviewSnapshotSummaryTextBlock.Text = BuildSelectedMarkupReviewSnapshotSummary(snapshot);
         SelectedMarkupReviewSnapshotComparisonTextBlock.Text = BuildMarkupReviewSnapshotComparisonSummary(comparison);
         SelectedMarkupReviewSnapshotDetailsTextBlock.Text = BuildMarkupReviewSnapshotComparisonDetails(comparison);
         MarkupReviewSnapshotDiffListBox.ItemsSource = comparison.DiffEntries;
-        ExpandAllMarkupReviewSnapshotDiffGroupsButton.IsEnabled = diffHeaderEntries.Any(entry => string.Equals(entry.HeaderToggleText, "[+]", StringComparison.Ordinal));
-        CollapseAllMarkupReviewSnapshotDiffGroupsButton.IsEnabled = diffHeaderEntries.Any(entry => string.Equals(entry.HeaderToggleText, "[-]", StringComparison.Ordinal));
+        ExpandAllMarkupReviewSnapshotDiffGroupsButton.Content = $"Expand All ({hiddenGroupCount} hidden)";
+        ExpandAllMarkupReviewSnapshotDiffGroupsButton.IsEnabled = canExpandAll;
+        CollapseAllMarkupReviewSnapshotDiffGroupsButton.Content = $"Collapse All ({visibleGroupCount} visible)";
+        CollapseAllMarkupReviewSnapshotDiffGroupsButton.IsEnabled = canCollapseAll;
+        ExpandAllMarkupReviewSnapshotDiffGroupsButton.ToolTip = canExpandAll
+            ? $"Expand {hiddenGroupCount} hidden sheet group{(hiddenGroupCount == 1 ? string.Empty : "s")}."
+            : "All sheet groups are already expanded.";
+        CollapseAllMarkupReviewSnapshotDiffGroupsButton.ToolTip = canCollapseAll
+            ? $"Collapse {visibleGroupCount} visible sheet group{(visibleGroupCount == 1 ? string.Empty : "s")}."
+            : "All sheet groups are already collapsed.";
         ApplyMarkupReviewSnapshotDiffSelectionRetention();
         ApplyMarkupReviewSnapshotDiffAnchor();
     }
@@ -804,7 +874,9 @@ public partial class MainWindow
                 sheetGroup.IsCollapsed,
                 collapseOthersState.Text,
                 collapseOthersState.IsEnabled,
-                collapseOthersState.IsVisible));
+                collapseOthersState.IsVisible,
+                collapseOthersState.PresentationKey,
+                collapseOthersState.ToolTipText));
 
             if (!sheetGroup.IsCollapsed)
                 displayEntries.AddRange(sheetGroup.SheetEntries.Select(entry => entry with { DisplaySheetContextText = string.Empty }));
@@ -813,7 +885,7 @@ public partial class MainWindow
         return displayEntries;
     }
 
-    private static MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotDiffHeaderEntry(string sheetContextText, string sheetContextSortKey, IReadOnlyList<MarkupReviewSnapshotDiffEntry> sheetEntries, string groupStateKey, bool isCollapsed, string headerCollapseOthersText, bool headerCanCollapseOthers, bool headerShowsCollapseOthers)
+    private static MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotDiffHeaderEntry(string sheetContextText, string sheetContextSortKey, IReadOnlyList<MarkupReviewSnapshotDiffEntry> sheetEntries, string groupStateKey, bool isCollapsed, string headerCollapseOthersText, bool headerCanCollapseOthers, bool headerShowsCollapseOthers, string headerCollapseOthersPresentationKey, string headerCollapseOthersToolTipText)
     {
         var groupHeaderSheetText = BuildMarkupReviewSnapshotDiffGroupHeaderSheetText(sheetContextText);
         var groupHeaderPriorityKey = BuildMarkupReviewSnapshotDiffHeaderPriorityKey(sheetEntries);
@@ -837,6 +909,7 @@ public partial class MainWindow
             IsGroupHeader: true,
             HeaderGroupStateKey: groupStateKey,
             HeaderToggleText: isCollapsed ? "[+]" : "[-]",
+            HeaderToggleToolTipText: BuildMarkupReviewSnapshotDiffHeaderToggleToolTipText(sheetEntries.Count, isCollapsed),
             HeaderPriorityKey: groupHeaderPriorityKey,
             HeaderSheetTitleText: groupHeaderSheetText,
             HeaderIssueCountText: groupHeaderIssueCountText,
@@ -845,21 +918,45 @@ public partial class MainWindow
             HeaderMissingCountText: groupHeaderMissingCountText,
             HeaderCollapseOthersText: headerCollapseOthersText,
             HeaderCanCollapseOthers: headerCanCollapseOthers,
-            HeaderShowsCollapseOthers: headerShowsCollapseOthers);
+            HeaderShowsCollapseOthers: headerShowsCollapseOthers,
+            HeaderCollapseOthersPresentationKey: headerCollapseOthersPresentationKey,
+            HeaderCollapseOthersToolTipText: headerCollapseOthersToolTipText);
     }
 
-    private static (string Text, bool IsEnabled, bool IsVisible) BuildMarkupReviewSnapshotDiffHeaderCollapseOthersState(IReadOnlyList<(string GroupStateKey, bool IsCollapsed)> groupStates, string groupStateKey, bool isCollapsed)
+    private static (string Text, bool IsEnabled, bool IsVisible, string PresentationKey, string ToolTipText) BuildMarkupReviewSnapshotDiffHeaderCollapseOthersState(IReadOnlyList<(string GroupStateKey, bool IsCollapsed)> groupStates, string groupStateKey, bool isCollapsed)
     {
         if (groupStates.Count <= 1)
-            return (Text: string.Empty, IsEnabled: false, IsVisible: false);
+            return (Text: string.Empty, IsEnabled: false, IsVisible: false, PresentationKey: "hidden", ToolTipText: string.Empty);
 
-        var hasExpandedSibling = groupStates.Any(groupState =>
+        var expandedSiblingCount = groupStates.Count(groupState =>
             !string.Equals(groupState.GroupStateKey, groupStateKey, StringComparison.OrdinalIgnoreCase) &&
             !groupState.IsCollapsed);
-        if (!isCollapsed && !hasExpandedSibling)
-            return (Text: "Isolated", IsEnabled: false, IsVisible: true);
+        if (!isCollapsed && expandedSiblingCount == 0)
+            return (
+                Text: "Isolated",
+                IsEnabled: false,
+                IsVisible: true,
+                PresentationKey: "status",
+                ToolTipText: "This sheet is already the only visible group.");
 
-        return (Text: "Collapse Others", IsEnabled: true, IsVisible: true);
+        if (isCollapsed)
+            return (
+                Text: "Show Only This Sheet",
+                IsEnabled: true,
+                IsVisible: true,
+                PresentationKey: "action",
+                ToolTipText: expandedSiblingCount == 0
+                    ? "Show only this sheet's issues."
+                    : $"Show this sheet and collapse {expandedSiblingCount} other visible sheet group{(expandedSiblingCount == 1 ? string.Empty : "s")}."
+            );
+
+        return (
+            Text: "Collapse Others",
+            IsEnabled: true,
+            IsVisible: true,
+            PresentationKey: "action",
+            ToolTipText: $"Collapse {expandedSiblingCount} other visible sheet group{(expandedSiblingCount == 1 ? string.Empty : "s")}."
+        );
     }
 
     private static string BuildMarkupReviewSnapshotDiffGroupStateKey(string snapshotId, string sheetContextSortKey)
@@ -876,6 +973,11 @@ public partial class MainWindow
 
     private static string BuildMarkupReviewSnapshotDiffGroupHeaderIssueCountText(int issueCount)
         => $"{issueCount} issue{(issueCount == 1 ? string.Empty : "s")}";
+
+    private static string BuildMarkupReviewSnapshotDiffHeaderToggleToolTipText(int issueCount, bool isCollapsed)
+        => isCollapsed
+            ? $"Expand this sheet and show {issueCount} issue{(issueCount == 1 ? string.Empty : "s")}."
+            : $"Collapse this sheet and hide {issueCount} issue{(issueCount == 1 ? string.Empty : "s")}.";
 
     private static string BuildMarkupReviewSnapshotDiffHeaderPriorityKey(IReadOnlyList<MarkupReviewSnapshotDiffEntry> sheetEntries)
     {
@@ -1247,6 +1349,7 @@ internal sealed record MarkupReviewSnapshotDiffEntry(
     bool IsGroupHeader = false,
     string HeaderGroupStateKey = "",
     string HeaderToggleText = "",
+    string HeaderToggleToolTipText = "",
     string HeaderPriorityKey = "",
     string HeaderSheetTitleText = "",
     string HeaderIssueCountText = "",
@@ -1255,7 +1358,9 @@ internal sealed record MarkupReviewSnapshotDiffEntry(
     string HeaderMissingCountText = "",
     string HeaderCollapseOthersText = "",
     bool HeaderCanCollapseOthers = false,
-    bool HeaderShowsCollapseOthers = true)
+    bool HeaderShowsCollapseOthers = true,
+    string HeaderCollapseOthersPresentationKey = "hidden",
+    string HeaderCollapseOthersToolTipText = "")
 {
     public bool CanRevealLiveMarkup => !string.IsNullOrWhiteSpace(CurrentMarkupId);
     public bool HasHeaderChangedCount => !string.IsNullOrWhiteSpace(HeaderChangedCountText);
