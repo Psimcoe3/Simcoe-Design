@@ -11,6 +11,8 @@ namespace ElectricalComponentSandbox;
 
 public partial class MainWindow
 {
+    private readonly HashSet<string> _collapsedMarkupReviewSnapshotDiffGroupKeys = new(StringComparer.OrdinalIgnoreCase);
+
     internal bool PublishMarkupReviewSnapshotForTesting(string name, string? actor = null)
         => TryPublishMarkupReviewSnapshot(name, actor ?? "Test Reviewer", showFeedbackIfUnavailable: false);
 
@@ -97,6 +99,16 @@ public partial class MainWindow
             .ToList() ?? new List<string>();
     }
 
+    internal IReadOnlyList<string> GetMarkupReviewSnapshotDiffHeaderToggleTextsForTesting()
+    {
+        UpdateMarkupReviewSnapshotUi();
+        return MarkupReviewSnapshotDiffListBox?.Items
+            .OfType<MarkupReviewSnapshotDiffEntry>()
+            .Where(entry => entry.IsGroupHeader)
+            .Select(entry => entry.HeaderToggleText)
+            .ToList() ?? new List<string>();
+    }
+
     internal string GetMarkupReviewSnapshotDiffRevealHintForTesting(string title)
     {
         UpdateMarkupReviewSnapshotUi();
@@ -140,6 +152,19 @@ public partial class MainWindow
         return true;
     }
 
+    internal bool ToggleMarkupReviewSnapshotDiffHeaderForTesting(string headerSheetTitleText)
+    {
+        UpdateMarkupReviewSnapshotUi();
+        var entry = MarkupReviewSnapshotDiffListBox?.Items
+            .OfType<MarkupReviewSnapshotDiffEntry>()
+            .FirstOrDefault(candidate => candidate.IsGroupHeader && string.Equals(candidate.HeaderSheetTitleText, headerSheetTitleText, StringComparison.OrdinalIgnoreCase));
+        if (entry == null)
+            return false;
+
+        ToggleMarkupReviewSnapshotDiffHeader(entry);
+        return true;
+    }
+
     private void PublishMarkupReviewSnapshot_Click(object sender, RoutedEventArgs e)
     {
         var input = PromptInput(
@@ -154,6 +179,15 @@ public partial class MainWindow
 
     private void DeleteSelectedMarkupReviewSnapshot_Click(object sender, RoutedEventArgs e)
         => TryDeleteSelectedMarkupReviewSnapshot(confirmDeletion: true, showFeedbackIfUnavailable: true);
+
+    private void MarkupReviewSnapshotDiffHeaderButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element || element.DataContext is not MarkupReviewSnapshotDiffEntry entry)
+            return;
+
+        ToggleMarkupReviewSnapshotDiffHeader(entry);
+        e.Handled = true;
+    }
 
     private void RenameSelectedMarkupReviewSnapshot_Click(object sender, RoutedEventArgs e)
     {
@@ -226,6 +260,8 @@ public partial class MainWindow
         var removed = _viewModel.RemoveMarkupReviewSnapshot(snapshot.Id);
         if (!removed)
             return false;
+
+        ClearMarkupReviewSnapshotDiffGroupState(snapshot.Id);
 
         if (string.Equals(_selectedMarkupReviewSnapshotId, snapshot.Id, StringComparison.Ordinal))
             _selectedMarkupReviewSnapshotId = null;
@@ -448,7 +484,7 @@ public partial class MainWindow
 
         diffEntries.AddRange(newIssues.Select(BuildMarkupReviewSnapshotNewIssueEntry));
         diffEntries.AddRange(missingIssues.Select(markup => BuildMarkupReviewSnapshotMissingIssueEntry(markup, snapshot)));
-        diffEntries = BuildMarkupReviewSnapshotDiffDisplayEntries(diffEntries);
+        diffEntries = BuildMarkupReviewSnapshotDiffDisplayEntries(snapshot.Id, diffEntries);
 
         return new MarkupReviewSnapshotComparisonResult(
             IsEmptySnapshot: false,
@@ -633,7 +669,7 @@ public partial class MainWindow
             .ToList();
     }
 
-    private static List<MarkupReviewSnapshotDiffEntry> BuildMarkupReviewSnapshotDiffDisplayEntries(IEnumerable<MarkupReviewSnapshotDiffEntry> diffEntries)
+    private List<MarkupReviewSnapshotDiffEntry> BuildMarkupReviewSnapshotDiffDisplayEntries(string snapshotId, IEnumerable<MarkupReviewSnapshotDiffEntry> diffEntries)
     {
         var sortedEntries = SortMarkupReviewSnapshotDiffEntries(diffEntries);
         var displayEntries = new List<MarkupReviewSnapshotDiffEntry>(sortedEntries.Count * 2);
@@ -641,18 +677,23 @@ public partial class MainWindow
         {
             var sheetEntries = sheetGroup.ToList();
             var headerEntry = sheetEntries[0];
+            var groupStateKey = BuildMarkupReviewSnapshotDiffGroupStateKey(snapshotId, headerEntry.SheetContextSortKey);
+            var isCollapsed = _collapsedMarkupReviewSnapshotDiffGroupKeys.Contains(groupStateKey);
             displayEntries.Add(BuildMarkupReviewSnapshotDiffHeaderEntry(
                 headerEntry.SheetContextText,
                 headerEntry.SheetContextSortKey,
-                sheetEntries));
+                sheetEntries,
+                groupStateKey,
+                isCollapsed));
 
-            displayEntries.AddRange(sheetEntries.Select(entry => entry with { DisplaySheetContextText = string.Empty }));
+            if (!isCollapsed)
+                displayEntries.AddRange(sheetEntries.Select(entry => entry with { DisplaySheetContextText = string.Empty }));
         }
 
         return displayEntries;
     }
 
-    private static MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotDiffHeaderEntry(string sheetContextText, string sheetContextSortKey, IReadOnlyList<MarkupReviewSnapshotDiffEntry> sheetEntries)
+    private static MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotDiffHeaderEntry(string sheetContextText, string sheetContextSortKey, IReadOnlyList<MarkupReviewSnapshotDiffEntry> sheetEntries, string groupStateKey, bool isCollapsed)
     {
         var groupHeaderSheetText = BuildMarkupReviewSnapshotDiffGroupHeaderSheetText(sheetContextText);
         var groupHeaderPriorityKey = BuildMarkupReviewSnapshotDiffHeaderPriorityKey(sheetEntries);
@@ -674,6 +715,8 @@ public partial class MainWindow
             SheetContextSortKey: sheetContextSortKey,
             CategorySortOrder: -1,
             IsGroupHeader: true,
+            HeaderGroupStateKey: groupStateKey,
+            HeaderToggleText: isCollapsed ? "[+]" : "[-]",
             HeaderPriorityKey: groupHeaderPriorityKey,
             HeaderSheetTitleText: groupHeaderSheetText,
             HeaderIssueCountText: groupHeaderIssueCountText,
@@ -681,6 +724,9 @@ public partial class MainWindow
             HeaderNewCountText: groupHeaderNewCountText,
             HeaderMissingCountText: groupHeaderMissingCountText);
     }
+
+    private static string BuildMarkupReviewSnapshotDiffGroupStateKey(string snapshotId, string sheetContextSortKey)
+        => snapshotId + "|" + sheetContextSortKey;
 
     private static string BuildMarkupReviewSnapshotDiffGroupHeaderText(string sheetContextText, IReadOnlyList<MarkupReviewSnapshotDiffEntry> sheetEntries)
     {
@@ -752,6 +798,24 @@ public partial class MainWindow
         return string.IsNullOrWhiteSpace(snapshotSheetName)
             ? "Snapshot-only sheet"
             : $"Snapshot-only sheet: {snapshotSheetName}";
+    }
+
+    private void ToggleMarkupReviewSnapshotDiffHeader(MarkupReviewSnapshotDiffEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry.HeaderGroupStateKey))
+            return;
+
+        if (_collapsedMarkupReviewSnapshotDiffGroupKeys.Contains(entry.HeaderGroupStateKey))
+            _collapsedMarkupReviewSnapshotDiffGroupKeys.Remove(entry.HeaderGroupStateKey);
+        else
+            _collapsedMarkupReviewSnapshotDiffGroupKeys.Add(entry.HeaderGroupStateKey);
+
+        UpdateSelectedMarkupReviewSnapshotUi(GetSelectedMarkupReviewSnapshot());
+    }
+
+    private void ClearMarkupReviewSnapshotDiffGroupState(string snapshotId)
+    {
+        _collapsedMarkupReviewSnapshotDiffGroupKeys.RemoveWhere(key => key.StartsWith(snapshotId + "|", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string NormalizeMarkupReviewSnapshotDiffSheetContextSortKey(string? sheetDisplayName)
@@ -887,6 +951,8 @@ internal sealed record MarkupReviewSnapshotDiffEntry(
     string SheetContextSortKey = "~",
     int CategorySortOrder = int.MaxValue,
     bool IsGroupHeader = false,
+    string HeaderGroupStateKey = "",
+    string HeaderToggleText = "",
     string HeaderPriorityKey = "",
     string HeaderSheetTitleText = "",
     string HeaderIssueCountText = "",

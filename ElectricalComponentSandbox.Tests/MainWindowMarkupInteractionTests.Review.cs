@@ -1895,4 +1895,123 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(string.Empty, outcome.displayedSheetContext);
         Assert.Equal($"Sheet: {outcome.firstSheetDisplayName}", outcome.underlyingSheetContext);
     }
+
+    [Fact]
+    public void ToggleMarkupReviewSnapshotDiffHeaderForTesting_HidesAndRestoresSheetGroupIssues()
+    {
+        var outcome = RunOnSta(() =>
+        {
+            var viewModel = new MainViewModel();
+            var firstSheet = viewModel.SelectedSheet ?? throw new InvalidOperationException("Expected a default sheet.");
+            firstSheet.Number = "E101";
+            firstSheet.Name = "Power Plan";
+
+            var secondSheet = viewModel.AddSheet("Lighting Plan");
+            secondSheet.Number = "E201";
+
+            var lightingMarkup = new MarkupRecord
+            {
+                Id = "snapshot-collapse-lighting",
+                Type = MarkupType.Rectangle,
+                Status = MarkupStatus.Open,
+                Vertices = { new Point(0, 0), new Point(10, 10) },
+                Metadata = new MarkupMetadata
+                {
+                    Label = "Alpha lighting change",
+                    Author = "Casey"
+                }
+            };
+            lightingMarkup.UpdateBoundingRect();
+            viewModel.Markups.Add(lightingMarkup);
+
+            viewModel.MarkupTool.ReviewScope = MarkupReviewScope.AllSheets;
+            viewModel.MarkupTool.RefreshReviewContext();
+
+            var window = new MainWindow(viewModel);
+            try
+            {
+                var published = window.PublishMarkupReviewSnapshotForTesting("All Sheets Snapshot", "Coordinator");
+
+                lightingMarkup.Status = MarkupStatus.Resolved;
+                viewModel.MarkupTool.RefreshReviewContext();
+
+                viewModel.SelectSheet(firstSheet);
+                var zuluPowerMarkup = new MarkupRecord
+                {
+                    Id = "snapshot-collapse-power-new-zulu",
+                    Type = MarkupType.Text,
+                    Status = MarkupStatus.Open,
+                    TextContent = "New power issue",
+                    Vertices = { new Point(12, 6) },
+                    Metadata = new MarkupMetadata
+                    {
+                        Label = "Zulu power new",
+                        Author = "Paul"
+                    }
+                };
+                zuluPowerMarkup.UpdateBoundingRect();
+                viewModel.Markups.Add(zuluPowerMarkup);
+
+                var betaPowerMarkup = new MarkupRecord
+                {
+                    Id = "snapshot-collapse-power-new-beta",
+                    Type = MarkupType.Text,
+                    Status = MarkupStatus.Open,
+                    TextContent = "Another power issue",
+                    Vertices = { new Point(18, 6) },
+                    Metadata = new MarkupMetadata
+                    {
+                        Label = "Beta power new",
+                        Author = "Jordan"
+                    }
+                };
+                betaPowerMarkup.UpdateBoundingRect();
+                viewModel.Markups.Add(betaPowerMarkup);
+                viewModel.MarkupTool.RefreshReviewContext();
+
+                var selectedSnapshot = window.SelectMarkupReviewSnapshotForTesting("All Sheets Snapshot");
+                var initialTitles = window.GetMarkupReviewSnapshotDiffTitlesForTesting();
+                var initialToggles = window.GetMarkupReviewSnapshotDiffHeaderToggleTextsForTesting();
+                var collapsed = window.ToggleMarkupReviewSnapshotDiffHeaderForTesting($"Sheet: {firstSheet.DisplayName}");
+                var collapsedTitles = window.GetMarkupReviewSnapshotDiffTitlesForTesting();
+                var collapsedToggles = window.GetMarkupReviewSnapshotDiffHeaderToggleTextsForTesting();
+                var selectHiddenIssue = window.SelectMarkupReviewSnapshotDiffEntryForTesting("Zulu power new");
+                var expanded = window.ToggleMarkupReviewSnapshotDiffHeaderForTesting($"Sheet: {firstSheet.DisplayName}");
+                var expandedTitles = window.GetMarkupReviewSnapshotDiffTitlesForTesting();
+                var expandedToggles = window.GetMarkupReviewSnapshotDiffHeaderToggleTextsForTesting();
+                var selectRestoredIssue = window.SelectMarkupReviewSnapshotDiffEntryForTesting("Zulu power new");
+
+                return (
+                    published,
+                    selectedSnapshot,
+                    initialTitles,
+                    initialToggles,
+                    collapsed,
+                    collapsedTitles,
+                    collapsedToggles,
+                    selectHiddenIssue,
+                    expanded,
+                    expandedTitles,
+                    expandedToggles,
+                    selectRestoredIssue);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.True(outcome.published);
+        Assert.True(outcome.selectedSnapshot);
+        Assert.Equal(new[] { "Beta power new", "Zulu power new", "Alpha lighting change" }, outcome.initialTitles);
+        Assert.Equal(new[] { "[-]", "[-]" }, outcome.initialToggles);
+        Assert.True(outcome.collapsed);
+        Assert.Equal(new[] { "Alpha lighting change" }, outcome.collapsedTitles);
+        Assert.Equal(new[] { "[+]", "[-]" }, outcome.collapsedToggles);
+        Assert.False(outcome.selectHiddenIssue);
+        Assert.True(outcome.expanded);
+        Assert.Equal(new[] { "Beta power new", "Zulu power new", "Alpha lighting change" }, outcome.expandedTitles);
+        Assert.Equal(new[] { "[-]", "[-]" }, outcome.expandedToggles);
+        Assert.True(outcome.selectRestoredIssue);
+    }
 }
