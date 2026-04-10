@@ -62,14 +62,8 @@ public sealed class MarkupRenderService
                 break;
 
             case MarkupType.Rectangle:
-                if (markup.Vertices.Count >= 2)
-                {
-                    renderer.DrawRect(new Rect(markup.Vertices[0], markup.Vertices[1]), style);
-                }
-                else if (markup.BoundingRect != Rect.Empty)
-                {
-                    renderer.DrawRect(markup.BoundingRect, style);
-                }
+                if (TryGetBounds(markup, out var rectangleBounds))
+                    RenderBoundsMarkup(renderer, markup, rectangleBounds, localRect => renderer.DrawRect(localRect, style));
                 break;
 
             case MarkupType.Circle:
@@ -142,10 +136,15 @@ public sealed class MarkupRenderService
 
     private static void RenderComponentOverlay(ICanvas2DRenderer renderer, MarkupRecord markup, RenderStyle style)
     {
-        if (markup.BoundingRect != Rect.Empty)
-            renderer.DrawRect(markup.BoundingRect, style);
-        if (!string.IsNullOrEmpty(markup.TextContent))
-            renderer.DrawTextBox(markup.BoundingRect.Location, markup.TextContent, style);
+        if (!TryGetBounds(markup, out var bounds))
+            return;
+
+        RenderBoundsMarkup(renderer, markup, bounds, localRect =>
+        {
+            renderer.DrawRect(localRect, style);
+            if (!string.IsNullOrEmpty(markup.TextContent))
+                renderer.DrawTextBox(localRect.Location, markup.TextContent, style);
+        });
     }
 
     private static void RenderText(ICanvas2DRenderer renderer, MarkupRecord markup, RenderStyle style)
@@ -155,6 +154,27 @@ public sealed class MarkupRenderService
 
         var align = GetTextAlign(markup);
         var forcePlainText = markup.Metadata.CustomFields.ContainsKey(DrawingAnnotationMarkupService.TextAlignField);
+        if (ShouldApplyBoundsRotation(markup))
+        {
+            var center = GetRectCenter(markup.BoundingRect);
+            var localAnchor = new Point(markup.Vertices[0].X - center.X, markup.Vertices[0].Y - center.Y);
+
+            renderer.PushTransform(center.X, center.Y, markup.RotationDegrees);
+            try
+            {
+                if (style.FillColor is not null && !forcePlainText)
+                    renderer.DrawTextBox(localAnchor, markup.TextContent, style, style.FillColor);
+                else
+                    renderer.DrawText(localAnchor, markup.TextContent, style, align);
+            }
+            finally
+            {
+                renderer.PopTransform();
+            }
+
+            return;
+        }
+
         if (style.FillColor is not null && !forcePlainText)
             renderer.DrawTextBox(markup.Vertices[0], markup.TextContent, style, style.FillColor);
         else
@@ -169,29 +189,32 @@ public sealed class MarkupRenderService
         if (rect == Rect.Empty)
             return;
 
-        renderer.DrawRect(rect, new RenderStyle
+        RenderBoundsMarkup(renderer, markup, rect, localRect =>
         {
-            StrokeColor = style.StrokeColor,
-            StrokeWidth = Math.Max(1.0, style.StrokeWidth),
-            FillColor = style.FillColor ?? "#20FF0000",
-            Opacity = style.Opacity
-        });
+            renderer.DrawRect(localRect, new RenderStyle
+            {
+                StrokeColor = style.StrokeColor,
+                StrokeWidth = Math.Max(1.0, style.StrokeWidth),
+                FillColor = style.FillColor ?? "#20FF0000",
+                Opacity = style.Opacity
+            });
 
-        if (!string.IsNullOrWhiteSpace(markup.TextContent))
-        {
-            renderer.DrawText(
-                new Point(rect.X + rect.Width / 2.0, rect.Y + rect.Height * 0.68),
-                markup.TextContent,
-                new RenderStyle
-                {
-                    StrokeColor = style.StrokeColor,
-                    FontFamily = style.FontFamily,
-                    FontSize = style.FontSize,
-                    Bold = true,
-                    Opacity = style.Opacity
-                },
-                TextAlign.Center);
-        }
+            if (!string.IsNullOrWhiteSpace(markup.TextContent))
+            {
+                renderer.DrawText(
+                    new Point(localRect.X + localRect.Width / 2.0, localRect.Y + localRect.Height * 0.68),
+                    markup.TextContent,
+                    new RenderStyle
+                    {
+                        StrokeColor = style.StrokeColor,
+                        FontFamily = style.FontFamily,
+                        FontSize = style.FontSize,
+                        Bold = true,
+                        Opacity = style.Opacity
+                    },
+                    TextAlign.Center);
+            }
+        });
     }
 
     private static void RenderHatch(ICanvas2DRenderer renderer, MarkupRecord markup, RenderStyle style)
@@ -216,22 +239,75 @@ public sealed class MarkupRenderService
         if (rect == Rect.Empty)
             return;
 
-        renderer.DrawRect(rect, new RenderStyle
+        RenderBoundsMarkup(renderer, markup, rect, localRect =>
         {
-            StrokeColor = style.StrokeColor,
-            StrokeWidth = Math.Max(1.0, style.StrokeWidth),
-            DashPattern = new[] { 6f, 3f },
-            Opacity = style.Opacity
-        });
+            renderer.DrawRect(localRect, new RenderStyle
+            {
+                StrokeColor = style.StrokeColor,
+                StrokeWidth = Math.Max(1.0, style.StrokeWidth),
+                DashPattern = new[] { 6f, 3f },
+                Opacity = style.Opacity
+            });
 
-        if (!string.IsNullOrWhiteSpace(markup.TextContent))
+            if (!string.IsNullOrWhiteSpace(markup.TextContent))
+            {
+                renderer.DrawText(
+                    new Point(localRect.X + 4.0, localRect.Y + 14.0),
+                    markup.TextContent,
+                    style,
+                    TextAlign.Left);
+            }
+        });
+    }
+
+    private static void RenderBoundsMarkup(ICanvas2DRenderer renderer, MarkupRecord markup, Rect bounds, Action<Rect> renderLocal)
+    {
+        if (!ShouldApplyBoundsRotation(markup))
         {
-            renderer.DrawText(
-                new Point(rect.X + 4.0, rect.Y + 14.0),
-                markup.TextContent,
-                style,
-                TextAlign.Left);
+            renderLocal(bounds);
+            return;
         }
+
+        var center = GetRectCenter(bounds);
+        var localRect = new Rect(-bounds.Width / 2.0, -bounds.Height / 2.0, bounds.Width, bounds.Height);
+
+        renderer.PushTransform(center.X, center.Y, markup.RotationDegrees);
+        try
+        {
+            renderLocal(localRect);
+        }
+        finally
+        {
+            renderer.PopTransform();
+        }
+    }
+
+    private static bool TryGetBounds(MarkupRecord markup, out Rect bounds)
+    {
+        if (markup.BoundingRect != Rect.Empty)
+        {
+            bounds = markup.BoundingRect;
+            return true;
+        }
+
+        if (markup.Vertices.Count >= 2)
+        {
+            bounds = new Rect(markup.Vertices[0], markup.Vertices[^1]);
+            return true;
+        }
+
+        bounds = Rect.Empty;
+        return false;
+    }
+
+    private static bool ShouldApplyBoundsRotation(MarkupRecord markup)
+    {
+        return markup.BoundingRect != Rect.Empty && Math.Abs(markup.RotationDegrees) > 0.001;
+    }
+
+    private static Point GetRectCenter(Rect rect)
+    {
+        return new Point(rect.X + rect.Width / 2.0, rect.Y + rect.Height / 2.0);
     }
 
     private static RenderStyle AppearanceToStyle(MarkupAppearance appearance)

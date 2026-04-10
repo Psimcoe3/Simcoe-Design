@@ -134,6 +134,15 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void GetRotationHandlePoint_RotatesAboveTopCenter()
+    {
+        var handle = _sut.GetRotationHandlePoint(new Rect(10, 20, 30, 40), 90, offset: 10);
+
+        Assert.Equal(55, handle.X, 6);
+        Assert.Equal(40, handle.Y, 6);
+    }
+
+    [Fact]
     public void BuildResizedBounds_TopHandle_ResizesHeightOnly()
     {
         var resized = _sut.BuildResizedBounds(
@@ -194,6 +203,59 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void BuildResizedBounds_BottomRightHandle_PreservesAspectRatio()
+    {
+        var resized = _sut.BuildResizedBounds(
+            new Rect(10, 20, 30, 40),
+            new Point(70, 50),
+            MarkupResizeHandle.BottomRight,
+            minimumSize: 6,
+            preserveAspectRatio: true);
+
+        Assert.Equal(new Rect(10, 20, 60, 80), resized);
+    }
+
+    [Fact]
+    public void BuildResizedBounds_TopHandle_PreservesAspectRatioAroundHorizontalCenter()
+    {
+        var resized = _sut.BuildResizedBounds(
+            new Rect(10, 20, 30, 40),
+            new Point(25, 8),
+            MarkupResizeHandle.Top,
+            minimumSize: 6,
+            preserveAspectRatio: true);
+
+        Assert.Equal(new Rect(5.5, 8, 39, 52), resized);
+    }
+
+    [Fact]
+    public void BuildResizedBounds_BottomRightHandle_FromCenter_MirrorsResizeAroundCenter()
+    {
+        var resized = _sut.BuildResizedBounds(
+            new Rect(10, 20, 30, 40),
+            new Point(55, 70),
+            MarkupResizeHandle.BottomRight,
+            minimumSize: 6,
+            resizeFromCenter: true);
+
+        Assert.Equal(new Rect(-5, 10, 60, 60), resized);
+    }
+
+    [Fact]
+    public void BuildResizedBounds_RightHandle_FromCenterAndAspectRatio_PreservesAspectRatio()
+    {
+        var resized = _sut.BuildResizedBounds(
+            new Rect(10, 20, 30, 40),
+            new Point(50, 40),
+            MarkupResizeHandle.Right,
+            minimumSize: 6,
+            preserveAspectRatio: true,
+            resizeFromCenter: true);
+
+        Assert.Equal(new Rect(0, 6.666666666666664, 50, 66.66666666666667), resized);
+    }
+
+    [Fact]
     public void Resize_GroupedTableMarkup_ScalesVerticesBoundsAndFont()
     {
         var markup = new MarkupRecord
@@ -241,6 +303,39 @@ public partial class MarkupInteractionServiceTests
         Assert.Equal(new Rect(10, 20, 40, 12), markup.BoundingRect);
         Assert.Equal(10, markup.Appearance.FontSize);
         Assert.Equal(1.2, markup.Appearance.StrokeWidth, 3);
+    }
+
+    [Fact]
+    public void Rotate_GroupedRectangle_UpdatesBoundsCenterAndRotation()
+    {
+        var markup = CreateMarkup(new Rect(0, 0, 10, 10), string.Empty);
+        var snapshot = _sut.Capture(markup);
+
+        _sut.Rotate(markup, snapshot, new Point(15, 15), 90);
+
+        Assert.Equal(20, markup.BoundingRect.X, 6);
+        Assert.Equal(0, markup.BoundingRect.Y, 6);
+        Assert.Equal(10, markup.BoundingRect.Width, 6);
+        Assert.Equal(10, markup.BoundingRect.Height, 6);
+        Assert.Equal(30, markup.Vertices[0].X, 6);
+        Assert.Equal(0, markup.Vertices[0].Y, 6);
+        Assert.Equal(20, markup.Vertices[1].X, 6);
+        Assert.Equal(10, markup.Vertices[1].Y, 6);
+        Assert.Equal(90, markup.RotationDegrees, 6);
+    }
+
+    [Fact]
+    public void CaptureAndApply_RoundTripsRotationDegrees()
+    {
+        var markup = CreateMarkup(new Rect(10, 20, 30, 12), string.Empty);
+        markup.RotationDegrees = 35;
+
+        var snapshot = _sut.Capture(markup);
+
+        markup.RotationDegrees = 0;
+        _sut.Apply(markup, snapshot);
+
+        Assert.Equal(35, markup.RotationDegrees, 6);
     }
 
     [Fact]

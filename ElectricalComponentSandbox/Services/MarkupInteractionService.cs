@@ -53,6 +53,19 @@ public sealed class MarkupInteractionService
         return hasAny;
     }
 
+    public bool CanRotate(IEnumerable<MarkupRecord> markups)
+    {
+        var hasAny = false;
+        foreach (var markup in markups)
+        {
+            hasAny = true;
+            if (!IsRotatable(markup))
+                return false;
+        }
+
+        return hasAny;
+    }
+
     public bool CanEditVertices(MarkupRecord markup)
     {
         return markup.Type switch
@@ -335,7 +348,53 @@ public sealed class MarkupInteractionService
         };
     }
 
-    public Rect BuildResizedBounds(Rect originalBounds, Point dragPoint, MarkupResizeHandle handle, double minimumSize)
+    public Point GetRotationHandlePoint(Rect bounds, double rotationDegrees, double offset)
+    {
+        if (bounds == Rect.Empty)
+            return default;
+
+        var center = GetRectCenter(bounds);
+        var basePoint = new Point(center.X, bounds.Top - Math.Max(0.0, offset));
+        return RotatePoint(basePoint, center, rotationDegrees);
+    }
+
+    public Rect BuildResizedBounds(Rect originalBounds, Point dragPoint, MarkupResizeHandle handle, double minimumSize, bool preserveAspectRatio = false, bool resizeFromCenter = false)
+    {
+        if (originalBounds == Rect.Empty || handle == MarkupResizeHandle.None)
+            return originalBounds;
+
+        if (!preserveAspectRatio && !resizeFromCenter)
+            return BuildFreeformResizedBounds(originalBounds, dragPoint, handle, minimumSize);
+
+        var (horizontalDirection, verticalDirection) = GetResizeHandleDirection(handle);
+        var originalWidth = Math.Max(originalBounds.Width, 0.0001);
+        var originalHeight = Math.Max(originalBounds.Height, 0.0001);
+
+        if (resizeFromCenter)
+        {
+            return BuildCenteredResizedBounds(
+                originalBounds,
+                dragPoint,
+                horizontalDirection,
+                verticalDirection,
+                minimumSize,
+                preserveAspectRatio,
+                originalWidth,
+                originalHeight);
+        }
+
+        return BuildAnchoredResizedBounds(
+            originalBounds,
+            dragPoint,
+            horizontalDirection,
+            verticalDirection,
+            minimumSize,
+            preserveAspectRatio,
+            originalWidth,
+            originalHeight);
+    }
+
+    private static Rect BuildFreeformResizedBounds(Rect originalBounds, Point dragPoint, MarkupResizeHandle handle, double minimumSize)
     {
         if (originalBounds == Rect.Empty || handle == MarkupResizeHandle.None)
             return originalBounds;
@@ -395,6 +454,152 @@ public sealed class MarkupInteractionService
         }
 
         return new Rect(new Point(minX, minY), new Point(maxX, maxY));
+    }
+
+    private static Rect BuildCenteredResizedBounds(
+        Rect originalBounds,
+        Point dragPoint,
+        int horizontalDirection,
+        int verticalDirection,
+        double minimumSize,
+        bool preserveAspectRatio,
+        double originalWidth,
+        double originalHeight)
+    {
+        var center = new Point(originalBounds.X + originalBounds.Width / 2.0, originalBounds.Y + originalBounds.Height / 2.0);
+        var width = horizontalDirection == 0 ? originalBounds.Width : Math.Abs(dragPoint.X - center.X) * 2.0;
+        var height = verticalDirection == 0 ? originalBounds.Height : Math.Abs(dragPoint.Y - center.Y) * 2.0;
+
+        if (preserveAspectRatio)
+        {
+            if (horizontalDirection == 0 && verticalDirection != 0)
+            {
+                height = Math.Max(height, minimumSize);
+                width = height * originalWidth / originalHeight;
+            }
+            else if (verticalDirection == 0 && horizontalDirection != 0)
+            {
+                width = Math.Max(width, minimumSize);
+                height = width * originalHeight / originalWidth;
+            }
+            else
+            {
+                ConstrainSizeToAspectRatio(ref width, ref height, originalWidth, originalHeight);
+            }
+
+            ApplyMinimumSize(ref width, ref height, minimumSize, preserveAspectRatio: true, adjustWidth: horizontalDirection != 0, adjustHeight: verticalDirection != 0);
+        }
+        else
+        {
+            ApplyMinimumSize(ref width, ref height, minimumSize, preserveAspectRatio: false, adjustWidth: horizontalDirection != 0, adjustHeight: verticalDirection != 0);
+        }
+
+        return new Rect(
+            center.X - width / 2.0,
+            center.Y - height / 2.0,
+            width,
+            height);
+    }
+
+    private static Rect BuildAnchoredResizedBounds(
+        Rect originalBounds,
+        Point dragPoint,
+        int horizontalDirection,
+        int verticalDirection,
+        double minimumSize,
+        bool preserveAspectRatio,
+        double originalWidth,
+        double originalHeight)
+    {
+        var center = new Point(originalBounds.X + originalBounds.Width / 2.0, originalBounds.Y + originalBounds.Height / 2.0);
+
+        if (horizontalDirection == 0)
+        {
+            var fixedY = verticalDirection < 0 ? originalBounds.Bottom : originalBounds.Top;
+            var height = Math.Abs(dragPoint.Y - fixedY);
+            var width = preserveAspectRatio ? height * originalWidth / originalHeight : originalBounds.Width;
+
+            ApplyMinimumSize(ref width, ref height, minimumSize, preserveAspectRatio, adjustWidth: preserveAspectRatio, adjustHeight: true);
+
+            var left = center.X - width / 2.0;
+            var top = verticalDirection < 0 ? fixedY - height : fixedY;
+            return new Rect(left, top, width, height);
+        }
+
+        if (verticalDirection == 0)
+        {
+            var fixedX = horizontalDirection < 0 ? originalBounds.Right : originalBounds.Left;
+            var width = Math.Abs(dragPoint.X - fixedX);
+            var height = preserveAspectRatio ? width * originalHeight / originalWidth : originalBounds.Height;
+
+            ApplyMinimumSize(ref width, ref height, minimumSize, preserveAspectRatio, adjustWidth: true, adjustHeight: preserveAspectRatio);
+
+            var left = horizontalDirection < 0 ? fixedX - width : fixedX;
+            var top = center.Y - height / 2.0;
+            return new Rect(left, top, width, height);
+        }
+
+        var anchorX = horizontalDirection < 0 ? originalBounds.Right : originalBounds.Left;
+        var anchorY = verticalDirection < 0 ? originalBounds.Bottom : originalBounds.Top;
+        var cornerWidth = Math.Abs(dragPoint.X - anchorX);
+        var cornerHeight = Math.Abs(dragPoint.Y - anchorY);
+
+        if (preserveAspectRatio)
+            ConstrainSizeToAspectRatio(ref cornerWidth, ref cornerHeight, originalWidth, originalHeight);
+
+        ApplyMinimumSize(ref cornerWidth, ref cornerHeight, minimumSize, preserveAspectRatio, adjustWidth: true, adjustHeight: true);
+
+        var leftCorner = horizontalDirection < 0 ? anchorX - cornerWidth : anchorX;
+        var topCorner = verticalDirection < 0 ? anchorY - cornerHeight : anchorY;
+        return new Rect(leftCorner, topCorner, cornerWidth, cornerHeight);
+    }
+
+    private static void ConstrainSizeToAspectRatio(ref double width, ref double height, double originalWidth, double originalHeight)
+    {
+        var widthScale = width / originalWidth;
+        var heightScale = height / originalHeight;
+
+        if (widthScale >= heightScale)
+            height = width * originalHeight / originalWidth;
+        else
+            width = height * originalWidth / originalHeight;
+    }
+
+    private static void ApplyMinimumSize(ref double width, ref double height, double minimumSize, bool preserveAspectRatio, bool adjustWidth, bool adjustHeight)
+    {
+        if (!preserveAspectRatio)
+        {
+            if (adjustWidth)
+                width = Math.Max(width, minimumSize);
+            if (adjustHeight)
+                height = Math.Max(height, minimumSize);
+            return;
+        }
+
+        var scale = 1.0;
+        if (adjustWidth && width < minimumSize)
+            scale = Math.Max(scale, minimumSize / Math.Max(width, 0.0001));
+        if (adjustHeight && height < minimumSize)
+            scale = Math.Max(scale, minimumSize / Math.Max(height, 0.0001));
+
+        width *= scale;
+        height *= scale;
+    }
+
+    private static (int Horizontal, int Vertical) GetResizeHandleDirection(MarkupResizeHandle handle)
+    {
+        return handle switch
+        {
+            MarkupResizeHandle.TopLeft => (-1, -1),
+            MarkupResizeHandle.Top => (0, -1),
+            MarkupResizeHandle.TopRight => (1, -1),
+            MarkupResizeHandle.Right => (1, 0),
+            MarkupResizeHandle.BottomRight => (1, 1),
+            MarkupResizeHandle.Bottom => (0, 1),
+            MarkupResizeHandle.BottomLeft => (-1, 1),
+            MarkupResizeHandle.Left => (-1, 0),
+            _ => (0, 0)
+        };
     }
 
     public void Translate(MarkupRecord markup, Vector delta)
@@ -791,6 +996,42 @@ public sealed class MarkupInteractionService
         markup.Appearance.StrokeWidth = snapshot.StrokeWidth <= 0
             ? 0
             : Math.Max(0.4, snapshot.StrokeWidth * styleScale);
+        markup.RotationDegrees = snapshot.RotationDegrees;
+        markup.Metadata.ModifiedUtc = DateTime.UtcNow;
+    }
+
+    public void Rotate(MarkupRecord markup, MarkupGeometrySnapshot snapshot, Point rotationCenter, double deltaDegrees)
+    {
+        markup.Vertices.Clear();
+        foreach (var point in snapshot.Vertices)
+            markup.Vertices.Add(RotatePoint(point, rotationCenter, deltaDegrees));
+
+        if (UsesBoundsRotation(markup) && snapshot.BoundingRect != Rect.Empty)
+        {
+            var originalCenter = GetRectCenter(snapshot.BoundingRect);
+            var nextCenter = RotatePoint(originalCenter, rotationCenter, deltaDegrees);
+            markup.BoundingRect = new Rect(
+                nextCenter.X - snapshot.BoundingRect.Width / 2.0,
+                nextCenter.Y - snapshot.BoundingRect.Height / 2.0,
+                snapshot.BoundingRect.Width,
+                snapshot.BoundingRect.Height);
+        }
+        else if (markup.Vertices.Count > 0)
+        {
+            markup.UpdateBoundingRect();
+        }
+        else if (snapshot.BoundingRect != Rect.Empty)
+        {
+            var rotatedCorners = GetRectCorners(snapshot.BoundingRect)
+                .Select(point => RotatePoint(point, rotationCenter, deltaDegrees));
+            markup.BoundingRect = GetBoundsFromPoints(rotatedCorners);
+        }
+        else
+        {
+            markup.BoundingRect = Rect.Empty;
+        }
+
+        markup.RotationDegrees = NormalizeAngleDegrees(snapshot.RotationDegrees + deltaDegrees);
         markup.Metadata.ModifiedUtc = DateTime.UtcNow;
     }
 
@@ -803,6 +1044,7 @@ public sealed class MarkupInteractionService
             Radius = markup.Radius,
             ArcStartDeg = markup.ArcStartDeg,
             ArcSweepDeg = markup.ArcSweepDeg,
+            RotationDegrees = markup.RotationDegrees,
             StrokeColor = markup.Appearance.StrokeColor,
             StrokeWidth = markup.Appearance.StrokeWidth,
             FillColor = markup.Appearance.FillColor,
@@ -822,6 +1064,7 @@ public sealed class MarkupInteractionService
         markup.Radius = snapshot.Radius;
         markup.ArcStartDeg = snapshot.ArcStartDeg;
         markup.ArcSweepDeg = snapshot.ArcSweepDeg;
+        markup.RotationDegrees = snapshot.RotationDegrees;
         markup.Appearance.StrokeColor = snapshot.StrokeColor;
         markup.Appearance.StrokeWidth = snapshot.StrokeWidth;
         markup.Appearance.FillColor = snapshot.FillColor;
@@ -874,6 +1117,27 @@ public sealed class MarkupInteractionService
             MarkupType.Polygon => true,
             _ => false
         };
+    }
+
+    private static bool IsRotatable(MarkupRecord markup)
+    {
+        return markup.Type switch
+        {
+            MarkupType.Rectangle => true,
+            MarkupType.Text => true,
+            MarkupType.Stamp => true,
+            MarkupType.Hyperlink => true,
+            MarkupType.Box => true,
+            MarkupType.Panel => true,
+            MarkupType.Polyline => true,
+            MarkupType.Polygon => true,
+            _ => false
+        };
+    }
+
+    private static bool UsesBoundsRotation(MarkupRecord markup)
+    {
+        return markup.Type is MarkupType.Rectangle or MarkupType.Text or MarkupType.Stamp or MarkupType.Hyperlink or MarkupType.Box or MarkupType.Panel;
     }
 
     private static bool IsBoundsGeometryEditable(MarkupRecord markup)
@@ -1049,6 +1313,44 @@ public sealed class MarkupInteractionService
         return NormalizeAngleDegrees(endAngleDeg - startAngleDeg);
     }
 
+    private static Point GetRectCenter(Rect rect)
+    {
+        return new Point(rect.X + rect.Width / 2.0, rect.Y + rect.Height / 2.0);
+    }
+
+    private static IEnumerable<Point> GetRectCorners(Rect rect)
+    {
+        yield return rect.TopLeft;
+        yield return rect.TopRight;
+        yield return rect.BottomRight;
+        yield return rect.BottomLeft;
+    }
+
+    private static Rect GetBoundsFromPoints(IEnumerable<Point> points)
+    {
+        var pointList = points.ToList();
+        if (pointList.Count == 0)
+            return Rect.Empty;
+
+        var minX = pointList.Min(point => point.X);
+        var minY = pointList.Min(point => point.Y);
+        var maxX = pointList.Max(point => point.X);
+        var maxY = pointList.Max(point => point.Y);
+        return new Rect(new Point(minX, minY), new Point(maxX, maxY));
+    }
+
+    private static Point RotatePoint(Point point, Point center, double angleDegrees)
+    {
+        var radians = angleDegrees * Math.PI / 180.0;
+        var cos = Math.Cos(radians);
+        var sin = Math.Sin(radians);
+        var dx = point.X - center.X;
+        var dy = point.Y - center.Y;
+        return new Point(
+            center.X + dx * cos - dy * sin,
+            center.Y + dx * sin + dy * cos);
+    }
+
     private static double DistanceSquared(Point left, Point right)
     {
         var dx = left.X - right.X;
@@ -1084,6 +1386,7 @@ public sealed class MarkupGeometrySnapshot
     public double Radius { get; init; }
     public double ArcStartDeg { get; init; }
     public double ArcSweepDeg { get; init; }
+    public double RotationDegrees { get; init; }
     public string StrokeColor { get; init; } = string.Empty;
     public double StrokeWidth { get; init; }
     public string FillColor { get; init; } = string.Empty;

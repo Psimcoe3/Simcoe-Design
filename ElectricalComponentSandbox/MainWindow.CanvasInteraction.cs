@@ -200,6 +200,13 @@ public partial class MainWindow
         }
         else if (handleMode == MarkupHandleOverlayMode.Resize)
         {
+            if (_markupInteractionService.CanRotate(selectionSet))
+            {
+                _canvasInteractionShadowTree.AddGripPoint(
+                    selectedMarkup.Id, gripIndex++,
+                    GetSelectedMarkupRotationHandlePoint(), selectedMarkup);
+            }
+
             foreach (var handle in Enum.GetValues<MarkupResizeHandle>())
             {
                 if (handle == MarkupResizeHandle.None)
@@ -548,6 +555,12 @@ public partial class MainWindow
             return;
         }
 
+        if (TryStartMarkupRotationDrag(pos))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (_isPendingMarkupVertexInsertion)
         {
             if (TryInsertMarkupVertex(pos))
@@ -741,6 +754,13 @@ public partial class MainWindow
             e.Handled = true;
             return;
         }
+        else if (_isRotatingMarkup)
+        {
+            _canvasInteractionController?.ClearPreview();
+            UpdateMarkupRotationPreview(pos);
+            e.Handled = true;
+            return;
+        }
         else if (_isResizingMarkup)
         {
             _canvasInteractionController?.ClearPreview();
@@ -833,6 +853,15 @@ public partial class MainWindow
         if (_isDraggingMarkupVertex)
         {
             FinishMarkupVertexDrag();
+            _mobileSelectionCandidate = false;
+            PlanCanvas.ReleaseMouseCapture();
+            e.Handled = true;
+            return;
+        }
+
+        if (_isRotatingMarkup)
+        {
+            FinishMarkupRotationDrag();
             _mobileSelectionCandidate = false;
             PlanCanvas.ReleaseMouseCapture();
             e.Handled = true;

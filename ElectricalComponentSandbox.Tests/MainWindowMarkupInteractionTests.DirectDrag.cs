@@ -10,6 +10,109 @@ namespace ElectricalComponentSandbox.Tests;
 public partial class MainWindowMarkupInteractionTests
 {
     [Fact]
+    public void RotationDragForTesting_GroupedRectangles_RotatesGroupAndSupportsUndo()
+    {
+        var selectedMarkup = CreateGroupedRectangle(new Rect(0, 0, 10, 10), "group-1");
+        var peerMarkup = CreateGroupedRectangle(new Rect(20, 20, 10, 10), "group-1");
+
+        var outcome = RunWithSelectedMarkupWindow(
+            selectedMarkup,
+            (window, viewModel, markup) =>
+            {
+                viewModel.SnapToGrid = false;
+                var handle = window.GetSelectedMarkupRotationHandlePointForTesting();
+                var began = window.BeginSelectedMarkupRotationDragForTesting(handle);
+                window.UpdateMarkupRotationPreviewForTesting(new Point(54, 15));
+                window.FinishMarkupRotationDragForTesting();
+
+                var editedPrimary = (markup.BoundingRect, markup.RotationDegrees);
+                var editedPeer = (peerMarkup.BoundingRect, peerMarkup.RotationDegrees);
+
+                viewModel.Undo();
+
+                var undonePrimary = (markup.BoundingRect, markup.RotationDegrees);
+                var undonePeer = (peerMarkup.BoundingRect, peerMarkup.RotationDegrees);
+                return (began, editedPrimary, editedPeer, undonePrimary, undonePeer);
+            },
+            viewModel =>
+            {
+                viewModel.Markups.Add(peerMarkup);
+            });
+
+        Assert.True(outcome.began);
+        Assert.Equal(20, outcome.editedPrimary.Item1.X, 6);
+        Assert.Equal(0, outcome.editedPrimary.Item1.Y, 6);
+        Assert.Equal(10, outcome.editedPrimary.Item1.Width, 6);
+        Assert.Equal(10, outcome.editedPrimary.Item1.Height, 6);
+        Assert.Equal(90, outcome.editedPrimary.RotationDegrees, 6);
+        Assert.Equal(0, outcome.editedPeer.Item1.X, 6);
+        Assert.Equal(20, outcome.editedPeer.Item1.Y, 6);
+        Assert.Equal(10, outcome.editedPeer.Item1.Width, 6);
+        Assert.Equal(10, outcome.editedPeer.Item1.Height, 6);
+        Assert.Equal(90, outcome.editedPeer.RotationDegrees, 6);
+
+        Assert.Equal(0, outcome.undonePrimary.Item1.X, 6);
+        Assert.Equal(0, outcome.undonePrimary.Item1.Y, 6);
+        Assert.Equal(10, outcome.undonePrimary.Item1.Width, 6);
+        Assert.Equal(10, outcome.undonePrimary.Item1.Height, 6);
+        Assert.Equal(0, outcome.undonePrimary.RotationDegrees, 6);
+        Assert.Equal(20, outcome.undonePeer.Item1.X, 6);
+        Assert.Equal(20, outcome.undonePeer.Item1.Y, 6);
+        Assert.Equal(10, outcome.undonePeer.Item1.Width, 6);
+        Assert.Equal(10, outcome.undonePeer.Item1.Height, 6);
+        Assert.Equal(0, outcome.undonePeer.RotationDegrees, 6);
+    }
+
+    [Fact]
+    public void ExecuteEscapeShortcutForTesting_ActiveRotationDrag_RestoresPreviewGeometry()
+    {
+        var selectedMarkup = CreateGroupedRectangle(new Rect(0, 0, 10, 10), "group-1");
+        var peerMarkup = CreateGroupedRectangle(new Rect(20, 20, 10, 10), "group-1");
+
+        var outcome = RunWithSelectedMarkupWindow(
+            selectedMarkup,
+            (window, _, markup) =>
+            {
+                var handle = window.GetSelectedMarkupRotationHandlePointForTesting();
+                var began = window.BeginSelectedMarkupRotationDragForTesting(handle);
+                window.UpdateMarkupRotationPreviewForTesting(new Point(54, 15));
+                var previewPrimary = (markup.BoundingRect, markup.RotationDegrees);
+                var previewPeer = (peerMarkup.BoundingRect, peerMarkup.RotationDegrees);
+                var cancelled = window.ExecuteEscapeShortcutForTesting();
+                var cancelledPrimary = (markup.BoundingRect, markup.RotationDegrees);
+                var cancelledPeer = (peerMarkup.BoundingRect, peerMarkup.RotationDegrees);
+                window.UpdateMarkupRotationPreviewForTesting(new Point(15, 54));
+                var postCancelPrimary = (markup.BoundingRect, markup.RotationDegrees);
+                var postCancelPeer = (peerMarkup.BoundingRect, peerMarkup.RotationDegrees);
+                window.FinishMarkupRotationDragForTesting();
+                return (began, cancelled, previewPrimary, previewPeer, cancelledPrimary, cancelledPeer, postCancelPrimary, postCancelPeer);
+            },
+            viewModel =>
+            {
+                viewModel.Markups.Add(peerMarkup);
+            });
+
+        Assert.True(outcome.began);
+        Assert.True(outcome.cancelled);
+        Assert.Equal(20, outcome.previewPrimary.Item1.X, 6);
+        Assert.Equal(90, outcome.previewPrimary.RotationDegrees, 6);
+        Assert.Equal(0, outcome.previewPeer.Item1.X, 6);
+        Assert.Equal(90, outcome.previewPeer.RotationDegrees, 6);
+
+        Assert.Equal(0, outcome.cancelledPrimary.Item1.X, 6);
+        Assert.Equal(0, outcome.cancelledPrimary.Item1.Y, 6);
+        Assert.Equal(0, outcome.cancelledPrimary.RotationDegrees, 6);
+        Assert.Equal(20, outcome.cancelledPeer.Item1.X, 6);
+        Assert.Equal(20, outcome.cancelledPeer.Item1.Y, 6);
+        Assert.Equal(0, outcome.cancelledPeer.RotationDegrees, 6);
+
+        Assert.Equal(outcome.cancelledPrimary.Item1, outcome.postCancelPrimary.Item1);
+        Assert.Equal(outcome.cancelledPrimary.RotationDegrees, outcome.postCancelPrimary.RotationDegrees);
+        Assert.Equal(outcome.cancelledPeer.Item1, outcome.postCancelPeer.Item1);
+        Assert.Equal(outcome.cancelledPeer.RotationDegrees, outcome.postCancelPeer.RotationDegrees);
+    }
+
+    [Fact]
     public void ResizeDragForTesting_GroupedRectangles_ResizesGroupAndSupportsUndo()
     {
         var selectedMarkup = CreateGroupedRectangle(new Rect(0, 0, 10, 10), "group-1");
@@ -152,6 +255,153 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(new Point(30, 30), outcome.undonePeer.Item2);
         Assert.Equal(1.0, outcome.undonePrimary.Item3, 6);
         Assert.Equal(1.0, outcome.undonePeer.Item3, 6);
+    }
+
+    [Fact]
+    public void ResizeDragForTesting_GroupedRectangles_PreserveAspectRatio_UsesUniformScalingAndSupportsUndo()
+    {
+        var selectedMarkup = CreateGroupedRectangle(new Rect(0, 0, 10, 10), "group-1");
+        var peerMarkup = CreateGroupedRectangle(new Rect(20, 20, 10, 10), "group-1");
+
+        var outcome = RunWithSelectedMarkupWindow(
+            selectedMarkup,
+            (window, viewModel, markup) =>
+            {
+                window.SetMarkupResizeConstraintOverridesForTesting(preserveAspectRatio: true);
+                var began = window.BeginSelectedMarkupResizeDragForTesting(new Point(30, 30));
+                window.UpdateMarkupResizePreviewForTesting(new Point(50, 40));
+                window.FinishMarkupResizeDragForTesting();
+
+                var editedPrimary = (markup.Vertices[0], markup.Vertices[1]);
+                var editedPeer = (peerMarkup.Vertices[0], peerMarkup.Vertices[1]);
+
+                viewModel.Undo();
+
+                var undonePrimary = (markup.Vertices[0], markup.Vertices[1]);
+                var undonePeer = (peerMarkup.Vertices[0], peerMarkup.Vertices[1]);
+                return (began, editedPrimary, editedPeer, undonePrimary, undonePeer);
+            },
+            viewModel =>
+            {
+                viewModel.Markups.Add(peerMarkup);
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.True(outcome.began);
+        Assert.Equal(0, outcome.editedPrimary.Item1.X, 6);
+        Assert.Equal(0, outcome.editedPrimary.Item1.Y, 6);
+        Assert.Equal(16.666666666666668, outcome.editedPrimary.Item2.X, 6);
+        Assert.Equal(16.666666666666668, outcome.editedPrimary.Item2.Y, 6);
+        Assert.Equal(33.333333333333336, outcome.editedPeer.Item1.X, 6);
+        Assert.Equal(33.333333333333336, outcome.editedPeer.Item1.Y, 6);
+        Assert.Equal(50, outcome.editedPeer.Item2.X, 6);
+        Assert.Equal(50, outcome.editedPeer.Item2.Y, 6);
+        Assert.Equal(0, outcome.undonePrimary.Item1.X, 6);
+        Assert.Equal(0, outcome.undonePrimary.Item1.Y, 6);
+        Assert.Equal(10, outcome.undonePrimary.Item2.X, 6);
+        Assert.Equal(10, outcome.undonePrimary.Item2.Y, 6);
+        Assert.Equal(20, outcome.undonePeer.Item1.X, 6);
+        Assert.Equal(20, outcome.undonePeer.Item1.Y, 6);
+        Assert.Equal(30, outcome.undonePeer.Item2.X, 6);
+        Assert.Equal(30, outcome.undonePeer.Item2.Y, 6);
+    }
+
+    [Fact]
+    public void ResizeDragForTesting_GroupedRectangles_FromCenter_MirrorsResizeAroundSelectionCenter()
+    {
+        var selectedMarkup = CreateGroupedRectangle(new Rect(0, 0, 10, 10), "group-1");
+        var peerMarkup = CreateGroupedRectangle(new Rect(20, 20, 10, 10), "group-1");
+
+        var outcome = RunWithSelectedMarkupWindow(
+            selectedMarkup,
+            (window, viewModel, markup) =>
+            {
+                window.SetMarkupResizeConstraintOverridesForTesting(resizeFromCenter: true);
+                var began = window.BeginSelectedMarkupResizeDragForTesting(new Point(30, 30));
+                window.UpdateMarkupResizePreviewForTesting(new Point(25, 20));
+                window.FinishMarkupResizeDragForTesting();
+
+                var editedPrimary = (markup.Vertices[0], markup.Vertices[1]);
+                var editedPeer = (peerMarkup.Vertices[0], peerMarkup.Vertices[1]);
+
+                viewModel.Undo();
+
+                var undonePrimary = (markup.Vertices[0], markup.Vertices[1]);
+                var undonePeer = (peerMarkup.Vertices[0], peerMarkup.Vertices[1]);
+                return (began, editedPrimary, editedPeer, undonePrimary, undonePeer);
+            },
+            viewModel =>
+            {
+                viewModel.Markups.Add(peerMarkup);
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.True(outcome.began);
+        Assert.Equal(5, outcome.editedPrimary.Item1.X, 6);
+        Assert.Equal(9, outcome.editedPrimary.Item1.Y, 6);
+        Assert.Equal(11.666666666666668, outcome.editedPrimary.Item2.X, 6);
+        Assert.Equal(13, outcome.editedPrimary.Item2.Y, 6);
+        Assert.Equal(18.333333333333336, outcome.editedPeer.Item1.X, 6);
+        Assert.Equal(17, outcome.editedPeer.Item1.Y, 6);
+        Assert.Equal(25, outcome.editedPeer.Item2.X, 6);
+        Assert.Equal(21, outcome.editedPeer.Item2.Y, 6);
+        Assert.Equal(0, outcome.undonePrimary.Item1.X, 6);
+        Assert.Equal(0, outcome.undonePrimary.Item1.Y, 6);
+        Assert.Equal(10, outcome.undonePrimary.Item2.X, 6);
+        Assert.Equal(10, outcome.undonePrimary.Item2.Y, 6);
+        Assert.Equal(20, outcome.undonePeer.Item1.X, 6);
+        Assert.Equal(20, outcome.undonePeer.Item1.Y, 6);
+        Assert.Equal(30, outcome.undonePeer.Item2.X, 6);
+        Assert.Equal(30, outcome.undonePeer.Item2.Y, 6);
+    }
+
+    [Fact]
+    public void ResizeDragForTesting_GroupedRectangles_FromCenterAndPreserveAspectRatio_CombinesConstraints()
+    {
+        var selectedMarkup = CreateGroupedRectangle(new Rect(0, 0, 10, 10), "group-1");
+        var peerMarkup = CreateGroupedRectangle(new Rect(20, 20, 10, 10), "group-1");
+
+        var outcome = RunWithSelectedMarkupWindow(
+            selectedMarkup,
+            (window, viewModel, markup) =>
+            {
+                window.SetMarkupResizeConstraintOverridesForTesting(preserveAspectRatio: true, resizeFromCenter: true);
+                var began = window.BeginSelectedMarkupResizeDragForTesting(new Point(30, 30));
+                window.UpdateMarkupResizePreviewForTesting(new Point(35, 25));
+                window.FinishMarkupResizeDragForTesting();
+
+                var editedPrimary = (markup.Vertices[0], markup.Vertices[1]);
+                var editedPeer = (peerMarkup.Vertices[0], peerMarkup.Vertices[1]);
+
+                viewModel.Undo();
+
+                var undonePrimary = (markup.Vertices[0], markup.Vertices[1]);
+                var undonePeer = (peerMarkup.Vertices[0], peerMarkup.Vertices[1]);
+                return (began, editedPrimary, editedPeer, undonePrimary, undonePeer);
+            },
+            viewModel =>
+            {
+                viewModel.Markups.Add(peerMarkup);
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.True(outcome.began);
+        Assert.Equal(-5, outcome.editedPrimary.Item1.X, 6);
+        Assert.Equal(-5, outcome.editedPrimary.Item1.Y, 6);
+        Assert.Equal(8.333333333333332, outcome.editedPrimary.Item2.X, 6);
+        Assert.Equal(8.333333333333332, outcome.editedPrimary.Item2.Y, 6);
+        Assert.Equal(21.666666666666668, outcome.editedPeer.Item1.X, 6);
+        Assert.Equal(21.666666666666668, outcome.editedPeer.Item1.Y, 6);
+        Assert.Equal(35, outcome.editedPeer.Item2.X, 6);
+        Assert.Equal(35, outcome.editedPeer.Item2.Y, 6);
+        Assert.Equal(0, outcome.undonePrimary.Item1.X, 6);
+        Assert.Equal(0, outcome.undonePrimary.Item1.Y, 6);
+        Assert.Equal(10, outcome.undonePrimary.Item2.X, 6);
+        Assert.Equal(10, outcome.undonePrimary.Item2.Y, 6);
+        Assert.Equal(20, outcome.undonePeer.Item1.X, 6);
+        Assert.Equal(20, outcome.undonePeer.Item1.Y, 6);
+        Assert.Equal(30, outcome.undonePeer.Item2.X, 6);
+        Assert.Equal(30, outcome.undonePeer.Item2.Y, 6);
     }
 
     [Fact]

@@ -10,6 +10,53 @@ namespace ElectricalComponentSandbox.Tests;
 public partial class MainWindowMarkupInteractionTests
 {
     [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_RotationDrag_MarksRotationGripHot()
+    {
+        var hotGripPoints = RunWithSelectedMarkupWindow(
+            CreateGroupedRectangle(new Rect(0, 0, 10, 10), null),
+            (window, _, markup) =>
+            {
+                markup.RotationDegrees = 90;
+                var renderer = new OverlayRecordingRenderer();
+                var handle = window.GetSelectedMarkupRotationHandlePointForTesting();
+
+                var began = window.BeginSelectedMarkupRotationDragForTesting(handle);
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+
+                Assert.True(began);
+                return renderer.HotGripPoints.ToList();
+            });
+
+        var hotGrip = Assert.Single(hotGripPoints);
+        Assert.Equal(34, hotGrip.X, 6);
+        Assert.Equal(5, hotGrip.Y, 6);
+    }
+
+    [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_RotationDrag_ShowsRotationReadout()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            CreateGroupedRectangle(new Rect(0, 0, 10, 10), null),
+            (window, viewModel, _) =>
+            {
+                viewModel.IsPolarActive = true;
+                viewModel.PolarIncrementDeg = 15;
+                var renderer = new OverlayRecordingRenderer();
+                var handle = window.GetSelectedMarkupRotationHandlePointForTesting();
+
+                var began = window.BeginSelectedMarkupRotationDragForTesting(handle);
+                window.UpdateMarkupRotationPreviewForTesting(new Point(34, 5));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                window.FinishMarkupRotationDragForTesting();
+
+                return (began, renderer.LastTextBoxText);
+            });
+
+        Assert.True(outcome.began);
+        Assert.Equal("Rotation 90 deg  Snap 15 deg", outcome.LastTextBoxText);
+    }
+
+    [Fact]
     public void DrawSelectedMarkupOverlayForTesting_ResizeDrag_MarksActiveResizeGripHot()
     {
         var hotGripPoints = RunWithSelectedMarkupWindow(
@@ -49,6 +96,96 @@ public partial class MainWindowMarkupInteractionTests
         var hotGrip = Assert.Single(hotGripPoints);
         Assert.Equal(5, hotGrip.X, 6);
         Assert.Equal(0, hotGrip.Y, 6);
+    }
+
+    [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_ResizeDrag_ShowsWidthAndHeightReadout()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            CreateGroupedRectangle(new Rect(0, 0, 10, 10), null),
+            (window, viewModel, _) =>
+            {
+                viewModel.SnapToGrid = false;
+                var renderer = new OverlayRecordingRenderer();
+
+                var began = window.BeginSelectedMarkupResizeDragForTesting(new Point(10, 10));
+                window.UpdateMarkupResizePreviewForTesting(new Point(15, 20));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                window.FinishMarkupResizeDragForTesting();
+
+                return (began, renderer.LastTextBoxText);
+            });
+
+        Assert.True(outcome.began);
+        Assert.Equal("Width 15  Height 20", outcome.LastTextBoxText);
+    }
+
+    [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_TopResizeDrag_ShowsUpdatedHeightReadout()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            CreateGroupedRectangle(new Rect(0, 0, 10, 10), null),
+            (window, viewModel, _) =>
+            {
+                viewModel.SnapToGrid = false;
+                var renderer = new OverlayRecordingRenderer();
+
+                var began = window.BeginSelectedMarkupResizeDragForTesting(new Point(5, 0));
+                window.UpdateMarkupResizePreviewForTesting(new Point(5, -10));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                window.FinishMarkupResizeDragForTesting();
+
+                return (began, renderer.LastTextBoxText);
+            });
+
+        Assert.True(outcome.began);
+        Assert.Equal("Width 10  Height 20", outcome.LastTextBoxText);
+    }
+
+    [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_ResizeDrag_WithAspectConstraint_ShowsConstraintHint()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            CreateGroupedRectangle(new Rect(0, 0, 10, 10), null),
+            (window, viewModel, _) =>
+            {
+                viewModel.SnapToGrid = false;
+                window.SetMarkupResizeConstraintOverridesForTesting(preserveAspectRatio: true);
+                var renderer = new OverlayRecordingRenderer();
+
+                var began = window.BeginSelectedMarkupResizeDragForTesting(new Point(10, 10));
+                window.UpdateMarkupResizePreviewForTesting(new Point(15, 20));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                window.FinishMarkupResizeDragForTesting();
+
+                return (began, renderer.LastTextBoxText);
+            });
+
+        Assert.True(outcome.began);
+        Assert.Equal("Width 20  Height 20  Aspect locked", outcome.LastTextBoxText);
+    }
+
+    [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_ResizeDrag_WithCenterConstraint_ShowsConstraintHint()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            CreateGroupedRectangle(new Rect(0, 0, 10, 10), null),
+            (window, viewModel, _) =>
+            {
+                viewModel.SnapToGrid = false;
+                window.SetMarkupResizeConstraintOverridesForTesting(resizeFromCenter: true);
+                var renderer = new OverlayRecordingRenderer();
+
+                var began = window.BeginSelectedMarkupResizeDragForTesting(new Point(10, 10));
+                window.UpdateMarkupResizePreviewForTesting(new Point(13, 6));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                window.FinishMarkupResizeDragForTesting();
+
+                return (began, renderer.LastTextBoxText);
+            });
+
+        Assert.True(outcome.began);
+        Assert.Equal("Width 16  Height 12  Centered", outcome.LastTextBoxText);
     }
 
     [Fact]

@@ -28,15 +28,22 @@ public partial class MainWindow
     private bool _isDraggingMarkup = false;
     private bool _isDraggingMarkupRadius = false;
     private bool _isDraggingMarkupVertex = false;
+    private bool _isRotatingMarkup = false;
     private bool _isResizingMarkup = false;
     private MarkupArcAngleHandle _activeMarkupArcAngleHandle = MarkupArcAngleHandle.None;
     private MarkupResizeHandle _activeMarkupResizeHandle = MarkupResizeHandle.None;
     private int _activeMarkupVertexIndex = -1;
+    private double _markupRotationStartAngleDeg = 0.0;
+    private Point _markupRotationCenter = default;
     private Rect _markupResizeStartBounds = Rect.Empty;
     private readonly List<MarkupRecord> _draggedMarkups = new();
+    private readonly List<MarkupRecord> _rotatedMarkups = new();
     private readonly List<MarkupRecord> _resizedMarkups = new();
     private readonly Dictionary<string, MarkupGeometrySnapshot> _markupDragStartSnapshots = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, MarkupGeometrySnapshot> _markupRotationStartSnapshots = new(StringComparer.Ordinal);
     private readonly Dictionary<string, MarkupGeometrySnapshot> _markupResizeStartSnapshots = new(StringComparer.Ordinal);
+    private bool? _markupResizePreserveAspectRatioOverride;
+    private bool? _markupResizeFromCenterOverride;
     private MarkupRecord? _arcAngleDraggedMarkup;
     private MarkupGeometrySnapshot? _markupArcAngleStartSnapshot;
     private MarkupRecord? _radiusDraggedMarkup;
@@ -55,12 +62,16 @@ public partial class MainWindow
         => TryStartMarkupArcAngleDrag(canvasPoint);
     internal bool BeginSelectedMarkupRadiusDragForTesting(Point canvasPoint)
         => TryStartMarkupRadiusDrag(canvasPoint);
+    internal bool BeginSelectedMarkupRotationDragForTesting(Point canvasPoint)
+        => TryStartMarkupRotationDrag(canvasPoint);
     internal bool BeginSelectedMarkupResizeDragForTesting(Point canvasPoint)
         => TryStartMarkupResizeDrag(canvasPoint);
     internal void UpdateDraggedMarkupArcAnglePreviewForTesting(Point canvasPoint)
         => UpdateDraggedMarkupArcAnglePreview(canvasPoint);
     internal void UpdateDraggedMarkupRadiusPreviewForTesting(Point canvasPoint)
         => UpdateDraggedMarkupRadiusPreview(canvasPoint);
+    internal void UpdateMarkupRotationPreviewForTesting(Point canvasPoint)
+        => UpdateMarkupRotationPreview(canvasPoint);
     internal void UpdateMarkupResizePreviewForTesting(Point canvasPoint)
         => UpdateMarkupResizePreview(canvasPoint);
     internal bool BeginSelectedMarkupSelectionDragForTesting(Point canvasPoint)
@@ -78,10 +89,17 @@ public partial class MainWindow
     internal void UpdateDraggedMarkupVertexPreviewForTesting(Point canvasPoint)
         => UpdateDraggedMarkupVertexPreview(canvasPoint);
     internal void FinishMarkupSelectionDragForTesting() => FinishMarkupSelectionDrag();
+    internal void FinishMarkupRotationDragForTesting() => FinishMarkupRotationDrag();
     internal void FinishMarkupResizeDragForTesting() => FinishMarkupResizeDrag();
     internal void FinishMarkupArcAngleDragForTesting() => FinishMarkupArcAngleDrag();
     internal void FinishMarkupRadiusDragForTesting() => FinishMarkupRadiusDrag();
     internal void FinishMarkupVertexDragForTesting() => FinishMarkupVertexDrag();
+    internal Point GetSelectedMarkupRotationHandlePointForTesting() => GetSelectedMarkupRotationHandlePoint();
+    internal void SetMarkupResizeConstraintOverridesForTesting(bool? preserveAspectRatio = null, bool? resizeFromCenter = null)
+    {
+        _markupResizePreserveAspectRatioOverride = preserveAspectRatio;
+        _markupResizeFromCenterOverride = resizeFromCenter;
+    }
     internal static bool IsLineGeometryReadoutEligibleForTesting(MarkupRecord markup, int activeVertexIndex)
         => IsLineGeometryReadoutEligible(markup, activeVertexIndex);
     internal static string BuildLineGeometryReadoutForTesting(MarkupRecord markup)
@@ -277,6 +295,12 @@ public partial class MainWindow
             return true;
         }
 
+        if (_isRotatingMarkup)
+        {
+            CancelMarkupRotationDrag();
+            return true;
+        }
+
         if (_isResizingMarkup)
         {
             CancelMarkupResizeDrag();
@@ -323,6 +347,22 @@ public partial class MainWindow
         _isDraggingMarkupVertex = false;
         _vertexDraggedMarkup = null;
         _markupVertexStartSnapshot = null;
+        CancelActiveMarkupDragPreview();
+    }
+
+    private void CancelMarkupRotationDrag()
+    {
+        foreach (var markup in _rotatedMarkups)
+        {
+            if (_markupRotationStartSnapshots.TryGetValue(markup.Id, out var snapshot))
+                _markupInteractionService.Apply(markup, snapshot);
+        }
+
+        _isRotatingMarkup = false;
+        _markupRotationStartAngleDeg = 0.0;
+        _markupRotationCenter = default;
+        _rotatedMarkups.Clear();
+        _markupRotationStartSnapshots.Clear();
         CancelActiveMarkupDragPreview();
     }
 
@@ -1665,6 +1705,43 @@ public partial class MainWindow
         return true;
     }
 
+    private bool TryStartMarkupRotationDrag(Point canvasPoint)
+    {
+        if (_viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup)
+            return false;
+
+        var selectionSet = _markupInteractionService.GetSelectionSet(selectedMarkup, _viewModel.Markups);
+        if (!_markupInteractionService.CanRotate(selectionSet))
+            return false;
+
+        var bounds = _markupInteractionService.GetAggregateBounds(selectionSet);
+        if (bounds == Rect.Empty)
+            return false;
+
+        var handlePoint = GetMarkupRotationHandlePoint(selectedMarkup, selectionSet, bounds);
+        if ((handlePoint - canvasPoint).Length > GetMarkupHitTolerance())
+            return false;
+
+        _isRotatingMarkup = true;
+        _markupRotationCenter = GetMarkupBoundsCenter(bounds);
+        _markupRotationStartAngleDeg = GetMarkupAngleDegrees(_markupRotationCenter, handlePoint);
+        _lastMousePosition = canvasPoint;
+        _dragStartCanvasPosition = canvasPoint;
+        _mobileSelectionCandidate = _isMobileView;
+        _rotatedMarkups.Clear();
+        _markupRotationStartSnapshots.Clear();
+
+        foreach (var markup in selectionSet)
+        {
+            _rotatedMarkups.Add(markup);
+            _markupRotationStartSnapshots[markup.Id] = _markupInteractionService.Capture(markup);
+        }
+
+        PlanCanvas.CaptureMouse();
+        SkiaBackground.RequestRedraw();
+        return true;
+    }
+
     private bool TryStartMarkupSelectionDrag(Point canvasPoint)
     {
         var hit = _canvasInteractionShadowTree.HitTest(canvasPoint, GetMarkupHitTolerance());
@@ -1709,11 +1786,15 @@ public partial class MainWindow
         }
 
         var snappedPoint = ApplyDrawingSnap(canvasPoint);
+        var preserveAspectRatio = ShouldPreserveMarkupResizeAspectRatio();
+        var resizeFromCenter = ShouldResizeMarkupFromCenter();
         var resizedBounds = _markupInteractionService.BuildResizedBounds(
             _markupResizeStartBounds,
             snappedPoint,
             _activeMarkupResizeHandle,
-            GetMarkupMinimumSize());
+            GetMarkupMinimumSize(),
+            preserveAspectRatio,
+            resizeFromCenter);
 
         foreach (var markup in _resizedMarkups)
         {
@@ -1722,6 +1803,37 @@ public partial class MainWindow
         }
 
         _lastMousePosition = snappedPoint;
+        SkiaBackground.RequestRedraw();
+    }
+
+    private void UpdateMarkupRotationPreview(Point canvasPoint)
+    {
+        if (!_isRotatingMarkup || _rotatedMarkups.Count == 0)
+            return;
+
+        BeginFastInteractionMode();
+        if (_mobileSelectionCandidate &&
+            (Math.Abs(canvasPoint.X - _dragStartCanvasPosition.X) > 4 || Math.Abs(canvasPoint.Y - _dragStartCanvasPosition.Y) > 4))
+        {
+            _mobileSelectionCandidate = false;
+        }
+
+        if ((canvasPoint - _markupRotationCenter).Length <= double.Epsilon)
+            return;
+
+        var angleDeg = GetMarkupAngleDegrees(_markupRotationCenter, canvasPoint);
+        var snapIncrementDeg = GetMarkupAngleSnapIncrement();
+        if (snapIncrementDeg > 0)
+            angleDeg = _markupInteractionService.SnapAngleDegrees(angleDeg, snapIncrementDeg);
+
+        var deltaDegrees = NormalizeSignedMarkupAngleDelta(angleDeg - _markupRotationStartAngleDeg);
+        foreach (var markup in _rotatedMarkups)
+        {
+            if (_markupRotationStartSnapshots.TryGetValue(markup.Id, out var snapshot))
+                _markupInteractionService.Rotate(markup, snapshot, _markupRotationCenter, deltaDegrees);
+        }
+
+        _lastMousePosition = canvasPoint;
         SkiaBackground.RequestRedraw();
     }
 
@@ -1856,6 +1968,41 @@ public partial class MainWindow
             _viewModel.UndoRedo.Execute(new CompositeAction("Resize markup annotation", actions));
             QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
             ActionLogService.Instance.Log(LogCategory.Edit, "Markup resized", $"Count: {actions.Count}");
+        }
+        else
+        {
+            SkiaBackground.RequestRedraw();
+        }
+    }
+
+    private void FinishMarkupRotationDrag()
+    {
+        if (!_isRotatingMarkup)
+            return;
+
+        var actions = _rotatedMarkups
+            .Where(markup => _markupRotationStartSnapshots.TryGetValue(markup.Id, out var snapshot) &&
+                             !MarkupSnapshotsEqual(snapshot, _markupInteractionService.Capture(markup)))
+            .Select(markup => new MarkupGeometryChangeAction(
+                "Rotate",
+                _markupInteractionService,
+                markup,
+                _markupRotationStartSnapshots[markup.Id],
+                _markupInteractionService.Capture(markup)))
+            .Cast<IUndoableAction>()
+            .ToList();
+
+        _isRotatingMarkup = false;
+        _markupRotationStartAngleDeg = 0.0;
+        _markupRotationCenter = default;
+        _rotatedMarkups.Clear();
+        _markupRotationStartSnapshots.Clear();
+
+        if (actions.Count > 0)
+        {
+            _viewModel.UndoRedo.Execute(new CompositeAction("Rotate markup annotation", actions));
+            QueueSceneRefresh(update2D: true, update3D: false, updateProperties: true);
+            ActionLogService.Instance.Log(LogCategory.Edit, "Markup rotated", $"Count: {actions.Count}");
         }
         else
         {
@@ -2029,6 +2176,7 @@ public partial class MainWindow
         if (bounds == Rect.Empty)
             return;
 
+        var canRotate = _markupInteractionService.CanRotate(selectionSet);
         var canEditVertices = selectionSet.Count == 1 && _markupInteractionService.CanEditVertices(selectedMarkup);
         var canEditArcAngles = selectionSet.Count == 1 && _markupInteractionService.CanEditArcAngles(selectedMarkup);
         var canEditRadius = selectionSet.Count == 1 && _markupInteractionService.CanEditRadius(selectedMarkup);
@@ -2091,6 +2239,13 @@ public partial class MainWindow
         }
         else if (handleMode == MarkupHandleOverlayMode.Resize)
         {
+            if (canRotate)
+            {
+                renderer.DrawGrip(
+                    GetMarkupRotationHandlePoint(selectedMarkup, selectionSet, bounds),
+                    hot: _isRotatingMarkup);
+            }
+
             foreach (var handle in Enum.GetValues<MarkupResizeHandle>())
             {
                 if (handle == MarkupResizeHandle.None)
@@ -2100,7 +2255,39 @@ public partial class MainWindow
                     _markupInteractionService.GetResizeHandlePoint(bounds, handle),
                     hot: _isResizingMarkup && handle == _activeMarkupResizeHandle);
             }
+
+            if (_isRotatingMarkup)
+            {
+                DrawMarkupRotationReadout(renderer, selectedMarkup, bounds);
+            }
+            else if (_isResizingMarkup)
+            {
+                DrawMarkupResizeReadout(
+                    renderer,
+                    bounds,
+                    ShouldPreserveMarkupResizeAspectRatio(),
+                    ShouldResizeMarkupFromCenter());
+            }
         }
+    }
+
+    private Point GetSelectedMarkupRotationHandlePoint()
+    {
+        if (_viewModel.MarkupTool.SelectedMarkup is not { } selectedMarkup)
+            return default;
+
+        var selectionSet = _markupInteractionService.GetSelectionSet(selectedMarkup, _viewModel.Markups);
+        var bounds = _markupInteractionService.GetAggregateBounds(selectionSet);
+        if (bounds == Rect.Empty)
+            return default;
+
+        return GetMarkupRotationHandlePoint(selectedMarkup, selectionSet, bounds);
+    }
+
+    private Point GetMarkupRotationHandlePoint(MarkupRecord selectedMarkup, IReadOnlyList<MarkupRecord> selectionSet, Rect bounds)
+    {
+        var rotationDegrees = selectionSet.Count == 1 ? selectedMarkup.RotationDegrees : 0.0;
+        return _markupInteractionService.GetRotationHandlePoint(bounds, rotationDegrees, GetMarkupRotationHandleOffset());
     }
 
     internal static MarkupHandleOverlayMode GetMarkupHandleOverlayMode(
@@ -2126,6 +2313,11 @@ public partial class MainWindow
         return Math.Max(4.0, 8.0 / Math.Max(PlanCanvasScale.ScaleX, 0.1));
     }
 
+    private double GetMarkupRotationHandleOffset()
+    {
+        return Math.Max(12.0, 24.0 / Math.Max(PlanCanvasScale.ScaleX, 0.1));
+    }
+
     private double GetMarkupMinimumSize()
     {
         return Math.Max(6.0, 12.0 / Math.Max(PlanCanvasScale.ScaleX, 0.1));
@@ -2140,6 +2332,22 @@ public partial class MainWindow
             return 15.0;
 
         return 0.0;
+    }
+
+    private bool ShouldPreserveMarkupResizeAspectRatio()
+    {
+        if (_markupResizePreserveAspectRatioOverride.HasValue)
+            return _markupResizePreserveAspectRatioOverride.Value;
+
+        return Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
+    }
+
+    private bool ShouldResizeMarkupFromCenter()
+    {
+        if (_markupResizeFromCenterOverride.HasValue)
+            return _markupResizeFromCenterOverride.Value;
+
+        return Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl);
     }
 
     private void DrawMarkupArcReadout(ICanvas2DRenderer renderer, MarkupRecord markup)
@@ -2205,6 +2413,44 @@ public partial class MainWindow
         }, boxFill: "#F6EFF6FF", padding: 6.0);
     }
 
+    private void DrawMarkupResizeReadout(ICanvas2DRenderer renderer, Rect bounds, bool preserveAspectRatio, bool resizeFromCenter)
+    {
+        if (bounds == Rect.Empty || _activeMarkupResizeHandle == MarkupResizeHandle.None)
+            return;
+
+        var handlePoint = _markupInteractionService.GetResizeHandlePoint(bounds, _activeMarkupResizeHandle);
+        var anchor = GetMarkupReadoutAnchor(renderer, handlePoint, bounds);
+        var readout = FormattableString.Invariant($"Width {bounds.Width:0.##}  Height {bounds.Height:0.##}");
+        if (preserveAspectRatio)
+            readout += "  Aspect locked";
+        if (resizeFromCenter)
+            readout += "  Centered";
+
+        renderer.DrawTextBox(anchor, readout, new RenderStyle
+        {
+            StrokeColor = "#FF111827",
+            FontSize = 12.0,
+            Bold = true
+        }, boxFill: "#F2ECFCCB", padding: 6.0);
+    }
+
+    private void DrawMarkupRotationReadout(ICanvas2DRenderer renderer, MarkupRecord markup, Rect bounds)
+    {
+        var handlePoint = GetSelectedMarkupRotationHandlePoint();
+        var anchor = GetMarkupReadoutAnchor(renderer, handlePoint, bounds);
+        var readout = FormattableString.Invariant($"Rotation {NormalizeMarkupAngle(markup.RotationDegrees):0.#} deg");
+        var snapIncrementDeg = GetMarkupAngleSnapIncrement();
+        if (snapIncrementDeg > 0)
+            readout += FormattableString.Invariant($"  Snap {snapIncrementDeg:0.#} deg");
+
+        renderer.DrawTextBox(anchor, readout, new RenderStyle
+        {
+            StrokeColor = "#FF111827",
+            FontSize = 12.0,
+            Bold = true
+        }, boxFill: "#F0F9FF", padding: 6.0);
+    }
+
     private static Point GetMarkupReadoutAnchor(ICanvas2DRenderer renderer, Point handlePoint, Rect bounds)
     {
         var offset = Math.Max(12.0 / Math.Max(renderer.Zoom, 0.1), 2.0);
@@ -2243,6 +2489,27 @@ public partial class MainWindow
     {
         var normalized = angleDeg % 360.0;
         return normalized < 0 ? normalized + 360.0 : normalized;
+    }
+
+    private static Point GetMarkupBoundsCenter(Rect bounds)
+    {
+        return new Point(bounds.X + bounds.Width / 2.0, bounds.Y + bounds.Height / 2.0);
+    }
+
+    private static double GetMarkupAngleDegrees(Point anchor, Point point)
+    {
+        return Math.Atan2(point.Y - anchor.Y, point.X - anchor.X) * 180.0 / Math.PI;
+    }
+
+    private static double NormalizeSignedMarkupAngleDelta(double angleDeg)
+    {
+        var normalized = angleDeg % 360.0;
+        if (normalized <= -180.0)
+            normalized += 360.0;
+        else if (normalized > 180.0)
+            normalized -= 360.0;
+
+        return normalized;
     }
 
     private static bool CanEditStructuredMarkupText(MarkupRecord markup, out string annotationKind, out string textRole)
@@ -2363,6 +2630,7 @@ public partial class MainWindow
             left.Radius != right.Radius ||
             left.ArcStartDeg != right.ArcStartDeg ||
             left.ArcSweepDeg != right.ArcSweepDeg ||
+            left.RotationDegrees != right.RotationDegrees ||
             left.FontSize != right.FontSize ||
             left.StrokeWidth != right.StrokeWidth ||
             !string.Equals(left.StrokeColor, right.StrokeColor, StringComparison.Ordinal) ||

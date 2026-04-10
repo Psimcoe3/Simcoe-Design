@@ -80,6 +80,45 @@ public class MarkupRenderServiceTests
     }
 
     [Fact]
+    public void Render_RotatedStamp_PushesRotationTransform()
+    {
+        var renderer = new RecordingRenderer();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Stamp,
+            TextContent = "APPROVED",
+            BoundingRect = new Rect(10, 20, 120, 30),
+            RotationDegrees = 30
+        };
+
+        _sut.Render(renderer, markup, DetailLevel.Fine);
+
+        Assert.Equal(1, renderer.PushTransformCalls);
+        Assert.Equal(30, renderer.LastRotateDeg, 6);
+        Assert.Equal(1, renderer.PopTransformCalls);
+    }
+
+    [Fact]
+    public void Render_RotatedText_PushesRotationTransform()
+    {
+        var renderer = new RecordingRenderer();
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Text,
+            TextContent = "HEADER",
+            BoundingRect = new Rect(40, 50, 30, 12),
+            RotationDegrees = 45,
+            Vertices = { new Point(40, 62) }
+        };
+
+        _sut.Render(renderer, markup, DetailLevel.Fine);
+
+        Assert.Equal(1, renderer.PushTransformCalls);
+        Assert.Equal(45, renderer.LastRotateDeg, 6);
+        Assert.Equal(1, renderer.PopTransformCalls);
+    }
+
+    [Fact]
     public void Render_Hatch_UsesHatchAndOutline()
     {
         var renderer = new RecordingRenderer();
@@ -99,12 +138,15 @@ public class MarkupRenderServiceTests
     private sealed class RecordingRenderer : ICanvas2DRenderer
     {
         public int LeaderCalls { get; private set; }
+        public int PopTransformCalls { get; private set; }
+        public int PushTransformCalls { get; private set; }
         public int RevisionCloudCalls { get; private set; }
         public int RectCalls { get; private set; }
         public int TextCalls { get; private set; }
         public int TextBoxCalls { get; private set; }
         public int HatchCalls { get; private set; }
         public int PolygonCalls { get; private set; }
+        public double LastRotateDeg { get; private set; }
         public TextAlign LastTextAlign { get; private set; }
 
         public Rect ViewportDocRect => Rect.Empty;
@@ -113,8 +155,12 @@ public class MarkupRenderServiceTests
         public void Clear(string backgroundColor = "#FF1E1E1E") { }
         public void RequestRedraw() { }
         public void InvalidateRegion(Rect docRect) { }
-        public void PushTransform(double translateX, double translateY, double rotateDeg = 0, double scale = 1.0) { }
-        public void PopTransform() { }
+        public void PushTransform(double translateX, double translateY, double rotateDeg = 0, double scale = 1.0)
+        {
+            PushTransformCalls++;
+            LastRotateDeg = rotateDeg;
+        }
+        public void PopTransform() => PopTransformCalls++;
         public void DrawLine(Point start, Point end, RenderStyle style) { }
         public void DrawPolyline(IReadOnlyList<Point> points, RenderStyle style) { }
         public void DrawPolygon(IReadOnlyList<Point> points, RenderStyle style) => PolygonCalls++;
