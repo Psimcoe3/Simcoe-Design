@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using ElectricalComponentSandbox.Markup.Models;
 using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.Services;
@@ -12,6 +13,10 @@ namespace ElectricalComponentSandbox;
 public partial class MainWindow
 {
     private readonly HashSet<string> _collapsedMarkupReviewSnapshotDiffGroupKeys = new(StringComparer.OrdinalIgnoreCase);
+    private string? _pendingMarkupReviewSnapshotDiffAnchorGroupStateKey;
+    private string? _pendingMarkupReviewSnapshotDiffSelectedEntryKey;
+    private bool _pendingMarkupReviewSnapshotDiffListFocus;
+    private bool _isRestoringMarkupReviewSnapshotDiffSelection;
 
     internal bool PublishMarkupReviewSnapshotForTesting(string name, string? actor = null)
         => TryPublishMarkupReviewSnapshot(name, actor ?? "Test Reviewer", showFeedbackIfUnavailable: false);
@@ -109,6 +114,36 @@ public partial class MainWindow
             .ToList() ?? new List<string>();
     }
 
+    internal IReadOnlyList<string> GetMarkupReviewSnapshotDiffHeaderCollapseOthersTextsForTesting()
+    {
+        UpdateMarkupReviewSnapshotUi();
+        return MarkupReviewSnapshotDiffListBox?.Items
+            .OfType<MarkupReviewSnapshotDiffEntry>()
+            .Where(entry => entry.IsGroupHeader)
+            .Select(entry => entry.HeaderCollapseOthersText)
+            .ToList() ?? new List<string>();
+    }
+
+    internal IReadOnlyList<bool> GetMarkupReviewSnapshotDiffHeaderCollapseOthersEnabledStatesForTesting()
+    {
+        UpdateMarkupReviewSnapshotUi();
+        return MarkupReviewSnapshotDiffListBox?.Items
+            .OfType<MarkupReviewSnapshotDiffEntry>()
+            .Where(entry => entry.IsGroupHeader)
+            .Select(entry => entry.HeaderCanCollapseOthers)
+            .ToList() ?? new List<bool>();
+    }
+
+    internal IReadOnlyList<bool> GetMarkupReviewSnapshotDiffHeaderCollapseOthersVisibleStatesForTesting()
+    {
+        UpdateMarkupReviewSnapshotUi();
+        return MarkupReviewSnapshotDiffListBox?.Items
+            .OfType<MarkupReviewSnapshotDiffEntry>()
+            .Where(entry => entry.IsGroupHeader)
+            .Select(entry => entry.HeaderShowsCollapseOthers)
+            .ToList() ?? new List<bool>();
+    }
+
     internal string GetMarkupReviewSnapshotDiffRevealHintForTesting(string title)
     {
         UpdateMarkupReviewSnapshotUi();
@@ -135,6 +170,9 @@ public partial class MainWindow
             .FirstOrDefault(candidate => string.Equals(candidate.Title, title, StringComparison.OrdinalIgnoreCase))
             ?.DisplaySheetContextText ?? string.Empty;
     }
+
+    internal string GetSelectedMarkupReviewSnapshotDiffTitleForTesting()
+        => (MarkupReviewSnapshotDiffListBox?.SelectedItem as MarkupReviewSnapshotDiffEntry)?.Title ?? string.Empty;
 
     internal bool SelectMarkupReviewSnapshotDiffEntryForTesting(string title)
     {
@@ -165,6 +203,24 @@ public partial class MainWindow
         return true;
     }
 
+    internal bool CollapseOtherMarkupReviewSnapshotDiffGroupsForTesting(string headerSheetTitleText)
+    {
+        UpdateMarkupReviewSnapshotUi();
+        var entry = MarkupReviewSnapshotDiffListBox?.Items
+            .OfType<MarkupReviewSnapshotDiffEntry>()
+            .FirstOrDefault(candidate => candidate.IsGroupHeader && string.Equals(candidate.HeaderSheetTitleText, headerSheetTitleText, StringComparison.OrdinalIgnoreCase));
+        if (entry == null)
+            return false;
+
+        return TryCollapseOtherMarkupReviewSnapshotDiffGroups(entry);
+    }
+
+    internal bool CollapseAllMarkupReviewSnapshotDiffGroupsForTesting()
+        => TrySetMarkupReviewSnapshotDiffGroupsCollapsed(collapseAll: true);
+
+    internal bool ExpandAllMarkupReviewSnapshotDiffGroupsForTesting()
+        => TrySetMarkupReviewSnapshotDiffGroupsCollapsed(collapseAll: false);
+
     private void PublishMarkupReviewSnapshot_Click(object sender, RoutedEventArgs e)
     {
         var input = PromptInput(
@@ -188,6 +244,27 @@ public partial class MainWindow
         ToggleMarkupReviewSnapshotDiffHeader(entry);
         e.Handled = true;
     }
+
+    private void MarkupReviewSnapshotDiffCollapseOthersButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element || element.DataContext is not MarkupReviewSnapshotDiffEntry entry)
+            return;
+
+        if (!entry.HeaderCanCollapseOthers)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        TryCollapseOtherMarkupReviewSnapshotDiffGroups(entry);
+        e.Handled = true;
+    }
+
+    private void CollapseAllMarkupReviewSnapshotDiffGroupsButton_Click(object sender, RoutedEventArgs e)
+        => TrySetMarkupReviewSnapshotDiffGroupsCollapsed(collapseAll: true);
+
+    private void ExpandAllMarkupReviewSnapshotDiffGroupsButton_Click(object sender, RoutedEventArgs e)
+        => TrySetMarkupReviewSnapshotDiffGroupsCollapsed(collapseAll: false);
 
     private void RenameSelectedMarkupReviewSnapshot_Click(object sender, RoutedEventArgs e)
     {
@@ -312,6 +389,9 @@ public partial class MainWindow
 
     private void MarkupReviewSnapshotDiffListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_isRestoringMarkupReviewSnapshotDiffSelection)
+            return;
+
         if (MarkupReviewSnapshotDiffListBox?.SelectedItem is not MarkupReviewSnapshotDiffEntry entry)
         {
             return;
@@ -351,6 +431,8 @@ public partial class MainWindow
             SelectedMarkupReviewSnapshotComparisonTextBlock == null ||
             SelectedMarkupReviewSnapshotDetailsTextBlock == null ||
             MarkupReviewSnapshotDiffListBox == null ||
+            ExpandAllMarkupReviewSnapshotDiffGroupsButton == null ||
+            CollapseAllMarkupReviewSnapshotDiffGroupsButton == null ||
             PublishMarkupReviewSnapshotButton == null ||
             RenameMarkupReviewSnapshotButton == null ||
             DeleteMarkupReviewSnapshotButton == null)
@@ -358,6 +440,7 @@ public partial class MainWindow
             return;
         }
 
+        var retainedDiffSelectionKey = GetSelectedMarkupReviewSnapshotDiffEntryKey();
         var snapshots = _viewModel.MarkupReviewSnapshots.ToList();
         MarkupReviewSnapshotSummaryTextBlock.Text = BuildMarkupReviewSnapshotSummary(snapshots);
         PublishMarkupReviewSnapshotButton.IsEnabled = _viewModel.GetFilteredReviewMarkups().Count > 0;
@@ -371,6 +454,13 @@ public partial class MainWindow
         RenameMarkupReviewSnapshotButton.IsEnabled = selectedSnapshot != null;
         DeleteMarkupReviewSnapshotButton.IsEnabled = selectedSnapshot != null;
         _selectedMarkupReviewSnapshotId = selectedSnapshot?.Id;
+        if (!string.IsNullOrWhiteSpace(retainedDiffSelectionKey) &&
+            selectedSnapshot != null &&
+            string.Equals(selectedSnapshot.Id, retainedSnapshotId, StringComparison.Ordinal))
+        {
+            PrepareMarkupReviewSnapshotDiffSelectionRetention(retainedDiffSelectionKey);
+        }
+
         UpdateSelectedMarkupReviewSnapshotUi(selectedSnapshot);
     }
 
@@ -393,6 +483,8 @@ public partial class MainWindow
             SelectedMarkupReviewSnapshotComparisonTextBlock == null ||
             SelectedMarkupReviewSnapshotDetailsTextBlock == null ||
             MarkupReviewSnapshotDiffListBox == null ||
+            ExpandAllMarkupReviewSnapshotDiffGroupsButton == null ||
+            CollapseAllMarkupReviewSnapshotDiffGroupsButton == null ||
             RenameMarkupReviewSnapshotButton == null ||
             DeleteMarkupReviewSnapshotButton == null)
         {
@@ -407,17 +499,26 @@ public partial class MainWindow
             SelectedMarkupReviewSnapshotComparisonTextBlock.Text = string.Empty;
             SelectedMarkupReviewSnapshotDetailsTextBlock.Text = string.Empty;
             MarkupReviewSnapshotDiffListBox.ItemsSource = null;
+            ExpandAllMarkupReviewSnapshotDiffGroupsButton.IsEnabled = false;
+            CollapseAllMarkupReviewSnapshotDiffGroupsButton.IsEnabled = false;
+            _pendingMarkupReviewSnapshotDiffAnchorGroupStateKey = null;
+            _pendingMarkupReviewSnapshotDiffSelectedEntryKey = null;
+            _pendingMarkupReviewSnapshotDiffListFocus = false;
             return;
         }
 
         RenameMarkupReviewSnapshotButton.IsEnabled = true;
         DeleteMarkupReviewSnapshotButton.IsEnabled = true;
         var comparison = BuildMarkupReviewSnapshotComparison(snapshot);
+        var diffHeaderEntries = comparison.DiffEntries.Where(entry => entry.IsGroupHeader).ToList();
         SelectedMarkupReviewSnapshotSummaryTextBlock.Text = BuildSelectedMarkupReviewSnapshotSummary(snapshot);
         SelectedMarkupReviewSnapshotComparisonTextBlock.Text = BuildMarkupReviewSnapshotComparisonSummary(comparison);
         SelectedMarkupReviewSnapshotDetailsTextBlock.Text = BuildMarkupReviewSnapshotComparisonDetails(comparison);
         MarkupReviewSnapshotDiffListBox.ItemsSource = comparison.DiffEntries;
-        MarkupReviewSnapshotDiffListBox.SelectedItem = null;
+        ExpandAllMarkupReviewSnapshotDiffGroupsButton.IsEnabled = diffHeaderEntries.Any(entry => string.Equals(entry.HeaderToggleText, "[+]", StringComparison.Ordinal));
+        CollapseAllMarkupReviewSnapshotDiffGroupsButton.IsEnabled = diffHeaderEntries.Any(entry => string.Equals(entry.HeaderToggleText, "[-]", StringComparison.Ordinal));
+        ApplyMarkupReviewSnapshotDiffSelectionRetention();
+        ApplyMarkupReviewSnapshotDiffAnchor();
     }
 
     private static string BuildSelectedMarkupReviewSnapshotSummary(MarkupReviewSnapshot snapshot)
@@ -673,27 +774,46 @@ public partial class MainWindow
     {
         var sortedEntries = SortMarkupReviewSnapshotDiffEntries(diffEntries);
         var displayEntries = new List<MarkupReviewSnapshotDiffEntry>(sortedEntries.Count * 2);
-        foreach (var sheetGroup in sortedEntries.GroupBy(entry => entry.SheetContextSortKey, StringComparer.OrdinalIgnoreCase))
-        {
-            var sheetEntries = sheetGroup.ToList();
-            var headerEntry = sheetEntries[0];
-            var groupStateKey = BuildMarkupReviewSnapshotDiffGroupStateKey(snapshotId, headerEntry.SheetContextSortKey);
-            var isCollapsed = _collapsedMarkupReviewSnapshotDiffGroupKeys.Contains(groupStateKey);
-            displayEntries.Add(BuildMarkupReviewSnapshotDiffHeaderEntry(
-                headerEntry.SheetContextText,
-                headerEntry.SheetContextSortKey,
-                sheetEntries,
-                groupStateKey,
-                isCollapsed));
+        var sheetGroups = sortedEntries
+            .GroupBy(entry => entry.SheetContextSortKey, StringComparer.OrdinalIgnoreCase)
+            .Select(sheetGroup =>
+            {
+                var sheetEntries = sheetGroup.ToList();
+                var headerEntry = sheetEntries[0];
+                var groupStateKey = BuildMarkupReviewSnapshotDiffGroupStateKey(snapshotId, headerEntry.SheetContextSortKey);
+                var isCollapsed = _collapsedMarkupReviewSnapshotDiffGroupKeys.Contains(groupStateKey);
+                return (
+                    SheetEntries: sheetEntries,
+                    HeaderEntry: headerEntry,
+                    GroupStateKey: groupStateKey,
+                    IsCollapsed: isCollapsed);
+            })
+            .ToList();
+        var groupStates = sheetGroups
+            .Select(sheetGroup => (sheetGroup.GroupStateKey, sheetGroup.IsCollapsed))
+            .ToList();
 
-            if (!isCollapsed)
-                displayEntries.AddRange(sheetEntries.Select(entry => entry with { DisplaySheetContextText = string.Empty }));
+        foreach (var sheetGroup in sheetGroups)
+        {
+            var collapseOthersState = BuildMarkupReviewSnapshotDiffHeaderCollapseOthersState(groupStates, sheetGroup.GroupStateKey, sheetGroup.IsCollapsed);
+            displayEntries.Add(BuildMarkupReviewSnapshotDiffHeaderEntry(
+                sheetGroup.HeaderEntry.SheetContextText,
+                sheetGroup.HeaderEntry.SheetContextSortKey,
+                sheetGroup.SheetEntries,
+                sheetGroup.GroupStateKey,
+                sheetGroup.IsCollapsed,
+                collapseOthersState.Text,
+                collapseOthersState.IsEnabled,
+                collapseOthersState.IsVisible));
+
+            if (!sheetGroup.IsCollapsed)
+                displayEntries.AddRange(sheetGroup.SheetEntries.Select(entry => entry with { DisplaySheetContextText = string.Empty }));
         }
 
         return displayEntries;
     }
 
-    private static MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotDiffHeaderEntry(string sheetContextText, string sheetContextSortKey, IReadOnlyList<MarkupReviewSnapshotDiffEntry> sheetEntries, string groupStateKey, bool isCollapsed)
+    private static MarkupReviewSnapshotDiffEntry BuildMarkupReviewSnapshotDiffHeaderEntry(string sheetContextText, string sheetContextSortKey, IReadOnlyList<MarkupReviewSnapshotDiffEntry> sheetEntries, string groupStateKey, bool isCollapsed, string headerCollapseOthersText, bool headerCanCollapseOthers, bool headerShowsCollapseOthers)
     {
         var groupHeaderSheetText = BuildMarkupReviewSnapshotDiffGroupHeaderSheetText(sheetContextText);
         var groupHeaderPriorityKey = BuildMarkupReviewSnapshotDiffHeaderPriorityKey(sheetEntries);
@@ -722,7 +842,24 @@ public partial class MainWindow
             HeaderIssueCountText: groupHeaderIssueCountText,
             HeaderChangedCountText: groupHeaderChangedCountText,
             HeaderNewCountText: groupHeaderNewCountText,
-            HeaderMissingCountText: groupHeaderMissingCountText);
+            HeaderMissingCountText: groupHeaderMissingCountText,
+            HeaderCollapseOthersText: headerCollapseOthersText,
+            HeaderCanCollapseOthers: headerCanCollapseOthers,
+            HeaderShowsCollapseOthers: headerShowsCollapseOthers);
+    }
+
+    private static (string Text, bool IsEnabled, bool IsVisible) BuildMarkupReviewSnapshotDiffHeaderCollapseOthersState(IReadOnlyList<(string GroupStateKey, bool IsCollapsed)> groupStates, string groupStateKey, bool isCollapsed)
+    {
+        if (groupStates.Count <= 1)
+            return (Text: string.Empty, IsEnabled: false, IsVisible: false);
+
+        var hasExpandedSibling = groupStates.Any(groupState =>
+            !string.Equals(groupState.GroupStateKey, groupStateKey, StringComparison.OrdinalIgnoreCase) &&
+            !groupState.IsCollapsed);
+        if (!isCollapsed && !hasExpandedSibling)
+            return (Text: "Isolated", IsEnabled: false, IsVisible: true);
+
+        return (Text: "Collapse Others", IsEnabled: true, IsVisible: true);
     }
 
     private static string BuildMarkupReviewSnapshotDiffGroupStateKey(string snapshotId, string sheetContextSortKey)
@@ -805,12 +942,169 @@ public partial class MainWindow
         if (string.IsNullOrWhiteSpace(entry.HeaderGroupStateKey))
             return;
 
+        PrepareMarkupReviewSnapshotDiffAnchor(entry.HeaderGroupStateKey, focusList: true);
+        PrepareMarkupReviewSnapshotDiffSelectionRetention(GetSelectedMarkupReviewSnapshotDiffEntryKey());
+
         if (_collapsedMarkupReviewSnapshotDiffGroupKeys.Contains(entry.HeaderGroupStateKey))
             _collapsedMarkupReviewSnapshotDiffGroupKeys.Remove(entry.HeaderGroupStateKey);
         else
             _collapsedMarkupReviewSnapshotDiffGroupKeys.Add(entry.HeaderGroupStateKey);
 
         UpdateSelectedMarkupReviewSnapshotUi(GetSelectedMarkupReviewSnapshot());
+    }
+
+    private bool TryCollapseOtherMarkupReviewSnapshotDiffGroups(MarkupReviewSnapshotDiffEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry.HeaderGroupStateKey) || !entry.HeaderCanCollapseOthers)
+            return false;
+
+        var snapshot = GetSelectedMarkupReviewSnapshot();
+        if (snapshot == null)
+            return false;
+
+        var comparison = BuildMarkupReviewSnapshotComparison(snapshot);
+        var groupStateKeys = comparison.DiffEntries
+            .Where(candidate => candidate.IsGroupHeader && !string.IsNullOrWhiteSpace(candidate.HeaderGroupStateKey))
+            .Select(candidate => candidate.HeaderGroupStateKey)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (groupStateKeys.Count == 0)
+            return false;
+
+        PrepareMarkupReviewSnapshotDiffAnchor(entry.HeaderGroupStateKey, focusList: true);
+        PrepareMarkupReviewSnapshotDiffSelectionRetention(GetSelectedMarkupReviewSnapshotDiffEntryKey());
+
+        foreach (var groupStateKey in groupStateKeys)
+        {
+            if (string.Equals(groupStateKey, entry.HeaderGroupStateKey, StringComparison.OrdinalIgnoreCase))
+                _collapsedMarkupReviewSnapshotDiffGroupKeys.Remove(groupStateKey);
+            else
+                _collapsedMarkupReviewSnapshotDiffGroupKeys.Add(groupStateKey);
+        }
+
+        UpdateSelectedMarkupReviewSnapshotUi(snapshot);
+        return true;
+    }
+
+    private bool TrySetMarkupReviewSnapshotDiffGroupsCollapsed(bool collapseAll)
+    {
+        var snapshot = GetSelectedMarkupReviewSnapshot();
+        if (snapshot == null)
+            return false;
+
+        var anchorGroupStateKey = GetMarkupReviewSnapshotDiffAnchorGroupStateKey();
+
+        var comparison = BuildMarkupReviewSnapshotComparison(snapshot);
+        var groupStateKeys = comparison.DiffEntries
+            .Where(entry => entry.IsGroupHeader && !string.IsNullOrWhiteSpace(entry.HeaderGroupStateKey))
+            .Select(entry => entry.HeaderGroupStateKey)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (groupStateKeys.Count == 0)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(anchorGroupStateKey))
+            anchorGroupStateKey = groupStateKeys[0];
+
+        PrepareMarkupReviewSnapshotDiffAnchor(anchorGroupStateKey, focusList: true);
+        PrepareMarkupReviewSnapshotDiffSelectionRetention(GetSelectedMarkupReviewSnapshotDiffEntryKey());
+
+        foreach (var groupStateKey in groupStateKeys)
+        {
+            if (collapseAll)
+                _collapsedMarkupReviewSnapshotDiffGroupKeys.Add(groupStateKey);
+            else
+                _collapsedMarkupReviewSnapshotDiffGroupKeys.Remove(groupStateKey);
+        }
+
+        UpdateSelectedMarkupReviewSnapshotUi(snapshot);
+        return true;
+    }
+
+    private string? GetMarkupReviewSnapshotDiffAnchorGroupStateKey()
+    {
+        return MarkupReviewSnapshotDiffListBox?.Items
+            .OfType<MarkupReviewSnapshotDiffEntry>()
+            .FirstOrDefault(entry => entry.IsGroupHeader && !string.IsNullOrWhiteSpace(entry.HeaderGroupStateKey))
+            ?.HeaderGroupStateKey;
+    }
+
+    private string? GetSelectedMarkupReviewSnapshotDiffEntryKey()
+    {
+        return (MarkupReviewSnapshotDiffListBox?.SelectedItem as MarkupReviewSnapshotDiffEntry) is { IsGroupHeader: false } entry
+            ? entry.Key
+            : null;
+    }
+
+    private void PrepareMarkupReviewSnapshotDiffAnchor(string? groupStateKey, bool focusList)
+    {
+        if (string.IsNullOrWhiteSpace(groupStateKey))
+            return;
+
+        _pendingMarkupReviewSnapshotDiffAnchorGroupStateKey = groupStateKey;
+        _pendingMarkupReviewSnapshotDiffListFocus = focusList;
+    }
+
+    private void PrepareMarkupReviewSnapshotDiffSelectionRetention(string? entryKey)
+    {
+        if (string.IsNullOrWhiteSpace(entryKey))
+            return;
+
+        _pendingMarkupReviewSnapshotDiffSelectedEntryKey = entryKey;
+    }
+
+    private void ApplyMarkupReviewSnapshotDiffSelectionRetention()
+    {
+        if (MarkupReviewSnapshotDiffListBox == null)
+            return;
+
+        var entryKey = _pendingMarkupReviewSnapshotDiffSelectedEntryKey;
+        _pendingMarkupReviewSnapshotDiffSelectedEntryKey = null;
+
+        var retainedEntry = string.IsNullOrWhiteSpace(entryKey)
+            ? null
+            : MarkupReviewSnapshotDiffListBox.Items
+                .OfType<MarkupReviewSnapshotDiffEntry>()
+                .FirstOrDefault(entry => !entry.IsGroupHeader && string.Equals(entry.Key, entryKey, StringComparison.Ordinal));
+
+        _isRestoringMarkupReviewSnapshotDiffSelection = true;
+        try
+        {
+            MarkupReviewSnapshotDiffListBox.SelectedItem = retainedEntry;
+        }
+        finally
+        {
+            _isRestoringMarkupReviewSnapshotDiffSelection = false;
+        }
+    }
+
+    private void ApplyMarkupReviewSnapshotDiffAnchor()
+    {
+        if (MarkupReviewSnapshotDiffListBox == null)
+            return;
+
+        var groupStateKey = _pendingMarkupReviewSnapshotDiffAnchorGroupStateKey;
+        var focusList = _pendingMarkupReviewSnapshotDiffListFocus;
+        _pendingMarkupReviewSnapshotDiffAnchorGroupStateKey = null;
+        _pendingMarkupReviewSnapshotDiffListFocus = false;
+
+        if (string.IsNullOrWhiteSpace(groupStateKey))
+            return;
+
+        var listBox = MarkupReviewSnapshotDiffListBox;
+        listBox.Dispatcher.BeginInvoke(new Action(() =>
+        {
+            var anchorEntry = listBox.Items
+                .OfType<MarkupReviewSnapshotDiffEntry>()
+                .FirstOrDefault(entry => entry.IsGroupHeader && string.Equals(entry.HeaderGroupStateKey, groupStateKey, StringComparison.OrdinalIgnoreCase))
+                ?? listBox.Items.OfType<MarkupReviewSnapshotDiffEntry>().FirstOrDefault();
+            if (anchorEntry == null)
+                return;
+
+            listBox.ScrollIntoView(anchorEntry);
+            if (focusList)
+                listBox.Focus();
+        }), DispatcherPriority.Background);
     }
 
     private void ClearMarkupReviewSnapshotDiffGroupState(string snapshotId)
@@ -958,7 +1252,10 @@ internal sealed record MarkupReviewSnapshotDiffEntry(
     string HeaderIssueCountText = "",
     string HeaderChangedCountText = "",
     string HeaderNewCountText = "",
-    string HeaderMissingCountText = "")
+    string HeaderMissingCountText = "",
+    string HeaderCollapseOthersText = "",
+    bool HeaderCanCollapseOthers = false,
+    bool HeaderShowsCollapseOthers = true)
 {
     public bool CanRevealLiveMarkup => !string.IsNullOrWhiteSpace(CurrentMarkupId);
     public bool HasHeaderChangedCount => !string.IsNullOrWhiteSpace(HeaderChangedCountText);

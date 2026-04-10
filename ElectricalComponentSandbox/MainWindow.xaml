@@ -1233,6 +1233,22 @@
                                                            FontSize="10"
                                                            TextWrapping="Wrap"
                                                            Margin="0,0,0,4"/>
+                                                <WrapPanel Margin="0,0,0,4">
+                                                    <Button x:Name="ExpandAllMarkupReviewSnapshotDiffGroupsButton"
+                                                        Content="Expand All"
+                                                        Click="ExpandAllMarkupReviewSnapshotDiffGroupsButton_Click"
+                                                        Padding="8,2"
+                                                        Margin="0,0,6,4"
+                                                        FontSize="10"
+                                                        MinWidth="72"/>
+                                                    <Button x:Name="CollapseAllMarkupReviewSnapshotDiffGroupsButton"
+                                                        Content="Collapse All"
+                                                        Click="CollapseAllMarkupReviewSnapshotDiffGroupsButton_Click"
+                                                        Padding="8,2"
+                                                        Margin="0,0,0,4"
+                                                        FontSize="10"
+                                                        MinWidth="82"/>
+                                                </WrapPanel>
                                                 <ListBox x:Name="MarkupReviewSnapshotDiffListBox"
                                                          BorderThickness="0"
                                                          Background="Transparent"
@@ -1264,72 +1280,89 @@
                                                                         BorderThickness="3,0,0,0"
                                                                         CornerRadius="6"
                                                                         Visibility="Collapsed">
-                                                                    <Button Background="Transparent"
-                                                                            BorderThickness="0"
-                                                                            Padding="0"
-                                                                            HorizontalContentAlignment="Stretch"
-                                                                            Click="MarkupReviewSnapshotDiffHeaderButton_Click"
-                                                                            Cursor="Hand">
-                                                                        <StackPanel>
-                                                                            <DockPanel LastChildFill="True">
-                                                                                <TextBlock Text="{Binding HeaderToggleText}"
-                                                                                           Foreground="#FF374151"
-                                                                                           FontSize="9"
-                                                                                           FontWeight="SemiBold"
-                                                                                           Margin="0,0,6,0"
-                                                                                           VerticalAlignment="Center"/>
-                                                                                <TextBlock Text="{Binding HeaderSheetTitleText}"
-                                                                                           FontWeight="SemiBold"
-                                                                                           Foreground="#FF374151"
-                                                                                           FontSize="10"
-                                                                                           TextWrapping="Wrap"/>
-                                                                            </DockPanel>
-                                                                            <WrapPanel Margin="0,3,0,0">
-                                                                                <Border Background="#FFE5E7EB"
-                                                                                        CornerRadius="9"
-                                                                                        Padding="6,1"
-                                                                                        Margin="0,0,4,4">
-                                                                                    <TextBlock Text="{Binding HeaderIssueCountText}"
+                                                                    <Grid>
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                            <ColumnDefinition Width="Auto"/>
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <Button Grid.Column="0"
+                                                                                Background="Transparent"
+                                                                                BorderThickness="0"
+                                                                                Padding="0"
+                                                                                HorizontalContentAlignment="Stretch"
+                                                                                Click="MarkupReviewSnapshotDiffHeaderButton_Click"
+                                                                                Cursor="Hand">
+                                                                            <StackPanel>
+                                                                                <DockPanel LastChildFill="True">
+                                                                                    <TextBlock Text="{Binding HeaderToggleText}"
                                                                                                Foreground="#FF374151"
                                                                                                FontSize="9"
-                                                                                               FontWeight="SemiBold"/>
-                                                                                </Border>
-                                                                                <Border x:Name="MarkupReviewSnapshotDiffHeaderChangedBadge"
-                                                                                        Background="#FFFEF3C7"
-                                                                                        CornerRadius="9"
-                                                                                        Padding="6,1"
-                                                                                        Margin="0,0,4,4"
-                                                                                        Visibility="Collapsed">
-                                                                                    <TextBlock Text="{Binding HeaderChangedCountText}"
-                                                                                               Foreground="#FF92400E"
-                                                                                               FontSize="9"
-                                                                                               FontWeight="SemiBold"/>
-                                                                                </Border>
-                                                                                <Border x:Name="MarkupReviewSnapshotDiffHeaderNewBadge"
-                                                                                        Background="#FFDBEAFE"
-                                                                                        CornerRadius="9"
-                                                                                        Padding="6,1"
-                                                                                        Margin="0,0,4,4"
-                                                                                        Visibility="Collapsed">
-                                                                                    <TextBlock Text="{Binding HeaderNewCountText}"
-                                                                                               Foreground="#FF1D4ED8"
-                                                                                               FontSize="9"
-                                                                                               FontWeight="SemiBold"/>
-                                                                                </Border>
-                                                                                <Border x:Name="MarkupReviewSnapshotDiffHeaderMissingBadge"
-                                                                                        Background="#FFF3F4F6"
-                                                                                        CornerRadius="9"
-                                                                                        Padding="6,1"
-                                                                                        Margin="0,0,4,4"
-                                                                                        Visibility="Collapsed">
-                                                                                    <TextBlock Text="{Binding HeaderMissingCountText}"
-                                                                                               Foreground="#FF4B5563"
-                                                                                               FontSize="9"
-                                                                                               FontWeight="SemiBold"/>
-                                                                                </Border>
-                                                                            </WrapPanel>
-                                                                        </StackPanel>
-                                                                    </Button>
+                                                                                               FontWeight="SemiBold"
+                                                                                               Margin="0,0,6,0"
+                                                                                               VerticalAlignment="Center"/>
+                                                                                    <TextBlock Text="{Binding HeaderSheetTitleText}"
+                                                                                               FontWeight="SemiBold"
+                                                                                               Foreground="#FF374151"
+                                                                                               FontSize="10"
+                                                                                               TextWrapping="Wrap"/>
+                                                                                </DockPanel>
+                                                                                <WrapPanel Margin="0,3,0,0">
+                                                                                    <Border Background="#FFE5E7EB"
+                                                                                            CornerRadius="9"
+                                                                                            Padding="6,1"
+                                                                                            Margin="0,0,4,4">
+                                                                                        <TextBlock Text="{Binding HeaderIssueCountText}"
+                                                                                                   Foreground="#FF374151"
+                                                                                                   FontSize="9"
+                                                                                                   FontWeight="SemiBold"/>
+                                                                                    </Border>
+                                                                                    <Border x:Name="MarkupReviewSnapshotDiffHeaderChangedBadge"
+                                                                                            Background="#FFFEF3C7"
+                                                                                            CornerRadius="9"
+                                                                                            Padding="6,1"
+                                                                                            Margin="0,0,4,4"
+                                                                                            Visibility="Collapsed">
+                                                                                        <TextBlock Text="{Binding HeaderChangedCountText}"
+                                                                                                   Foreground="#FF92400E"
+                                                                                                   FontSize="9"
+                                                                                                   FontWeight="SemiBold"/>
+                                                                                    </Border>
+                                                                                    <Border x:Name="MarkupReviewSnapshotDiffHeaderNewBadge"
+                                                                                            Background="#FFDBEAFE"
+                                                                                            CornerRadius="9"
+                                                                                            Padding="6,1"
+                                                                                            Margin="0,0,4,4"
+                                                                                            Visibility="Collapsed">
+                                                                                        <TextBlock Text="{Binding HeaderNewCountText}"
+                                                                                                   Foreground="#FF1D4ED8"
+                                                                                                   FontSize="9"
+                                                                                                   FontWeight="SemiBold"/>
+                                                                                    </Border>
+                                                                                    <Border x:Name="MarkupReviewSnapshotDiffHeaderMissingBadge"
+                                                                                            Background="#FFF3F4F6"
+                                                                                            CornerRadius="9"
+                                                                                            Padding="6,1"
+                                                                                            Margin="0,0,4,4"
+                                                                                            Visibility="Collapsed">
+                                                                                        <TextBlock Text="{Binding HeaderMissingCountText}"
+                                                                                                   Foreground="#FF4B5563"
+                                                                                                   FontSize="9"
+                                                                                                   FontWeight="SemiBold"/>
+                                                                                    </Border>
+                                                                                </WrapPanel>
+                                                                            </StackPanel>
+                                                                        </Button>
+                                                                        <Button x:Name="MarkupReviewSnapshotDiffCollapseOthersButton"
+                                                                                Grid.Column="1"
+                                                                            Content="{Binding HeaderCollapseOthersText}"
+                                                                                Click="MarkupReviewSnapshotDiffCollapseOthersButton_Click"
+                                                                            IsEnabled="{Binding HeaderCanCollapseOthers}"
+                                                                                Padding="8,2"
+                                                                                Margin="8,0,0,0"
+                                                                                FontSize="9"
+                                                                                VerticalAlignment="Top"
+                                                                                MinWidth="96"/>
+                                                                    </Grid>
                                                                 </Border>
                                                                 <Border x:Name="MarkupReviewSnapshotDiffEntryBorder"
                                                                         Margin="0,0,0,6"
@@ -1380,6 +1413,9 @@
                                                                 </DataTrigger>
                                                                 <DataTrigger Binding="{Binding HasHeaderMissingCount}" Value="True">
                                                                     <Setter TargetName="MarkupReviewSnapshotDiffHeaderMissingBadge" Property="Visibility" Value="Visible"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding HeaderShowsCollapseOthers}" Value="False">
+                                                                    <Setter TargetName="MarkupReviewSnapshotDiffCollapseOthersButton" Property="Visibility" Value="Collapsed"/>
                                                                 </DataTrigger>
                                                                 <DataTrigger Binding="{Binding DisplaySheetContextText}" Value="">
                                                                     <Setter TargetName="MarkupReviewSnapshotDiffEntrySheetContextTextBlock" Property="Visibility" Value="Collapsed"/>
