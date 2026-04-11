@@ -74,7 +74,12 @@ public class Circuit
     /// otherwise derives it as ConnectedLoadVA × PowerFactor.
     /// </summary>
     public double EffectiveTrueLoadW => TrueLoadW > 0 ? TrueLoadW : ConnectedLoadVA * PowerFactor;
-}
+    /// <summary>
+    /// Physical slot position in the panel (1-based). Odd = left column, even = right column.
+    /// 0 means unassigned — ScheduleTableService.AssignSlotNumbers will fill this in.
+    /// Multi-pole circuits own consecutive slots starting at this number.
+    /// </summary>
+    public int SlotNumber { get; set; }}
 
 /// <summary>
 /// Breaker configuration for a circuit.

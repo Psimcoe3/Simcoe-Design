@@ -1,7 +1,19 @@
-using System.Windows;
+﻿using System.Windows;
 using ElectricalComponentSandbox.Models;
 
 namespace ElectricalComponentSandbox.Services;
+
+/// <summary>
+/// Visual style for a row in a schedule table, used by the renderer to apply distinct backgrounds.
+/// </summary>
+public enum ScheduleRowStyle
+{
+    Normal,
+    Subheader,
+    Spare,
+    Space,
+    Footer
+}
 
 /// <summary>
 /// Defines a column in a schedule table
@@ -22,6 +34,12 @@ public class ScheduleTable
     public string Title { get; set; } = string.Empty;
     public List<ScheduleColumn> Columns { get; set; } = new();
     public List<string[]> Rows { get; set; } = new();
+
+    /// <summary>
+    /// Optional per-row style hints for the renderer. Indexed parallel to <see cref="Rows"/>.
+    /// If shorter than Rows, missing entries are treated as <see cref="ScheduleRowStyle.Normal"/>.
+    /// </summary>
+    public List<ScheduleRowStyle> RowStyles { get; set; } = new();
 
     /// <summary>Row height in document units</summary>
     public double RowHeight { get; set; } = 18;
@@ -241,6 +259,7 @@ public class ScheduleTableService
             double resistance = GetWireResistance(c.Wire.Size);
             double amps = c.Voltage > 0 ? c.ConnectedLoadVA / c.Voltage : 0;
             double vDrop = 2 * resistance * amps * c.WireLengthFeet / 1000.0;
+
             double vDropPercent = c.Voltage > 0 ? (vDrop / c.Voltage) * 100 : 0;
 
             table.Rows.Add(new[]
@@ -258,6 +277,205 @@ public class ScheduleTableService
 
         return table;
     }
+
+    // ── Slot-Map Panel Schedule ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Assigns slot numbers to all circuits in a panel based on the panel's
+    /// <see cref="CircuitSequence"/> setting. Circuits are sorted, then each
+    /// grabs consecutive slots equal to its pole count. Spare and Space slots
+    /// each consume one slot. Circuits whose SlotNumber is already set are
+    /// renumbered along with the rest (full rebuild).
+    /// </summary>
+    public void AssignSlotNumbers(PanelSchedule schedule)
+    {
+        IEnumerable<Circuit> ordered = schedule.CircuitSequence switch
+        {
+            CircuitSequence.GroupByPhase => schedule.Circuits
+                .OrderBy(c => PhaseSortKey(c.Phase))
+                .ThenBy(c => ParseCircuitNumber(c.CircuitNumber)),
+
+            // Odd circuit numbers first (left column fills first), then even
+            CircuitSequence.OddThenEven => schedule.Circuits
+                .OrderBy(c => ParseCircuitNumber(c.CircuitNumber) % 2 == 0 ? 1 : 0)
+                .ThenBy(c => ParseCircuitNumber(c.CircuitNumber)),
+
+            // Numerical (default)
+            _ => schedule.Circuits
+                .OrderBy(c => ParseCircuitNumber(c.CircuitNumber))
+                .ThenBy(c => c.CircuitNumber, StringComparer.OrdinalIgnoreCase)
+        };
+
+        int nextSlot = 1;
+        foreach (var c in ordered)
+        {
+            c.SlotNumber = nextSlot;
+            nextSlot += c.Breaker.Poles;
+        }
+    }
+
+    /// <summary>
+    /// Generates a two-column slot-map panel schedule from a <see cref="PanelSchedule"/>.
+    /// Odd slots appear in the left column, even slots in the right column.
+    /// Includes a panel-info subheader row and a per-phase load footer row.
+    /// Slot numbers are auto-assigned if any circuit has SlotNumber == 0.
+    /// </summary>
+    public ScheduleTable GeneratePanelSchedule(PanelSchedule schedule)
+    {
+        if (schedule.Circuits.Any(c => c.SlotNumber == 0))
+            AssignSlotNumbers(schedule);
+
+        // Build slot→circuit map (each pole position maps to its parent circuit)
+        var slotMap = new Dictionary<int, Circuit>();
+        foreach (var c in schedule.Circuits.Where(c => c.SlotNumber > 0))
+            for (int i = 0; i < c.Breaker.Poles; i++)
+                slotMap[c.SlotNumber + i] = c;
+
+        int maxSlot = slotMap.Keys.Any() ? slotMap.Keys.Max() : 0;
+        if (maxSlot % 2 != 0) maxSlot++; // always an even number of slots
+        int totalRows = maxSlot / 2;
+
+        string voltageLabel = schedule.VoltageConfig switch
+        {
+            PanelVoltageConfig.V120_208_3Ph => "120/208V 3\u00d83W",
+            PanelVoltageConfig.V277_480_3Ph => "277/480V 3\u00d83W",
+            PanelVoltageConfig.V120_240_1Ph => "120/240V 1\u00d83W",
+            PanelVoltageConfig.V240_3Ph     => "240V 3\u00d83W",
+            _ => "\u2014"
+        };
+        string mainInfo = schedule.IsMainLugsOnly
+            ? "MLO"
+            : $"MB {schedule.MainBreakerAmps}A";
+
+        var table = new ScheduleTable
+        {
+            Title = $"PANEL SCHEDULE \u2014 {schedule.PanelName}",
+            Columns =
+            {
+                new ScheduleColumn { Header = "CKT",         Width = 40,  Alignment = HorizontalAlignment.Center },
+                new ScheduleColumn { Header = "DESCRIPTION", Width = 130, Alignment = HorizontalAlignment.Left   },
+                new ScheduleColumn { Header = "BKR",         Width = 55,  Alignment = HorizontalAlignment.Center },
+                new ScheduleColumn { Header = "VA",          Width = 58,  Alignment = HorizontalAlignment.Right  },
+                new ScheduleColumn { Header = "VA",          Width = 58,  Alignment = HorizontalAlignment.Right  },
+                new ScheduleColumn { Header = "BKR",         Width = 55,  Alignment = HorizontalAlignment.Center },
+                new ScheduleColumn { Header = "DESCRIPTION", Width = 130, Alignment = HorizontalAlignment.Left   },
+                new ScheduleColumn { Header = "CKT",         Width = 40,  Alignment = HorizontalAlignment.Center },
+            }
+        };
+
+        // Subheader: panel summary info
+        table.Rows.Add(new[]
+        {
+            schedule.PanelName,
+            voltageLabel,
+            $"{schedule.BusAmps}A Bus",
+            mainInfo,
+            $"{schedule.AvailableFaultCurrentKA:F0} kAIC",
+            "", "", ""
+        });
+        table.RowStyles.Add(ScheduleRowStyle.Subheader);
+
+        // Circuit rows: one table row per left/right slot pair
+        for (int row = 1; row <= totalRows; row++)
+        {
+            int leftSlot  = 2 * row - 1;
+            int rightSlot = 2 * row;
+
+            slotMap.TryGetValue(leftSlot,  out var leftCircuit);
+            slotMap.TryGetValue(rightSlot, out var rightCircuit);
+
+            bool leftIsPrimary  = leftCircuit  != null && leftCircuit.SlotNumber  == leftSlot;
+            bool rightIsPrimary = rightCircuit != null && rightCircuit.SlotNumber == rightSlot;
+
+            string[] cells = new string[8];
+            string[] lc = BuildLeftCells(leftCircuit,  leftSlot,  leftIsPrimary);
+            string[] rc = BuildRightCells(rightCircuit, rightSlot, rightIsPrimary);
+            Array.Copy(lc, 0, cells, 0, 4);
+            Array.Copy(rc, 0, cells, 4, 4);
+            table.Rows.Add(cells);
+
+            ScheduleRowStyle style = ScheduleRowStyle.Normal;
+            if (leftCircuit?.SlotType  == CircuitSlotType.Spare ||
+                rightCircuit?.SlotType == CircuitSlotType.Spare)
+                style = ScheduleRowStyle.Spare;
+            else if (leftCircuit?.SlotType  == CircuitSlotType.Space ||
+                     rightCircuit?.SlotType == CircuitSlotType.Space)
+                style = ScheduleRowStyle.Space;
+            table.RowStyles.Add(style);
+        }
+
+        // Footer: per-phase load totals
+        var (phA, phB, phC) = schedule.PhaseDemandVA;
+        bool is3Ph = schedule.VoltageConfig != PanelVoltageConfig.V120_240_1Ph;
+        double lineV = schedule.VoltageConfig switch
+        {
+            PanelVoltageConfig.V120_240_1Ph => 240,
+            PanelVoltageConfig.V120_208_3Ph => 208,
+            PanelVoltageConfig.V277_480_3Ph => 480,
+            PanelVoltageConfig.V240_3Ph     => 240,
+            _ => 208
+        };
+        double totalCurrent = is3Ph
+            ? schedule.TotalDemandVA / (lineV * Math.Sqrt(3))
+            : schedule.TotalDemandVA / lineV;
+
+        table.Rows.Add(new[]
+        {
+            $"Ph A: {phA:F0} VA",
+            $"Ph B: {phB:F0} VA",
+            $"Ph C: {phC:F0} VA",
+            $"Total: {schedule.TotalDemandVA:F0} VA",
+            $"{totalCurrent:F1} A",
+            "", "", ""
+        });
+        table.RowStyles.Add(ScheduleRowStyle.Footer);
+
+        return table;
+    }
+
+    private static string[] BuildLeftCells(Circuit? c, int slot, bool isPrimary)
+    {
+        if (c == null)                              return new[] { slot.ToString(), "", "", "" };
+        if (c.SlotType == CircuitSlotType.Spare)    return new[] { slot.ToString(), "SPARE", "", "" };
+        if (c.SlotType == CircuitSlotType.Space)    return new[] { slot.ToString(), "SPACE", "", "" };
+        if (!isPrimary)                             return new[] { "\u2193", "", "", "" }; // ↓ continuation
+        return new[]
+        {
+            c.CircuitNumber,
+            c.Description,
+            FormatBreaker(c.Breaker),
+            c.ConnectedLoadVA.ToString("F0")
+        };
+    }
+
+    private static string[] BuildRightCells(Circuit? c, int slot, bool isPrimary)
+    {
+        if (c == null)                              return new[] { "", "", "", slot.ToString() };
+        if (c.SlotType == CircuitSlotType.Spare)    return new[] { "", "", "SPARE", slot.ToString() };
+        if (c.SlotType == CircuitSlotType.Space)    return new[] { "", "", "SPACE", slot.ToString() };
+        if (!isPrimary)                             return new[] { "", "", "\u2193", "\u2193" }; // ↓ continuation
+        return new[]
+        {
+            c.ConnectedLoadVA.ToString("F0"),
+            FormatBreaker(c.Breaker),
+            c.Description,
+            c.CircuitNumber
+        };
+    }
+
+    private static string FormatBreaker(CircuitBreaker b)
+        => $"{b.TripAmps}A {b.Poles}P";
+
+    private static int PhaseSortKey(string phase)
+    {
+        if (phase.Contains('A')) return 0;
+        if (phase.Contains('B')) return 1;
+        if (phase.Contains('C')) return 2;
+        return 3;
+    }
+
+    private static int ParseCircuitNumber(string s)
+        => int.TryParse(s, out int n) ? n : int.MaxValue;
 
     private static double GetWireResistance(string size) => size switch
     {
