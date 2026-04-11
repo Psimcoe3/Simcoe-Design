@@ -16,6 +16,12 @@ public abstract class ElectricalComponent
     public string Name { get; set; } = string.Empty;
     public ComponentType Type { get; set; }
     public string VisualProfile { get; set; } = string.Empty;
+
+    /// <summary>
+    /// ID of the <see cref="ComponentFamilyType"/> this instance was placed from.
+    /// Null for legacy components or when no family type catalog is in use.
+    /// </summary>
+    public string? FamilyTypeId { get; set; }
     
     // Transformation properties
     public Point3D Position { get; set; }

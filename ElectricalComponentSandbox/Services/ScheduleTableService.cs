@@ -237,6 +237,23 @@ public class ScheduleTableService
     public ScheduleTable GenerateCircuitSummary(
         IReadOnlyList<Circuit> circuits)
     {
+        return GenerateCircuitSummary(circuits, null, null);
+    }
+
+    /// <summary>
+    /// Generates a circuit summary schedule with optional conduit run length and fill % columns.
+    /// When <paramref name="conduitRunLengths"/> is provided, a "RUN LENGTH" column is appended.
+    /// When <paramref name="conduitFillResults"/> is provided, a "FILL %" column is appended
+    /// (values flagged with "!" when they exceed NEC code limits).
+    /// </summary>
+    public ScheduleTable GenerateCircuitSummary(
+        IReadOnlyList<Circuit> circuits,
+        IReadOnlyDictionary<string, double>? conduitRunLengths,
+        IReadOnlyDictionary<string, ConduitFillResult>? conduitFillResults)
+    {
+        bool showRunLength = conduitRunLengths != null && conduitRunLengths.Count > 0;
+        bool showFill = conduitFillResults != null && conduitFillResults.Count > 0;
+
         var table = new ScheduleTable
         {
             Title = "CIRCUIT SUMMARY",
@@ -253,6 +270,11 @@ public class ScheduleTableService
             }
         };
 
+        if (showRunLength)
+            table.Columns.Add(new ScheduleColumn { Header = "RUN LENGTH", Width = 75, Alignment = HorizontalAlignment.Right });
+        if (showFill)
+            table.Columns.Add(new ScheduleColumn { Header = "FILL %", Width = 60, Alignment = HorizontalAlignment.Right });
+
         foreach (var c in circuits.OrderBy(c => c.CircuitNumber))
         {
             // Simplified voltage drop calculation
@@ -262,7 +284,7 @@ public class ScheduleTableService
 
             double vDropPercent = c.Voltage > 0 ? (vDrop / c.Voltage) * 100 : 0;
 
-            table.Rows.Add(new[]
+            var baseCells = new List<string>
             {
                 c.CircuitNumber.ToString(),
                 c.Description,
@@ -272,7 +294,25 @@ public class ScheduleTableService
                 $"{c.WireLengthFeet:F0} ft",
                 c.ConnectedLoadVA.ToString("F0"),
                 $"{vDropPercent:F1}%"
-            });
+            };
+
+            if (showRunLength)
+            {
+                string runLenStr = conduitRunLengths!.TryGetValue(c.CircuitNumber, out var runLen)
+                    ? ConduitMeasurementService.FormatDecimalFeet(runLen)
+                    : "\u2014";
+                baseCells.Add(runLenStr);
+            }
+
+            if (showFill)
+            {
+                string fillStr = conduitFillResults!.TryGetValue(c.CircuitNumber, out var fill)
+                    ? $"{fill.FillPercent:F1}%{(fill.ExceedsCode ? " !" : "")}"
+                    : "\u2014";
+                baseCells.Add(fillStr);
+            }
+
+            table.Rows.Add(baseCells.ToArray());
         }
 
         return table;
@@ -325,7 +365,8 @@ public class ScheduleTableService
     public ScheduleTable GeneratePanelSchedule(
         PanelSchedule schedule,
         DistributionSystemType? distributionSystem = null,
-        IEnumerable<DemandSchedule>? demandSchedules = null)
+        IEnumerable<DemandSchedule>? demandSchedules = null,
+        CircuitNamingScheme? namingScheme = null)
     {
         if (schedule.Circuits.Any(c => c.SlotNumber == 0))
             AssignSlotNumbers(schedule);
@@ -395,8 +436,10 @@ public class ScheduleTableService
             bool rightIsPrimary = rightCircuit != null && rightCircuit.SlotNumber == rightSlot;
 
             string[] cells = new string[8];
-            string[] lc = BuildLeftCells(leftCircuit,  leftSlot,  leftIsPrimary);
-            string[] rc = BuildRightCells(rightCircuit, rightSlot, rightIsPrimary);
+            string? leftName  = leftCircuit  != null && leftIsPrimary  ? CircuitNamingService.FormatCircuitName(leftCircuit,  schedule, namingScheme) : null;
+            string? rightName = rightCircuit != null && rightIsPrimary ? CircuitNamingService.FormatCircuitName(rightCircuit, schedule, namingScheme) : null;
+            string[] lc = BuildLeftCells(leftCircuit,  leftSlot,  leftIsPrimary,  leftName);
+            string[] rc = BuildRightCells(rightCircuit, rightSlot, rightIsPrimary, rightName);
             Array.Copy(lc, 0, cells, 0, 4);
             Array.Copy(rc, 0, cells, 4, 4);
             table.Rows.Add(cells);
@@ -486,7 +529,7 @@ public class ScheduleTableService
         return table;
     }
 
-    private static string[] BuildLeftCells(Circuit? c, int slot, bool isPrimary)
+    private static string[] BuildLeftCells(Circuit? c, int slot, bool isPrimary, string? formattedName = null)
     {
         if (c == null)                              return new[] { slot.ToString(), "", "", "" };
         if (c.SlotType == CircuitSlotType.Spare)    return new[] { slot.ToString(), "SPARE", "", "" };
@@ -494,14 +537,14 @@ public class ScheduleTableService
         if (!isPrimary)                             return new[] { "\u2193", "", "", "" }; // ↓ continuation
         return new[]
         {
-            c.CircuitNumber,
+            formattedName ?? c.CircuitNumber,
             c.Description,
             FormatBreaker(c.Breaker),
             c.ConnectedLoadVA.ToString("F0")
         };
     }
 
-    private static string[] BuildRightCells(Circuit? c, int slot, bool isPrimary)
+    private static string[] BuildRightCells(Circuit? c, int slot, bool isPrimary, string? formattedName = null)
     {
         if (c == null)                              return new[] { "", "", "", slot.ToString() };
         if (c.SlotType == CircuitSlotType.Spare)    return new[] { "", "", "SPARE", slot.ToString() };
@@ -512,7 +555,7 @@ public class ScheduleTableService
             c.ConnectedLoadVA.ToString("F0"),
             FormatBreaker(c.Breaker),
             c.Description,
-            c.CircuitNumber
+            formattedName ?? c.CircuitNumber
         };
     }
 

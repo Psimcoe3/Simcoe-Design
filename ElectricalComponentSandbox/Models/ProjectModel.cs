@@ -16,6 +16,10 @@ public class ProjectModel
     public List<HomeRunWire> HomeRunWires { get; set; } = new();
     public List<DistributionSystemType> DistributionSystems { get; set; } = new();
     public List<DemandSchedule> DemandSchedules { get; set; } = new();
+    public List<CircuitNamingScheme> CircuitNamingSchemes { get; set; } = new();
+    public string? ActiveCircuitNamingSchemeId { get; set; }
+    public List<ComponentFamily> ComponentFamilies { get; set; } = new();
+    public List<Conduit.Core.Model.ConduitRun> ConduitRuns { get; set; } = new();
     public List<ProjectParameterDefinition> ProjectParameters { get; set; } = new();
     public List<Layer> Layers { get; set; } = new();
 

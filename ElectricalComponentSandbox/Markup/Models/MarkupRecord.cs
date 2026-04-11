@@ -29,7 +29,8 @@ public enum MarkupType
     Stamp,          // Approval / status stamp
     Hatch,          // Filled hatch region
     Measurement,    // Point-to-point measurement (read-only, not stored as dim)
-    Hyperlink       // Clickable region linking to URL or page
+    Hyperlink,      // Clickable region linking to URL or page
+    ConduitTag      // Conduit run tag annotation (trade size + type label)
 }
 
 /// <summary>
