@@ -217,7 +217,7 @@ public class ElectricalCalculationService
     public PanelLoadSummary AnalyzePanelLoad(PanelSchedule schedule, DistributionSystemType? distributionSystem = null)
     {
         var activeCircuits = schedule.Circuits
-            .Where(c => c.SlotType == CircuitSlotType.Circuit)
+            .Where(c => c.SlotType == CircuitSlotType.Circuit && c.IsPowerCircuit)
             .ToList();
 
         var (phA, phB, phC) = schedule.PhaseDemandVA;
@@ -281,6 +281,60 @@ public class ElectricalCalculationService
             SpaceSlots = spaceSlots,
             AvailableSpaces = availableSpaces,
             ClassificationTotals = classificationTotals
+        };
+    }
+
+    // ── Demand Load (NEC 220) ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Calculates the total NEC 220 demand load for a collection of circuits by
+    /// grouping them by <see cref="LoadClassification"/> and applying the matching
+    /// <see cref="DemandSchedule"/> tiers. Circuits whose classification has no
+    /// matching schedule pass through at 100%.
+    /// Returns a <see cref="DemandLoadResult"/> with per-classification and total values.
+    /// </summary>
+    public static DemandLoadResult CalculateDemandLoad(
+        IEnumerable<Circuit> circuits,
+        IEnumerable<DemandSchedule> demandSchedules)
+    {
+        var scheduleMap = demandSchedules.ToDictionary(s => s.Classification);
+
+        var groups = circuits
+            .Where(c => c.SlotType == CircuitSlotType.Circuit && c.IsPowerCircuit)
+            .GroupBy(c => c.LoadClassification);
+
+        var details = new Dictionary<LoadClassification, DemandClassificationDetail>();
+        double totalConnected = 0;
+        double totalDemand = 0;
+
+        foreach (var group in groups)
+        {
+            double connected = group.Sum(c => c.ConnectedLoadVA);
+            double demand;
+
+            if (scheduleMap.TryGetValue(group.Key, out var schedule))
+                demand = schedule.Apply(connected);
+            else
+                demand = connected; // no schedule → 100%
+
+            details[group.Key] = new DemandClassificationDetail
+            {
+                Classification = group.Key,
+                ConnectedVA = connected,
+                DemandVA = demand,
+                Factor = connected > 0 ? demand / connected : 1.0
+            };
+
+            totalConnected += connected;
+            totalDemand += demand;
+        }
+
+        return new DemandLoadResult
+        {
+            TotalConnectedVA = totalConnected,
+            TotalDemandVA = totalDemand,
+            OverallFactor = totalConnected > 0 ? totalDemand / totalConnected : 1.0,
+            ClassificationDetails = details
         };
     }
 
@@ -356,4 +410,26 @@ public class PanelLoadSummary
 
     /// <summary>Demand load in VA keyed by LoadClassification for active circuits.</summary>
     public Dictionary<LoadClassification, double> ClassificationTotals { get; init; } = new();
+}
+
+public class DemandLoadResult
+{
+    public double TotalConnectedVA { get; init; }
+    public double TotalDemandVA { get; init; }
+
+    /// <summary>Overall effective demand factor (TotalDemandVA / TotalConnectedVA).</summary>
+    public double OverallFactor { get; init; }
+
+    /// <summary>Per-classification breakdown of connected vs. demand load.</summary>
+    public Dictionary<LoadClassification, DemandClassificationDetail> ClassificationDetails { get; init; } = new();
+}
+
+public class DemandClassificationDetail
+{
+    public LoadClassification Classification { get; init; }
+    public double ConnectedVA { get; init; }
+    public double DemandVA { get; init; }
+
+    /// <summary>Effective demand factor for this classification (DemandVA / ConnectedVA).</summary>
+    public double Factor { get; init; }
 }

@@ -86,7 +86,11 @@ public enum ComponentType
     Panel,
     Support,
     CableTray,
-    Hanger
+    Hanger,
+    Transformer,
+    Bus,
+    PowerSource,
+    TransferSwitch
 }
 
 public class ComponentParameters

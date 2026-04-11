@@ -322,7 +322,10 @@ public class ScheduleTableService
     /// When <paramref name="distributionSystem"/> is provided it takes precedence over
     /// the legacy <see cref="PanelSchedule.VoltageConfig"/> enum for voltage labels and current math.
     /// </summary>
-    public ScheduleTable GeneratePanelSchedule(PanelSchedule schedule, DistributionSystemType? distributionSystem = null)
+    public ScheduleTable GeneratePanelSchedule(
+        PanelSchedule schedule,
+        DistributionSystemType? distributionSystem = null,
+        IEnumerable<DemandSchedule>? demandSchedules = null)
     {
         if (schedule.Circuits.Any(c => c.SlotNumber == 0))
             AssignSlotNumbers(schedule);
@@ -442,6 +445,43 @@ public class ScheduleTableService
             "", "", ""
         });
         table.RowStyles.Add(ScheduleRowStyle.Footer);
+
+        // NEC 220 demand load footer (when demand schedules are provided)
+        if (demandSchedules != null)
+        {
+            var demandResult = ElectricalCalculationService.CalculateDemandLoad(
+                schedule.Circuits, demandSchedules);
+
+            table.Rows.Add(new[]
+            {
+                $"Connected: {demandResult.TotalConnectedVA:F0} VA",
+                $"NEC Demand: {demandResult.TotalDemandVA:F0} VA",
+                $"Factor: {demandResult.OverallFactor:P0}",
+                "", "", "", "", ""
+            });
+            table.RowStyles.Add(ScheduleRowStyle.Footer);
+        }
+
+        // Signal system summary row (low-voltage circuits excluded from load calcs)
+        var signalCircuits = schedule.Circuits
+            .Where(c => c.SlotType == CircuitSlotType.Circuit && !c.IsPowerCircuit)
+            .ToList();
+        if (signalCircuits.Count > 0)
+        {
+            var signalGroups = signalCircuits
+                .GroupBy(c => c.SystemType)
+                .Select(g => $"{g.Key}: {g.Count()}")
+                .ToList();
+
+            table.Rows.Add(new[]
+            {
+                "Signal Systems",
+                string.Join(", ", signalGroups),
+                $"{signalCircuits.Count} circuits",
+                "", "", "", "", ""
+            });
+            table.RowStyles.Add(ScheduleRowStyle.Footer);
+        }
 
         return table;
     }

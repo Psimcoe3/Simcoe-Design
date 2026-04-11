@@ -53,6 +53,15 @@ public class Circuit
     /// <summary>NEC load classification used to apply demand factors and produce per-category schedule summaries.</summary>
     public LoadClassification LoadClassification { get; set; } = LoadClassification.Power;
 
+    /// <summary>
+    /// Electrical system type distinguishing power circuits from low-voltage signal systems.
+    /// Power circuits participate in load calculations; signal circuits are excluded.
+    /// </summary>
+    public ElectricalSystemType SystemType { get; set; } = ElectricalSystemType.PowerCircuit;
+
+    /// <summary>True when this is a power circuit that participates in panel load calculations.</summary>
+    public bool IsPowerCircuit => SystemType == ElectricalSystemType.PowerCircuit;
+
     /// <summary>Whether this slot holds an active circuit, a spare breaker, or an open space.</summary>
     public CircuitSlotType SlotType { get; set; } = CircuitSlotType.Circuit;
 
@@ -239,6 +248,23 @@ public enum PowerFactorState
 {
     Lagging,
     Leading
+}
+
+/// <summary>
+/// Electrical system type mirroring Revit's ElectricalSystemType.
+/// Power circuits carry load and participate in demand calculations.
+/// Signal/low-voltage types are excluded from load calcs but appear in schedule summaries.
+/// </summary>
+public enum ElectricalSystemType
+{
+    PowerCircuit,
+    Data,
+    Telephone,
+    FireAlarm,
+    Security,
+    NurseCall,
+    Controls,
+    Communication
 }
 
 /// <summary>
