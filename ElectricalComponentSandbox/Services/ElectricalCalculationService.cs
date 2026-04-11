@@ -214,6 +214,10 @@ public class ElectricalCalculationService
     /// </summary>
     public PanelLoadSummary AnalyzePanelLoad(PanelSchedule schedule)
     {
+        var activeCircuits = schedule.Circuits
+            .Where(c => c.SlotType == CircuitSlotType.Circuit)
+            .ToList();
+
         var (phA, phB, phC) = schedule.PhaseDemandVA;
         double maxPhase = Math.Max(phA, Math.Max(phB, phC));
 
@@ -236,6 +240,19 @@ public class ElectricalCalculationService
 
         double busUtilization = (totalCurrent / schedule.BusAmps) * 100.0;
 
+        int spareSlots = schedule.Circuits.Count(c => c.SlotType == CircuitSlotType.Spare);
+        int spaceSlots = schedule.Circuits.Count(c => c.SlotType == CircuitSlotType.Space);
+        int usedPoles  = activeCircuits.Sum(c => c.Breaker.Poles);
+        int totalSlots = schedule.IsMainLugsOnly
+            ? schedule.BusAmps / 20
+            : schedule.MainBreakerAmps / 20 * 2;
+        int availableSpaces = Math.Max(0, totalSlots - usedPoles - spareSlots - spaceSlots);
+
+        // Per-classification demand totals (active circuits only)
+        var classificationTotals = activeCircuits
+            .GroupBy(c => c.LoadClassification)
+            .ToDictionary(g => g.Key, g => g.Sum(c => c.DemandLoadVA));
+
         return new PanelLoadSummary
         {
             TotalConnectedVA = schedule.TotalConnectedVA,
@@ -247,9 +264,11 @@ public class ElectricalCalculationService
             TotalCurrentAmps = totalCurrent,
             BusUtilizationPercent = busUtilization,
             IsOverloaded = totalCurrent > schedule.BusAmps,
-            CircuitCount = schedule.Circuits.Count,
-            AvailableSpaces = (schedule.IsMainLugsOnly ? schedule.BusAmps / 20 : schedule.MainBreakerAmps / 20 * 2)
-                - schedule.Circuits.Sum(c => c.Breaker.Poles)
+            CircuitCount = activeCircuits.Count,
+            SpareSlots = spareSlots,
+            SpaceSlots = spaceSlots,
+            AvailableSpaces = availableSpaces,
+            ClassificationTotals = classificationTotals
         };
     }
 
@@ -310,6 +329,19 @@ public class PanelLoadSummary
     public double TotalCurrentAmps { get; init; }
     public double BusUtilizationPercent { get; init; }
     public bool IsOverloaded { get; init; }
+
+    /// <summary>Number of active (non-Spare, non-Space) circuits.</summary>
     public int CircuitCount { get; init; }
+
+    /// <summary>Number of slots explicitly typed as Spare.</summary>
+    public int SpareSlots { get; init; }
+
+    /// <summary>Number of slots explicitly typed as Space.</summary>
+    public int SpaceSlots { get; init; }
+
+    /// <summary>Unallocated one-pole slots remaining in the panel after active + spare + space.</summary>
     public int AvailableSpaces { get; init; }
+
+    /// <summary>Demand load in VA keyed by LoadClassification for active circuits.</summary>
+    public Dictionary<LoadClassification, double> ClassificationTotals { get; init; } = new();
 }

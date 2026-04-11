@@ -250,4 +250,162 @@ public class ElectricalCalculationServiceTests
         // Phase C: 0
         Assert.Equal(0, c);
     }
+
+    // ── Phase 1: Classification Totals ───────────────────────────────────────
+
+    [Fact]
+    public void AnalyzePanelLoad_WithMixedClassifications_ProducesPerCategoryTotals()
+    {
+        var schedule = new PanelSchedule
+        {
+            MainBreakerAmps = 200,
+            BusAmps = 200,
+            VoltageConfig = PanelVoltageConfig.V120_208_3Ph,
+            Circuits = new List<Circuit>
+            {
+                new() { Phase = "A", ConnectedLoadVA = 2000, DemandFactor = 1.0, LoadClassification = LoadClassification.Lighting },
+                new() { Phase = "B", ConnectedLoadVA = 3000, DemandFactor = 1.0, LoadClassification = LoadClassification.Power },
+                new() { Phase = "C", ConnectedLoadVA = 5000, DemandFactor = 0.8, LoadClassification = LoadClassification.HVAC },
+                new() { Phase = "A", ConnectedLoadVA = 1000, DemandFactor = 1.0, LoadClassification = LoadClassification.Lighting },
+            }
+        };
+
+        var result = _svc.AnalyzePanelLoad(schedule);
+
+        Assert.Equal(3000, result.ClassificationTotals[LoadClassification.Lighting]);
+        Assert.Equal(3000, result.ClassificationTotals[LoadClassification.Power]);
+        Assert.Equal(4000, result.ClassificationTotals[LoadClassification.HVAC]); // 5000 × 0.8
+        Assert.False(result.ClassificationTotals.ContainsKey(LoadClassification.Other));
+    }
+
+    [Fact]
+    public void AnalyzePanelLoad_SpareAndSpaceSlots_ExcludedFromClassificationAndCircuitCount()
+    {
+        var schedule = new PanelSchedule
+        {
+            MainBreakerAmps = 200,
+            BusAmps = 200,
+            VoltageConfig = PanelVoltageConfig.V120_208_3Ph,
+            Circuits = new List<Circuit>
+            {
+                new() { Phase = "A", ConnectedLoadVA = 1800, DemandFactor = 1.0, SlotType = CircuitSlotType.Circuit, LoadClassification = LoadClassification.Lighting },
+                new() { Phase = "B", ConnectedLoadVA = 0,    DemandFactor = 1.0, SlotType = CircuitSlotType.Spare },
+                new() { Phase = "C", ConnectedLoadVA = 0,    DemandFactor = 1.0, SlotType = CircuitSlotType.Space },
+            }
+        };
+
+        var result = _svc.AnalyzePanelLoad(schedule);
+
+        Assert.Equal(1, result.CircuitCount);
+        Assert.Equal(1, result.SpareSlots);
+        Assert.Equal(1, result.SpaceSlots);
+        Assert.Equal(1800, result.ClassificationTotals[LoadClassification.Lighting]);
+        Assert.False(result.ClassificationTotals.ContainsKey(LoadClassification.Power));
+    }
+
+    // ── Phase 1: Slot Counting ────────────────────────────────────────────────
+
+    [Fact]
+    public void AnalyzePanelLoad_AvailableSpaces_ExcludesUsedSpareAndSpaceSlots()
+    {
+        // 200A / 20A × 2 = 20 total slots
+        // 3 active 1-pole circuits = 3 poles used
+        // 2 spare + 1 space = 3 slots consumed
+        // Available = 20 - 3 - 2 - 1 = 14
+        var schedule = new PanelSchedule
+        {
+            MainBreakerAmps = 200,
+            BusAmps = 200,
+            VoltageConfig = PanelVoltageConfig.V120_208_3Ph,
+            Circuits = new List<Circuit>
+            {
+                new() { Phase = "A", ConnectedLoadVA = 1000, Breaker = new() { Poles = 1 }, SlotType = CircuitSlotType.Circuit },
+                new() { Phase = "B", ConnectedLoadVA = 1000, Breaker = new() { Poles = 1 }, SlotType = CircuitSlotType.Circuit },
+                new() { Phase = "C", ConnectedLoadVA = 1000, Breaker = new() { Poles = 1 }, SlotType = CircuitSlotType.Circuit },
+                new() { SlotType = CircuitSlotType.Spare },
+                new() { SlotType = CircuitSlotType.Spare },
+                new() { SlotType = CircuitSlotType.Space },
+            }
+        };
+
+        var result = _svc.AnalyzePanelLoad(schedule);
+
+        Assert.Equal(2, result.SpareSlots);
+        Assert.Equal(1, result.SpaceSlots);
+        Assert.Equal(14, result.AvailableSpaces);
+    }
+
+    [Fact]
+    public void AnalyzePanelLoad_AllSlotsUsed_AvailableSpacesIsZero()
+    {
+        // 100A / 20 * 2 = 10 total slots; fill with 10 one-pole circuits
+        var circuits = Enumerable.Range(1, 10).Select(i => new Circuit
+        {
+            Phase = "A",
+            ConnectedLoadVA = 0,
+            DemandFactor = 1.0,
+            Breaker = new CircuitBreaker { Poles = 1 },
+            SlotType = CircuitSlotType.Circuit
+        }).ToList();
+
+        var schedule = new PanelSchedule
+        {
+            MainBreakerAmps = 100,
+            BusAmps = 100,
+            VoltageConfig = PanelVoltageConfig.V120_208_3Ph,
+            Circuits = circuits
+        };
+
+        var result = _svc.AnalyzePanelLoad(schedule);
+
+        Assert.Equal(0, result.AvailableSpaces);
+    }
+
+    // ── Phase 1: Backward Compat ─────────────────────────────────────────────
+
+    [Fact]
+    public void AnalyzePanelLoad_BackwardCompat_AllDefaultSlotTypes_CountsAllAsActive()
+    {
+        // Circuits created without setting SlotType should default to Circuit
+        var schedule = new PanelSchedule
+        {
+            MainBreakerAmps = 200,
+            BusAmps = 200,
+            VoltageConfig = PanelVoltageConfig.V120_208_3Ph,
+            Circuits = new List<Circuit>
+            {
+                new() { Phase = "A", ConnectedLoadVA = 1800 },
+                new() { Phase = "B", ConnectedLoadVA = 1200 },
+            }
+        };
+
+        var result = _svc.AnalyzePanelLoad(schedule);
+
+        Assert.Equal(2, result.CircuitCount);
+        Assert.Equal(0, result.SpareSlots);
+        Assert.Equal(0, result.SpaceSlots);
+    }
+
+    [Fact]
+    public void AnalyzePanelLoad_AllVoltageConfigs_ProduceValidCurrent()
+    {
+        foreach (var config in Enum.GetValues<PanelVoltageConfig>())
+        {
+            var schedule = new PanelSchedule
+            {
+                BusAmps = 200,
+                MainBreakerAmps = 200,
+                VoltageConfig = config,
+                Circuits = new List<Circuit>
+                {
+                    new() { Phase = "A", ConnectedLoadVA = 5000, DemandFactor = 1.0 }
+                }
+            };
+
+            var result = _svc.AnalyzePanelLoad(schedule);
+
+            Assert.True(result.TotalCurrentAmps > 0,
+                $"Expected positive current for {config}");
+        }
+    }
 }

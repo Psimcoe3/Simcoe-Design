@@ -339,6 +339,93 @@ public partial class MarkupInteractionServiceTests
     }
 
     [Fact]
+    public void Rotate_Polyline_UpdatesVerticesAndBoundsViaVertexPath()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Polyline,
+            Vertices = { new Point(10, 0), new Point(0, 10) }
+        };
+        markup.UpdateBoundingRect();
+        var snapshot = _sut.Capture(markup);
+
+        _sut.Rotate(markup, snapshot, new Point(0, 0), 90);
+
+        // Rotating 90° around origin: (10,0)→(0,10), (0,10)→(-10,0)
+        Assert.Equal(0, markup.Vertices[0].X, 6);
+        Assert.Equal(10, markup.Vertices[0].Y, 6);
+        Assert.Equal(-10, markup.Vertices[1].X, 6);
+        Assert.Equal(0, markup.Vertices[1].Y, 6);
+        Assert.Equal(-10, markup.BoundingRect.X, 6);
+        Assert.Equal(0, markup.BoundingRect.Y, 6);
+        Assert.Equal(10, markup.BoundingRect.Width, 6);
+        Assert.Equal(10, markup.BoundingRect.Height, 6);
+        Assert.Equal(90, markup.RotationDegrees, 6);
+    }
+
+    [Fact]
+    public void CanRotate_EmptyMarkupSet_ReturnsFalse()
+    {
+        Assert.False(_sut.CanRotate(Array.Empty<MarkupRecord>()));
+    }
+
+    [Fact]
+    public void CanRotate_GroupContainingNonRotatableMarkup_ReturnsFalse()
+    {
+        var rectangle = CreateMarkup(new Rect(0, 0, 10, 10), "group-1");
+        var circle = new MarkupRecord { Type = MarkupType.Circle, Radius = 5, Vertices = { new Point(5, 5) } };
+
+        Assert.False(_sut.CanRotate(new[] { rectangle, circle }));
+    }
+
+    [Fact]
+    public void CanRotate_GroupOfRotatableMarkups_ReturnsTrue()
+    {
+        var rect1 = CreateMarkup(new Rect(0, 0, 10, 10), "group-1");
+        var rect2 = CreateMarkup(new Rect(20, 20, 10, 10), "group-1");
+
+        Assert.True(_sut.CanRotate(new[] { rect1, rect2 }));
+    }
+
+    [Fact]
+    public void Rotate_PolylineWithBoundsButNoVertices_UpdatesBoundsViaCornerRotation()
+    {
+        var markup = new MarkupRecord
+        {
+            Type = MarkupType.Polyline,
+            BoundingRect = new Rect(0, 0, 10, 10)
+        };
+        // No vertices: snapshot.Vertices will be empty, so path (c) is taken.
+        var snapshot = _sut.Capture(markup);
+
+        _sut.Rotate(markup, snapshot, new Point(0, 0), 90);
+
+        // Corners of (0,0,10,10) rotated 90° around origin:
+        // (0,0)→(0,0), (10,0)→(0,10), (10,10)→(-10,10), (0,10)→(-10,0)
+        // Bounding box of rotated corners: x in [-10,0], y in [0,10]
+        Assert.Equal(0, markup.Vertices.Count);
+        Assert.Equal(-10, markup.BoundingRect.X, 6);
+        Assert.Equal(0, markup.BoundingRect.Y, 6);
+        Assert.Equal(10, markup.BoundingRect.Width, 6);
+        Assert.Equal(10, markup.BoundingRect.Height, 6);
+        Assert.Equal(90, markup.RotationDegrees, 6);
+    }
+
+    [Fact]
+    public void Rotate_PolylineWithEmptyBoundsAndNoVertices_PreservesEmptyBounds()
+    {
+        var markup = new MarkupRecord { Type = MarkupType.Polyline };
+        // No vertices, empty bounds: snapshot.BoundingRect == Rect.Empty → path (d).
+        var snapshot = _sut.Capture(markup);
+
+        _sut.Rotate(markup, snapshot, new Point(0, 0), 90);
+
+        Assert.Equal(0, markup.Vertices.Count);
+        Assert.Equal(Rect.Empty, markup.BoundingRect);
+        Assert.Equal(90, markup.RotationDegrees, 6);
+    }
+
+    [Fact]
     public void Resize_PolylineWithoutBoundingRect_RecomputesBoundsFromScaledVertices()
     {
         var markup = new MarkupRecord

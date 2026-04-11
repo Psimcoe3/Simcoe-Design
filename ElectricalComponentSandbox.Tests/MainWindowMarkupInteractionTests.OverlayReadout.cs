@@ -57,6 +57,29 @@ public partial class MainWindowMarkupInteractionTests
     }
 
     [Fact]
+    public void DrawSelectedMarkupOverlayForTesting_RotationDrag_ShowsRotationReadoutWithoutSnapSuffix()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            CreateGroupedRectangle(new Rect(0, 0, 10, 10), null),
+            (window, viewModel, _) =>
+            {
+                viewModel.IsPolarActive = false;
+                var renderer = new OverlayRecordingRenderer();
+                var handle = window.GetSelectedMarkupRotationHandlePointForTesting();
+
+                var began = window.BeginSelectedMarkupRotationDragForTesting(handle);
+                window.UpdateMarkupRotationPreviewForTesting(new Point(34, 5));
+                window.DrawSelectedMarkupOverlayForTesting(renderer);
+                window.FinishMarkupRotationDragForTesting();
+
+                return (began, renderer.LastTextBoxText);
+            });
+
+        Assert.True(outcome.began);
+        Assert.Equal("Rotation 90 deg", outcome.LastTextBoxText);
+    }
+
+    [Fact]
     public void DrawSelectedMarkupOverlayForTesting_ResizeDrag_MarksActiveResizeGripHot()
     {
         var hotGripPoints = RunWithSelectedMarkupWindow(

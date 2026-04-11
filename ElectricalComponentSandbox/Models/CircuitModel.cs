@@ -49,6 +49,31 @@ public class Circuit
 
     /// <summary>One-way wire length in feet from panel to farthest load</summary>
     public double WireLengthFeet { get; set; }
+
+    /// <summary>NEC load classification used to apply demand factors and produce per-category schedule summaries.</summary>
+    public LoadClassification LoadClassification { get; set; } = LoadClassification.Power;
+
+    /// <summary>Whether this slot holds an active circuit, a spare breaker, or an open space.</summary>
+    public CircuitSlotType SlotType { get; set; } = CircuitSlotType.Circuit;
+
+    /// <summary>True power in watts. When zero, derived from ConnectedLoadVA × PowerFactor.</summary>
+    public double TrueLoadW { get; set; }
+
+    /// <summary>
+    /// Displacement power factor (0.0–1.0). Defaults to 1.0 (unity / purely resistive).
+    /// Used to derive TrueLoadW when it is not set explicitly.
+    /// </summary>
+    public double PowerFactor { get; set; } = 1.0;
+
+    /// <summary>Whether current leads or lags voltage. Relevant for inductive (motors) vs
+    /// capacitive (PFC-corrected) loads.</summary>
+    public PowerFactorState PowerFactorState { get; set; } = PowerFactorState.Lagging;
+
+    /// <summary>
+    /// Effective true power in watts: uses the explicit TrueLoadW value when non-zero,
+    /// otherwise derives it as ConnectedLoadVA × PowerFactor.
+    /// </summary>
+    public double EffectiveTrueLoadW => TrueLoadW > 0 ? TrueLoadW : ConnectedLoadVA * PowerFactor;
 }
 
 /// <summary>
@@ -129,6 +154,9 @@ public class PanelSchedule
     /// <summary>Available fault current at the panel in kA (from upstream study)</summary>
     public double AvailableFaultCurrentKA { get; set; } = 10.0;
 
+    /// <summary>Controls the order in which circuits are numbered and laid out in the schedule.</summary>
+    public CircuitSequence CircuitSequence { get; set; } = CircuitSequence.OddThenEven;
+
     /// <summary>All circuits in this panel</summary>
     public List<Circuit> Circuits { get; set; } = new();
 
@@ -168,4 +196,49 @@ public enum PanelVoltageConfig
     V120_208_3Ph,
     V277_480_3Ph,
     V240_3Ph
+}
+
+/// <summary>
+/// NEC load classification used to apply demand factors and categorize panel load.
+/// Maps to Revit's ElectricalSystemType load classification concepts.
+/// </summary>
+public enum LoadClassification
+{
+    Power,
+    Lighting,
+    HVAC,
+    Other
+}
+
+/// <summary>
+/// Determines whether a panel slot is occupied by an active circuit, reserved as spare, or held as open space.
+/// Maps to Revit's CircuitType enum.
+/// </summary>
+public enum CircuitSlotType
+{
+    Circuit,
+    Spare,
+    Space
+}
+
+/// <summary>
+/// Power factor state indicating whether current leads or lags voltage.
+/// </summary>
+public enum PowerFactorState
+{
+    Lagging,
+    Leading
+}
+
+/// <summary>
+/// Controls how circuits are ordered and numbered in the panel schedule.
+/// </summary>
+public enum CircuitSequence
+{
+    /// <summary>Circuits ordered by circuit number ascending.</summary>
+    Numerical,
+    /// <summary>Circuits grouped by phase (A-group, B-group, C-group).</summary>
+    GroupByPhase,
+    /// <summary>Odd-numbered slots on the left column, even on the right — standard US panel layout.</summary>
+    OddThenEven
 }

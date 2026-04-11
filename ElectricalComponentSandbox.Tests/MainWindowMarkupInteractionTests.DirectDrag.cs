@@ -2103,4 +2103,83 @@ public partial class MainWindowMarkupInteractionTests
         Assert.Equal(90, outcome.undoneState.Item2, 6);
     }
 
+    [Fact]
+    public void BeginSelectedMarkupRotationDragForTesting_WithoutHandleHit_ReturnsFalseAndLeavesGeometryUnchanged()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            CreateGroupedRectangle(new Rect(0, 0, 10, 10), null),
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupRotationDragForTesting(new Point(50, 50));
+                window.UpdateMarkupRotationPreviewForTesting(new Point(55, 5));
+                window.FinishMarkupRotationDragForTesting();
+                return (began, bounds: markup.BoundingRect, rotation: markup.RotationDegrees, canUndo: viewModel.UndoRedo.CanUndo);
+            },
+            viewModel => { viewModel.SnapToGrid = false; });
+
+        Assert.False(outcome.began);
+        Assert.Equal(new Rect(0, 0, 10, 10), outcome.bounds);
+        Assert.Equal(0, outcome.rotation, 6);
+        Assert.False(outcome.canUndo);
+    }
+
+    [Fact]
+    public void BeginSelectedMarkupRotationDragForTesting_GroupContainingNonRotatableMarkup_ReturnsFalse()
+    {
+        var selectedMarkup = CreateGroupedRectangle(new Rect(0, 0, 10, 10), "group-1");
+        var peerMarkup = new MarkupRecord
+        {
+            Type = MarkupType.Circle,
+            Radius = 5,
+            Vertices = { new Point(20, 20) }
+        };
+        peerMarkup.UpdateBoundingRect();
+        peerMarkup.Metadata.CustomFields[DrawingAnnotationMarkupService.AnnotationGroupIdField] = "group-1";
+
+        var outcome = RunWithSelectedMarkupWindow(
+            selectedMarkup,
+            (window, viewModel, markup) =>
+            {
+                var began = window.BeginSelectedMarkupRotationDragForTesting(new Point(5, -24));
+                window.UpdateMarkupRotationPreviewForTesting(new Point(15, -20));
+                window.FinishMarkupRotationDragForTesting();
+                return (began, bounds: markup.BoundingRect, rotation: markup.RotationDegrees, canUndo: viewModel.UndoRedo.CanUndo);
+            },
+            viewModel =>
+            {
+                viewModel.Markups.Add(peerMarkup);
+                viewModel.SnapToGrid = false;
+            });
+
+        Assert.False(outcome.began);
+        Assert.Equal(new Rect(0, 0, 10, 10), outcome.bounds);
+        Assert.Equal(0, outcome.rotation, 6);
+        Assert.False(outcome.canUndo);
+    }
+
+    [Fact]
+    public void RotationDragForTesting_WithoutPreviewChange_DoesNotCreateUndoAction()
+    {
+        var outcome = RunWithSelectedMarkupWindow(
+            CreateGroupedRectangle(new Rect(0, 0, 10, 10), null),
+            (window, viewModel, markup) =>
+            {
+                var handle = window.GetSelectedMarkupRotationHandlePointForTesting();
+                var began = window.BeginSelectedMarkupRotationDragForTesting(handle);
+                var beforeFinish = (markup.BoundingRect, markup.RotationDegrees, viewModel.UndoRedo.CanUndo);
+                window.FinishMarkupRotationDragForTesting();
+                var afterFinish = (markup.BoundingRect, markup.RotationDegrees, viewModel.UndoRedo.CanUndo);
+                return (began, beforeFinish, afterFinish);
+            },
+            viewModel => { viewModel.SnapToGrid = false; });
+
+        Assert.True(outcome.began);
+        Assert.Equal(new Rect(0, 0, 10, 10), outcome.beforeFinish.Item1);
+        Assert.Equal(0, outcome.beforeFinish.Item2, 6);
+        Assert.False(outcome.beforeFinish.Item3);
+        Assert.Equal(new Rect(0, 0, 10, 10), outcome.afterFinish.Item1);
+        Assert.Equal(0, outcome.afterFinish.Item2, 6);
+        Assert.False(outcome.afterFinish.Item3);
+    }
+
 }
