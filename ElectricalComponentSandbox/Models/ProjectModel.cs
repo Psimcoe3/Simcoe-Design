@@ -13,6 +13,8 @@ public class ProjectModel
 
     public List<ElectricalComponent> Components { get; set; } = new();
     public List<Circuit> Circuits { get; set; } = new();
+    public List<HomeRunWire> HomeRunWires { get; set; } = new();
+    public List<DistributionSystemType> DistributionSystems { get; set; } = new();
     public List<ProjectParameterDefinition> ProjectParameters { get; set; } = new();
     public List<Layer> Layers { get; set; } = new();
 

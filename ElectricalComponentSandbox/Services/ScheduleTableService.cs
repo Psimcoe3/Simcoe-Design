@@ -319,8 +319,10 @@ public class ScheduleTableService
     /// Odd slots appear in the left column, even slots in the right column.
     /// Includes a panel-info subheader row and a per-phase load footer row.
     /// Slot numbers are auto-assigned if any circuit has SlotNumber == 0.
+    /// When <paramref name="distributionSystem"/> is provided it takes precedence over
+    /// the legacy <see cref="PanelSchedule.VoltageConfig"/> enum for voltage labels and current math.
     /// </summary>
-    public ScheduleTable GeneratePanelSchedule(PanelSchedule schedule)
+    public ScheduleTable GeneratePanelSchedule(PanelSchedule schedule, DistributionSystemType? distributionSystem = null)
     {
         if (schedule.Circuits.Any(c => c.SlotNumber == 0))
             AssignSlotNumbers(schedule);
@@ -335,14 +337,16 @@ public class ScheduleTableService
         if (maxSlot % 2 != 0) maxSlot++; // always an even number of slots
         int totalRows = maxSlot / 2;
 
-        string voltageLabel = schedule.VoltageConfig switch
-        {
-            PanelVoltageConfig.V120_208_3Ph => "120/208V 3\u00d83W",
-            PanelVoltageConfig.V277_480_3Ph => "277/480V 3\u00d83W",
-            PanelVoltageConfig.V120_240_1Ph => "120/240V 1\u00d83W",
-            PanelVoltageConfig.V240_3Ph     => "240V 3\u00d83W",
-            _ => "\u2014"
-        };
+        string voltageLabel = distributionSystem != null
+            ? distributionSystem.VoltageLabel
+            : schedule.VoltageConfig switch
+            {
+                PanelVoltageConfig.V120_208_3Ph => "120/208V 3\u00d83W",
+                PanelVoltageConfig.V277_480_3Ph => "277/480V 3\u00d83W",
+                PanelVoltageConfig.V120_240_1Ph => "120/240V 1\u00d83W",
+                PanelVoltageConfig.V240_3Ph     => "240V 3\u00d83W",
+                _ => "\u2014"
+            };
         string mainInfo = schedule.IsMainLugsOnly
             ? "MLO"
             : $"MB {schedule.MainBreakerAmps}A";
@@ -406,18 +410,27 @@ public class ScheduleTableService
 
         // Footer: per-phase load totals
         var (phA, phB, phC) = schedule.PhaseDemandVA;
-        bool is3Ph = schedule.VoltageConfig != PanelVoltageConfig.V120_240_1Ph;
-        double lineV = schedule.VoltageConfig switch
+
+        double totalCurrent;
+        if (distributionSystem != null)
         {
-            PanelVoltageConfig.V120_240_1Ph => 240,
-            PanelVoltageConfig.V120_208_3Ph => 208,
-            PanelVoltageConfig.V277_480_3Ph => 480,
-            PanelVoltageConfig.V240_3Ph     => 240,
-            _ => 208
-        };
-        double totalCurrent = is3Ph
-            ? schedule.TotalDemandVA / (lineV * Math.Sqrt(3))
-            : schedule.TotalDemandVA / lineV;
+            totalCurrent = distributionSystem.CalculateCurrent(schedule.TotalDemandVA);
+        }
+        else
+        {
+            bool is3Ph = schedule.VoltageConfig != PanelVoltageConfig.V120_240_1Ph;
+            double lineV = schedule.VoltageConfig switch
+            {
+                PanelVoltageConfig.V120_240_1Ph => 240,
+                PanelVoltageConfig.V120_208_3Ph => 208,
+                PanelVoltageConfig.V277_480_3Ph => 480,
+                PanelVoltageConfig.V240_3Ph     => 240,
+                _ => 208
+            };
+            totalCurrent = is3Ph
+                ? schedule.TotalDemandVA / (lineV * Math.Sqrt(3))
+                : schedule.TotalDemandVA / lineV;
+        }
 
         table.Rows.Add(new[]
         {

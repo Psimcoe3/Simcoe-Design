@@ -150,8 +150,14 @@ public class PanelSchedule
     public int MainBreakerAmps { get; set; } = 200;
     public bool IsMainLugsOnly { get; set; }
 
-    /// <summary>Panel voltage configuration</summary>
+    /// <summary>Panel voltage configuration (legacy — prefer DistributionSystemId)</summary>
     public PanelVoltageConfig VoltageConfig { get; set; } = PanelVoltageConfig.V120_208_3Ph;
+
+    /// <summary>
+    /// ID of the named distribution system type (from <see cref="ProjectModel.DistributionSystems"/>).
+    /// When set, overrides <see cref="VoltageConfig"/> for voltage/phase resolution.
+    /// </summary>
+    public string? DistributionSystemId { get; set; }
 
     /// <summary>Bus rating in amps</summary>
     public int BusAmps { get; set; } = 200;

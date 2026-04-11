@@ -211,8 +211,10 @@ public class ElectricalCalculationService
 
     /// <summary>
     /// Analyzes total panel load and returns a summary.
+    /// When <paramref name="distributionSystem"/> is provided it takes precedence over
+    /// the legacy <see cref="PanelSchedule.VoltageConfig"/> enum.
     /// </summary>
-    public PanelLoadSummary AnalyzePanelLoad(PanelSchedule schedule)
+    public PanelLoadSummary AnalyzePanelLoad(PanelSchedule schedule, DistributionSystemType? distributionSystem = null)
     {
         var activeCircuits = schedule.Circuits
             .Where(c => c.SlotType == CircuitSlotType.Circuit)
@@ -221,16 +223,26 @@ public class ElectricalCalculationService
         var (phA, phB, phC) = schedule.PhaseDemandVA;
         double maxPhase = Math.Max(phA, Math.Max(phB, phC));
 
-        double lineVoltage = schedule.VoltageConfig switch
-        {
-            PanelVoltageConfig.V120_240_1Ph => 240,
-            PanelVoltageConfig.V120_208_3Ph => 208,
-            PanelVoltageConfig.V277_480_3Ph => 480,
-            PanelVoltageConfig.V240_3Ph => 240,
-            _ => 208
-        };
+        double lineVoltage;
+        bool isThreePhase;
 
-        bool isThreePhase = schedule.VoltageConfig != PanelVoltageConfig.V120_240_1Ph;
+        if (distributionSystem != null)
+        {
+            lineVoltage = distributionSystem.LineVoltage;
+            isThreePhase = distributionSystem.IsThreePhase;
+        }
+        else
+        {
+            lineVoltage = schedule.VoltageConfig switch
+            {
+                PanelVoltageConfig.V120_240_1Ph => 240,
+                PanelVoltageConfig.V120_208_3Ph => 208,
+                PanelVoltageConfig.V277_480_3Ph => 480,
+                PanelVoltageConfig.V240_3Ph => 240,
+                _ => 208
+            };
+            isThreePhase = schedule.VoltageConfig != PanelVoltageConfig.V120_240_1Ph;
+        }
 
         double totalCurrent;
         if (isThreePhase)
