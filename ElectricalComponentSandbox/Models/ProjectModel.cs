@@ -20,6 +20,8 @@ public class ProjectModel
     public string? ActiveCircuitNamingSchemeId { get; set; }
     public List<ComponentFamily> ComponentFamilies { get; set; } = new();
     public List<Conduit.Core.Model.ConduitRun> ConduitRuns { get; set; } = new();
+    public List<ElectricalCircuit> ElectricalCircuits { get; set; } = new();
+    public ConduitFittingAngleSettings FittingAngleSettings { get; set; } = new();
     public List<ProjectParameterDefinition> ProjectParameters { get; set; } = new();
     public List<Layer> Layers { get; set; } = new();
 

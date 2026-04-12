@@ -408,6 +408,28 @@ public class SmartBendService
     }
 
     private static double Lerp(double a, double b, double t) => a + (b - a) * t;
+
+    // --- Angle enforcement helpers ---
+
+    /// <summary>
+    /// Validates a bend angle against a set of permitted angles.
+    /// Returns the input angle if it is permitted; otherwise snaps to the nearest
+    /// permitted angle.
+    /// </summary>
+    public static double ValidateAngle(double angleDegrees, Models.ConduitFittingAngleSettings settings)
+    {
+        if (settings.IsPermitted(angleDegrees))
+            return angleDegrees;
+
+        return settings.SnapToNearest(angleDegrees);
+    }
+
+    /// <summary>
+    /// Returns the nearest permitted angle for a given input angle.
+    /// Delegates to <see cref="Models.ConduitFittingAngleSettings.SnapToNearest"/>.
+    /// </summary>
+    public static double SnapAngle(double angleDegrees, Models.ConduitFittingAngleSettings settings) =>
+        settings.SnapToNearest(angleDegrees);
 }
 
 /// <summary>

@@ -22,6 +22,12 @@ public abstract class ElectricalComponent
     /// Null for legacy components or when no family type catalog is in use.
     /// </summary>
     public string? FamilyTypeId { get; set; }
+
+    /// <summary>
+    /// Electrical connectors on this placed instance.
+    /// Populated from <see cref="ConnectorDefinition"/> templates in the family type.
+    /// </summary>
+    public ElectricalConnectorManager? ElectricalConnectors { get; set; }
     
     // Transformation properties
     public Point3D Position { get; set; }

@@ -17,6 +17,18 @@ public enum FittingType
 }
 
 /// <summary>
+/// Groups that classify routing preference rules, mirroring Revit's
+/// <c>RoutingPreferenceRuleGroupType</c>.
+/// </summary>
+public enum RoutingPreferenceRuleGroup
+{
+    Elbows,
+    Transitions,
+    Unions,
+    Crosses
+}
+
+/// <summary>
 /// A routing preference rule that maps an angle range to a fitting type.
 /// </summary>
 public class RoutingPreferenceRule
@@ -24,6 +36,12 @@ public class RoutingPreferenceRule
     public double MinAngleDegrees { get; set; }
     public double MaxAngleDegrees { get; set; }
     public FittingType FittingType { get; set; }
+
+    /// <summary>Rule group that classifies this rule.</summary>
+    public RoutingPreferenceRuleGroup Group { get; set; } = RoutingPreferenceRuleGroup.Elbows;
+
+    /// <summary>Optional reference to a <see cref="Models.ComponentFamilyType"/> from the catalog.</summary>
+    public string? FamilyTypeId { get; set; }
 
     public bool Matches(double angleDegrees) =>
         angleDegrees >= MinAngleDegrees && angleDegrees <= MaxAngleDegrees;
