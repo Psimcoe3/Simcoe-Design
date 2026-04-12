@@ -22,6 +22,7 @@ public class ProjectModel
     public List<Conduit.Core.Model.ConduitRun> ConduitRuns { get; set; } = new();
     public List<ElectricalCircuit> ElectricalCircuits { get; set; } = new();
     public ConduitFittingAngleSettings FittingAngleSettings { get; set; } = new();
+    public List<LoadZone> LoadZones { get; set; } = new();
     public List<ProjectParameterDefinition> ProjectParameters { get; set; } = new();
     public List<Layer> Layers { get; set; } = new();
 

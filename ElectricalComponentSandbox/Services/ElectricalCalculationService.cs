@@ -284,6 +284,51 @@ public class ElectricalCalculationService
         };
     }
 
+    /// <summary>
+    /// Overload that includes preliminary area-based zone loads alongside
+    /// circuit-based panel analysis.  Zone loads are added to the demand total.
+    /// </summary>
+    public PanelLoadSummary AnalyzePanelLoad(
+        PanelSchedule schedule,
+        DistributionSystemType? distributionSystem,
+        IEnumerable<Models.LoadZone> zones)
+    {
+        var baseSummary = AnalyzePanelLoad(schedule, distributionSystem);
+        var zoneSummary = LoadZoneService.SumZoneLoads(zones);
+
+        double combinedVA = baseSummary.TotalDemandVA + zoneSummary.TotalLoadVA;
+
+        // Merge zone classification totals into a copy of circuit totals
+        var merged = new Dictionary<Models.LoadClassification, double>(baseSummary.ClassificationTotals);
+        foreach (var (cls, va) in zoneSummary.ClassificationTotals)
+        {
+            if (merged.ContainsKey(cls))
+                merged[cls] += va;
+            else
+                merged[cls] = va;
+        }
+
+        return new PanelLoadSummary
+        {
+            TotalConnectedVA = baseSummary.TotalConnectedVA,
+            TotalDemandVA = baseSummary.TotalDemandVA,
+            PhaseALoadVA = baseSummary.PhaseALoadVA,
+            PhaseBLoadVA = baseSummary.PhaseBLoadVA,
+            PhaseCLoadVA = baseSummary.PhaseCLoadVA,
+            MaxPhaseImbalanceVA = baseSummary.MaxPhaseImbalanceVA,
+            TotalCurrentAmps = baseSummary.TotalCurrentAmps,
+            BusUtilizationPercent = baseSummary.BusUtilizationPercent,
+            IsOverloaded = baseSummary.IsOverloaded,
+            CircuitCount = baseSummary.CircuitCount,
+            SpareSlots = baseSummary.SpareSlots,
+            SpaceSlots = baseSummary.SpaceSlots,
+            AvailableSpaces = baseSummary.AvailableSpaces,
+            ClassificationTotals = merged,
+            PreliminaryZoneLoadVA = zoneSummary.TotalLoadVA,
+            CombinedLoadVA = combinedVA
+        };
+    }
+
     // ── Demand Load (NEC 220) ──────────────────────────────────────────────
 
     /// <summary>
@@ -410,6 +455,12 @@ public class PanelLoadSummary
 
     /// <summary>Demand load in VA keyed by LoadClassification for active circuits.</summary>
     public Dictionary<LoadClassification, double> ClassificationTotals { get; init; } = new();
+
+    /// <summary>Preliminary zone-based load in VA (0 when no zones supplied).</summary>
+    public double PreliminaryZoneLoadVA { get; init; }
+
+    /// <summary>Combined total: circuit demand + preliminary zone load.</summary>
+    public double CombinedLoadVA { get; init; }
 }
 
 public class DemandLoadResult
