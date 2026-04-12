@@ -573,6 +573,61 @@ public class ScheduleTableService
     private static int ParseCircuitNumber(string s)
         => int.TryParse(s, out int n) ? n : int.MaxValue;
 
+    /// <summary>
+    /// Generates a cable tray schedule from tray runs with optional fill results.
+    /// </summary>
+    public ScheduleTable GenerateCableTraySchedule(
+        IReadOnlyList<CableTrayRun> runs,
+        CableTrayRunService.CableTrayStore store,
+        IReadOnlyDictionary<string, CableTrayFillResult>? fillResults = null)
+    {
+        bool showFill = fillResults != null && fillResults.Count > 0;
+
+        var table = new ScheduleTable
+        {
+            Title = "CABLE TRAY SCHEDULE",
+            Columns =
+            {
+                new ScheduleColumn { Header = "TAG", Width = 80 },
+                new ScheduleColumn { Header = "TYPE", Width = 80 },
+                new ScheduleColumn { Header = "SIZE (W×D)", Width = 80, Alignment = HorizontalAlignment.Center },
+                new ScheduleColumn { Header = "LENGTH (ft)", Width = 80, Alignment = HorizontalAlignment.Right },
+                new ScheduleColumn { Header = "FITTINGS", Width = 60, Alignment = HorizontalAlignment.Center },
+                new ScheduleColumn { Header = "LEVEL", Width = 70 }
+            }
+        };
+
+        if (showFill)
+            table.Columns.Add(new ScheduleColumn { Header = "FILL %", Width = 60, Alignment = HorizontalAlignment.Right });
+
+        foreach (var run in runs.OrderBy(r => r.RunId))
+        {
+            double totalLength = CableTrayRunService.GetTotalLength(store, run);
+
+            var cells = new List<string>
+            {
+                string.IsNullOrEmpty(run.RunId) ? run.Id[..8] : run.RunId,
+                run.TrayType.ToString(),
+                $"{run.Width}\"×{run.Depth}\"",
+                totalLength.ToString("F1"),
+                run.FittingIds.Count.ToString(),
+                run.LevelId
+            };
+
+            if (showFill)
+            {
+                string fillStr = fillResults!.TryGetValue(run.Id, out var fill)
+                    ? $"{fill.FillPercent:F1}%{(fill.ExceedsCode ? " !" : "")}"
+                    : "\u2014";
+                cells.Add(fillStr);
+            }
+
+            table.Rows.Add(cells.ToArray());
+        }
+
+        return table;
+    }
+
     private static double GetWireResistance(string size) => size switch
     {
         "14" => 3.14,

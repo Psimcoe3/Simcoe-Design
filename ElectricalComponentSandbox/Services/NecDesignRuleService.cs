@@ -8,51 +8,7 @@ namespace ElectricalComponentSandbox.Services;
 /// </summary>
 public class NecDesignRuleService
 {
-    // ── NEC Table 310.16 ampacity at 75°C ────────────────────────────────────
-
-    private static readonly Dictionary<string, int> CopperAmpacity75C = new()
-    {
-        ["14"]  = 20,
-        ["12"]  = 25,
-        ["10"]  = 35,
-        ["8"]   = 50,
-        ["6"]   = 65,
-        ["4"]   = 85,
-        ["3"]   = 100,
-        ["2"]   = 115,
-        ["1"]   = 130,
-        ["1/0"] = 150,
-        ["2/0"] = 175,
-        ["3/0"] = 200,
-        ["4/0"] = 230,
-        ["250"] = 255,
-        ["300"] = 285,
-        ["350"] = 310,
-        ["400"] = 335,
-        ["500"] = 380,
-    };
-
-    private static readonly Dictionary<string, int> AluminumAmpacity75C = new()
-    {
-        ["14"]  = 15,
-        ["12"]  = 20,
-        ["10"]  = 30,
-        ["8"]   = 40,
-        ["6"]   = 50,
-        ["4"]   = 65,
-        ["3"]   = 75,
-        ["2"]   = 90,
-        ["1"]   = 100,
-        ["1/0"] = 120,
-        ["2/0"] = 135,
-        ["3/0"] = 155,
-        ["4/0"] = 180,
-        ["250"] = 205,
-        ["300"] = 230,
-        ["350"] = 250,
-        ["400"] = 270,
-        ["500"] = 310,
-    };
+    // ── NEC Table 310.16 ampacity — delegated to NecAmpacityService ─────────
 
     // ── NEC 240.4(D) small conductor overcurrent limits ──────────────────────
 
@@ -96,11 +52,53 @@ public class NecDesignRuleService
     }
 
     /// <summary>
+    /// Validates all circuits, panels, and distribution graph (NEC 110.9) against NEC 2023 rules.
+    /// </summary>
+    public List<NecViolation> ValidateAll(
+        IEnumerable<Circuit> circuits,
+        IEnumerable<PanelSchedule> panelSchedules,
+        ElectricalCalculationService electricalCalcService,
+        List<DistributionNode>? distributionRoots = null)
+    {
+        var violations = ValidateAll(circuits, panelSchedules, electricalCalcService);
+
+        if (distributionRoots != null)
+        {
+            violations.AddRange(ValidateAIC(distributionRoots));
+        }
+
+        return violations;
+    }
+
+    /// <summary>
+    /// NEC 110.9 — validates equipment interrupting rating ≥ available fault current
+    /// at every node in the distribution graph.
+    /// </summary>
+    public List<NecViolation> ValidateAIC(List<DistributionNode> roots)
+    {
+        var service = new ShortCircuitService();
+        var aicViolations = service.GetAICViolations(roots);
+        return aicViolations.Select(r => new NecViolation
+        {
+            RuleId = "NEC 110.9",
+            Description = $"Equipment '{r.NodeName}' has an interrupting rating of {r.EquipmentAICKA:F1} kA " +
+                          $"but available fault current is {r.AvailableFaultKA:F1} kA. " +
+                          $"Equipment interrupting rating must be ≥ available fault current.",
+            Severity = ViolationSeverity.Error,
+            AffectedItemId = r.NodeId,
+            AffectedItemName = r.NodeName,
+            Suggestion = $"Upgrade equipment to a minimum interrupting rating of {r.AvailableFaultKA:F1} kA, " +
+                         $"or add impedance (e.g., current-limiting fuse/reactor) upstream to reduce fault current."
+        }).ToList();
+    }
+
+    /// <summary>
     /// Validates a single circuit against NEC 2023 branch circuit rules.
     /// </summary>
     public List<NecViolation> ValidateCircuit(
         Circuit circuit,
-        ElectricalCalculationService electricalCalcService)
+        ElectricalCalculationService electricalCalcService,
+        double? availableFaultCurrentKA = null)
     {
         var violations = new List<NecViolation>();
 
@@ -111,6 +109,10 @@ public class NecDesignRuleService
         CheckBranchVoltageDropRecommendation(circuit, electricalCalcService, violations);
         CheckTotalVoltageDropRecommendation(circuit, electricalCalcService, violations);
         CheckTemperatureRating(circuit, violations);
+        CheckGroundConductorSizing(circuit, violations);
+
+        if (availableFaultCurrentKA.HasValue)
+            CheckBreakerInterruptingRating(circuit, availableFaultCurrentKA.Value, violations);
 
         return violations;
     }
@@ -498,18 +500,57 @@ public class NecDesignRuleService
         }
     }
 
+    /// <summary>
+    /// NEC 110.9 — Breaker interrupting rating must be ≥ available fault current at its location.
+    /// </summary>
+    private void CheckBreakerInterruptingRating(Circuit circuit, double availableFaultKA, List<NecViolation> violations)
+    {
+        double breakerAIC = circuit.Breaker.InterruptingRatingKAIC;
+        if (breakerAIC < availableFaultKA)
+        {
+            violations.Add(new NecViolation
+            {
+                RuleId = "NEC 110.9",
+                Description = $"Breaker on circuit '{circuit.Description}' has an interrupting rating of {breakerAIC:F1} kAIC " +
+                              $"but available fault current at the panel is {availableFaultKA:F1} kA.",
+                Severity = ViolationSeverity.Error,
+                AffectedItemId = circuit.Id,
+                AffectedItemName = $"Circuit {circuit.CircuitNumber} - {circuit.Description}",
+                Suggestion = $"Replace breaker with one rated for at least {availableFaultKA:F1} kAIC, " +
+                             $"or add upstream fault current limiting."
+            });
+        }
+    }
+
+    /// <summary>
+    /// NEC 250.122 — Equipment grounding conductor must be sized based on OCPD rating.
+    /// </summary>
+    private void CheckGroundConductorSizing(Circuit circuit, List<NecViolation> violations)
+    {
+        var result = GroundingService.ValidateGroundSize(circuit);
+        if (!result.IsAdequate)
+        {
+            violations.Add(new NecViolation
+            {
+                RuleId = "NEC 250.122",
+                Description = $"Equipment grounding conductor is #{result.ActualGroundSize} but NEC Table 250.122 " +
+                              $"requires minimum #{result.MinimumEGCSize} {result.Material} for a {result.OCPDAmps}A OCPD.",
+                Severity = ViolationSeverity.Error,
+                AffectedItemId = circuit.Id,
+                AffectedItemName = result.CircuitDescription,
+                Suggestion = $"Increase ground conductor to at least #{result.MinimumEGCSize} {result.Material}.",
+            });
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Looks up wire ampacity from NEC Table 310.16 at 75°C.
+    /// Looks up wire ampacity from NEC Table 310.16 at 75°C via shared NecAmpacityService.
     /// </summary>
     private static int GetAmpacity(string wireSize, ConductorMaterial material)
     {
-        var table = material == ConductorMaterial.Copper
-            ? CopperAmpacity75C
-            : AluminumAmpacity75C;
-
-        return table.TryGetValue(wireSize, out int ampacity) ? ampacity : 0;
+        return NecAmpacityService.LookupAmpacity(wireSize, material, Models.InsulationTemperatureRating.C75);
     }
 }
 

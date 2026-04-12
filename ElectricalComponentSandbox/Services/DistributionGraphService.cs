@@ -13,6 +13,9 @@ public class DistributionNode
     public ElectricalComponent Component { get; init; } = null!;
     public List<DistributionNode> Children { get; } = new();
 
+    /// <summary>Panel subtype when <see cref="NodeType"/> is Panel; null otherwise.</summary>
+    public PanelSubtype? PanelSubtype { get; init; }
+
     /// <summary>Cumulative demand load in VA from this node and all downstream children.</summary>
     public double CumulativeDemandVA { get; set; }
 
@@ -28,6 +31,7 @@ public class FeederScheduleEntry
     public string ComponentId { get; init; } = string.Empty;
     public string Name { get; init; } = string.Empty;
     public ComponentType NodeType { get; init; }
+    public PanelSubtype? PanelSubtype { get; init; }
     public int Depth { get; init; }
     public string? FeederId { get; init; }
     public double CumulativeDemandVA { get; init; }
@@ -60,6 +64,7 @@ public class DistributionGraphService
                 Id = comp.Id,
                 Name = comp.Name,
                 NodeType = comp.Type,
+                PanelSubtype = comp is PanelComponent pc ? pc.Subtype : null,
                 Component = comp
             };
         }
@@ -237,6 +242,7 @@ public class DistributionGraphService
             ComponentId = node.Id,
             Name = node.Name,
             NodeType = node.NodeType,
+            PanelSubtype = node.PanelSubtype,
             Depth = depth,
             FeederId = GetFeederId(node.Component),
             CumulativeDemandVA = node.CumulativeDemandVA,

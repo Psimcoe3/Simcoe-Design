@@ -23,6 +23,9 @@ public class ProjectModel
     public List<ElectricalCircuit> ElectricalCircuits { get; set; } = new();
     public ConduitFittingAngleSettings FittingAngleSettings { get; set; } = new();
     public List<LoadZone> LoadZones { get; set; } = new();
+    public List<CableTrayRun> CableTrayRuns { get; set; } = new();
+    public List<WireMaterial> WireMaterials { get; set; } = new();
+    public List<AmpacityTable> AmpacityTables { get; set; } = new();
     public List<ProjectParameterDefinition> ProjectParameters { get; set; } = new();
     public List<Layer> Layers { get; set; } = new();
 

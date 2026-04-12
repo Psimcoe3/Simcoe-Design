@@ -55,50 +55,7 @@ public class ElectricalCalculationService
         ["500"] = 0.0424,
     };
 
-    // ── Wire ampacity (NEC Table 310.16, 75°C column) ────────────────────────
-
-    private static readonly Dictionary<string, int> CopperAmpacity75C = new()
-    {
-        ["14"]  = 20,
-        ["12"]  = 25,
-        ["10"]  = 35,
-        ["8"]   = 50,
-        ["6"]   = 65,
-        ["4"]   = 85,
-        ["3"]   = 100,
-        ["2"]   = 115,
-        ["1"]   = 130,
-        ["1/0"] = 150,
-        ["2/0"] = 175,
-        ["3/0"] = 200,
-        ["4/0"] = 230,
-        ["250"] = 255,
-        ["300"] = 285,
-        ["350"] = 310,
-        ["400"] = 335,
-        ["500"] = 380,
-    };
-
-    private static readonly Dictionary<string, int> AluminumAmpacity75C = new()
-    {
-        ["12"]  = 20,
-        ["10"]  = 30,
-        ["8"]   = 40,
-        ["6"]   = 50,
-        ["4"]   = 65,
-        ["3"]   = 75,
-        ["2"]   = 90,
-        ["1"]   = 100,
-        ["1/0"] = 120,
-        ["2/0"] = 135,
-        ["3/0"] = 155,
-        ["4/0"] = 180,
-        ["250"] = 205,
-        ["300"] = 230,
-        ["350"] = 250,
-        ["400"] = 270,
-        ["500"] = 310,
-    };
+    // ── Wire ampacity — delegated to NecAmpacityService for shared NEC tables ─
 
     // ── Voltage Drop ─────────────────────────────────────────────────────────
 
@@ -143,17 +100,20 @@ public class ElectricalCalculationService
     /// <summary>
     /// Recommends minimum wire size for a circuit based on ampacity and voltage drop.
     /// Checks both NEC Table 310.16 ampacity and the 3% branch / 5% total VD recommendation.
+    /// Accepts an optional custom ampacity table to override NEC defaults.
     /// </summary>
-    public WireSizeRecommendation RecommendWireSize(Circuit circuit, double maxVoltageDropPercent = 3.0)
+    public WireSizeRecommendation RecommendWireSize(
+        Circuit circuit,
+        double maxVoltageDropPercent = 3.0,
+        AmpacityTable? customAmpacityTable = null)
     {
         double current = circuit.DemandLoadVA / circuit.Voltage;
         if (circuit.Poles > 1)
             current = circuit.DemandLoadVA / (circuit.Voltage * Math.Sqrt(3));
 
         var sizes = GetSizeList();
-        var ampacityTable = circuit.Wire.Material == ConductorMaterial.Copper
-            ? CopperAmpacity75C
-            : AluminumAmpacity75C;
+        var ampacityTable = customAmpacityTable
+            ?? NecAmpacityService.GetDefaultTable(circuit.Wire.Material, InsulationTemperatureRating.C75);
 
         string? ampacitySize = null;
         string? voltageDropSize = null;
@@ -161,7 +121,8 @@ public class ElectricalCalculationService
         // Find minimum size for ampacity
         foreach (var size in sizes)
         {
-            if (ampacityTable.TryGetValue(size, out int ampacity) && ampacity >= current)
+            int ampacity = ampacityTable.Lookup(size);
+            if (ampacity > 0 && ampacity >= current)
             {
                 ampacitySize = size;
                 break;
@@ -385,7 +346,7 @@ public class ElectricalCalculationService
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private double GetResistancePer1000Ft(string wireSize, ConductorMaterial material)
+    public static double GetResistancePer1000Ft(string wireSize, ConductorMaterial material)
     {
         var table = material == ConductorMaterial.Copper
             ? CopperResistancePer1000Ft
