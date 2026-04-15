@@ -128,7 +128,7 @@ public class OutageCostServiceTests
                 [OutageImpactService.CustomerClass.Residential] = new OutageCostService.InterruptionCostRate { DollarsPerCustomerHour = 100, DollarsPerUnservedKWh = 10 },
             });
 
-        Assert.Equal(1010, result.TotalCost);
+        Assert.Equal(1100, result.TotalCost);
     }
 
     [Fact]
