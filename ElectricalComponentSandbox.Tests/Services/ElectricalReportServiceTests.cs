@@ -123,4 +123,82 @@ public class ElectricalReportServiceTests
                 File.Delete(tempFile);
         }
     }
+
+    [Fact]
+    public void GenerateProtectionProgramReport_ContainsHeaderAndOverview()
+    {
+        var report = _sut.GenerateProtectionProgramReport(CreateProtectionProgramReport());
+
+        Assert.Contains("PROTECTION PROGRAM SUMMARY", report);
+        Assert.Contains("Readiness Score:", report);
+        Assert.Contains("Relay Critical Findings:", report);
+    }
+
+    [Fact]
+    public void GenerateProtectionProgramReport_ContainsActionsAndUpgrades()
+    {
+        var report = _sut.GenerateProtectionProgramReport(CreateProtectionProgramReport());
+
+        Assert.Contains("PRIORITY ACTIONS", report);
+        Assert.Contains("[Critical] Interrupting duty", report);
+        Assert.Contains("Replace main breaker", report);
+    }
+
+    [Fact]
+    public void ExportProtectionProgramCsv_HasSummaryAndSectionHeaders()
+    {
+        var csv = _sut.ExportProtectionProgramCsv(CreateProtectionProgramReport());
+
+        Assert.Contains("Metric,Value", csv);
+        Assert.Contains("Action Priority,Category,Description", csv);
+        Assert.Contains("Upgrade Name,Type,Priority Score,Benefit-Cost Ratio,Reason", csv);
+    }
+
+    [Fact]
+    public void ExportProtectionProgramCsv_ContainsRecommendationRows()
+    {
+        var csv = _sut.ExportProtectionProgramCsv(CreateProtectionProgramReport());
+
+        Assert.Contains("Readiness Score,42", csv);
+        Assert.Contains("Critical,Interrupting duty,Replace or re-rate equipment at 1 critical location(s).", csv);
+        Assert.Contains("Replace main breaker,BreakerReplacement,92.00,0.0077", csv);
+    }
+
+    private static ProtectionProgramService.ProgramReport CreateProtectionProgramReport()
+    {
+        return new ProtectionProgramService.ProgramReport
+        {
+            ReadinessScore = 42,
+            RelayCriticalCount = 3,
+            CoordinationViolationCount = 2,
+            DutyViolationCount = 1,
+            AverageArcFlashReductionPercent = 27.5,
+            Actions =
+            {
+                new ProtectionProgramService.ProgramAction
+                {
+                    Priority = ProtectionProgramService.ProgramPriority.Critical,
+                    Category = "Interrupting duty",
+                    Description = "Replace or re-rate equipment at 1 critical location(s).",
+                },
+                new ProtectionProgramService.ProgramAction
+                {
+                    Priority = ProtectionProgramService.ProgramPriority.Medium,
+                    Category = "Arc flash",
+                    Description = "Apply maintenance switch at BUS-1 to reduce incident energy by 27.5%.",
+                },
+            },
+            RecommendedUpgrades =
+            {
+                new ProtectionUpgradePlannerService.UpgradeRecommendation
+                {
+                    Name = "Replace main breaker",
+                    Type = ProtectionUpgradePlannerService.UpgradeType.BreakerReplacement,
+                    PriorityScore = 92,
+                    BenefitCostRatio = 0.0077,
+                    Reason = "reduces interrupting-duty risk by 3 level(s)",
+                },
+            },
+        };
+    }
 }

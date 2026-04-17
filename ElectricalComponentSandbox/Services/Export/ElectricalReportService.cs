@@ -405,6 +405,24 @@ public class ElectricalReportService
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Generates a formatted protection-program report from audit, mitigation, and upgrade findings.
+    /// </summary>
+    public string GenerateProtectionProgramReport(ProtectionProgramService.ProgramReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+
+        var sb = new StringBuilder();
+        WriteReportHeader(sb, "PROTECTION PROGRAM SUMMARY", "Protection study audit, mitigation, and upgrade planning");
+
+        WriteProtectionOverview(sb, report);
+        WriteProtectionActions(sb, report.Actions);
+        WriteProtectionUpgrades(sb, report.RecommendedUpgrades);
+
+        WriteReportFooter(sb);
+        return sb.ToString();
+    }
+
     // ── CSV Exports ───────────────────────────────────────────────────────────
 
     /// <summary>
@@ -577,6 +595,47 @@ public class ElectricalReportService
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Exports protection-program summary, actions, and upgrade recommendations as CSV.
+    /// </summary>
+    public string ExportProtectionProgramCsv(ProtectionProgramService.ProgramReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+
+        var sb = new StringBuilder();
+
+        sb.AppendLine("Metric,Value");
+        sb.AppendLine($"Readiness Score,{report.ReadinessScore.ToString(CultureInfo.InvariantCulture)}");
+        sb.AppendLine($"Relay Critical Findings,{report.RelayCriticalCount.ToString(CultureInfo.InvariantCulture)}");
+        sb.AppendLine($"Coordination Violations,{report.CoordinationViolationCount.ToString(CultureInfo.InvariantCulture)}");
+        sb.AppendLine($"Duty Violations,{report.DutyViolationCount.ToString(CultureInfo.InvariantCulture)}");
+        sb.AppendLine($"Average Arc Flash Reduction (%),{report.AverageArcFlashReductionPercent.ToString("F2", CultureInfo.InvariantCulture)}");
+
+        sb.AppendLine();
+        sb.AppendLine("Action Priority,Category,Description");
+        foreach (var action in OrderActions(report.Actions))
+        {
+            sb.AppendLine(string.Join(",",
+                action.Priority,
+                CsvEscape(action.Category),
+                CsvEscape(action.Description)));
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("Upgrade Name,Type,Priority Score,Benefit-Cost Ratio,Reason");
+        foreach (var upgrade in report.RecommendedUpgrades.OrderByDescending(item => item.PriorityScore))
+        {
+            sb.AppendLine(string.Join(",",
+                CsvEscape(upgrade.Name),
+                upgrade.Type,
+                upgrade.PriorityScore.ToString("F2", CultureInfo.InvariantCulture),
+                upgrade.BenefitCostRatio.ToString("F4", CultureInfo.InvariantCulture),
+                CsvEscape(upgrade.Reason)));
+        }
+
+        return sb.ToString();
+    }
+
     // ── File Output ───────────────────────────────────────────────────────────
 
     /// <summary>
@@ -619,6 +678,59 @@ public class ElectricalReportService
         sb.AppendLine($"  Report generated: {DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)}");
         sb.AppendLine($"  Simcoe Design -- Electrical Report Service");
         sb.AppendLine(Separator);
+    }
+
+    private static void WriteProtectionOverview(StringBuilder sb, ProtectionProgramService.ProgramReport report)
+    {
+        sb.AppendLine("  OVERVIEW");
+        sb.AppendLine(Separator);
+        sb.AppendLine($"    {"Readiness Score:",-32} {report.ReadinessScore,8}");
+        sb.AppendLine($"    {"Relay Critical Findings:",-32} {report.RelayCriticalCount,8}");
+        sb.AppendLine($"    {"Coordination Violations:",-32} {report.CoordinationViolationCount,8}");
+        sb.AppendLine($"    {"Duty Violations:",-32} {report.DutyViolationCount,8}");
+        sb.AppendLine($"    {"Avg Arc Flash Reduction:",-32} {report.AverageArcFlashReductionPercent,7:F1} %");
+    }
+
+    private static void WriteProtectionActions(StringBuilder sb, IReadOnlyList<ProtectionProgramService.ProgramAction> actions)
+    {
+        sb.AppendLine();
+        sb.AppendLine("  PRIORITY ACTIONS");
+        sb.AppendLine(Separator);
+
+        if (actions.Count == 0)
+        {
+            sb.AppendLine("    No protection-program actions supplied.");
+            return;
+        }
+
+        foreach (var action in OrderActions(actions))
+            sb.AppendLine($"    [{action.Priority}] {action.Category}: {action.Description}");
+    }
+
+    private static void WriteProtectionUpgrades(StringBuilder sb, IReadOnlyList<ProtectionUpgradePlannerService.UpgradeRecommendation> upgrades)
+    {
+        sb.AppendLine();
+        sb.AppendLine("  RECOMMENDED UPGRADES");
+        sb.AppendLine(Separator);
+
+        if (upgrades.Count == 0)
+        {
+            sb.AppendLine("    No upgrade recommendations supplied.");
+            return;
+        }
+
+        foreach (var upgrade in upgrades.OrderByDescending(item => item.PriorityScore))
+        {
+            sb.AppendLine($"    {upgrade.Name} ({upgrade.Type})");
+            sb.AppendLine($"      Score: {upgrade.PriorityScore:F1}  |  Benefit/Cost: {upgrade.BenefitCostRatio:F4}");
+            sb.AppendLine($"      Reason: {upgrade.Reason}");
+        }
+    }
+
+    private static IEnumerable<ProtectionProgramService.ProgramAction> OrderActions(IReadOnlyList<ProtectionProgramService.ProgramAction> actions)
+    {
+        return actions.OrderByDescending(action => action.Priority)
+            .ThenBy(action => action.Category, StringComparer.Ordinal);
     }
 
     private static string FindPanelName(IReadOnlyList<PanelComponent> panels, string panelId)

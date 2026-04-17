@@ -108,6 +108,56 @@ public class ProjectFileServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAndLoad_ComponentProtectionSettings_RoundTrips()
+    {
+        var project = new ProjectModel { Name = "Protection Project" };
+        project.Components.Add(new PanelComponent
+        {
+            Id = "MDP",
+            Name = "Main Distribution",
+            ProtectionSettings = new ComponentProtectionSettings
+            {
+                StudyRelay = new StoredProtectiveRelaySettings
+                {
+                    Function = ProtectiveRelayService.RelayFunction.Function51,
+                    Curve = ProtectiveRelayService.CurveType.VeryInverse,
+                    CtRatio = 800,
+                    PickupAmps = 600,
+                    TimeDial = 0.55,
+                    InstantaneousAmps = 3200,
+                },
+                FieldRelay = new StoredProtectiveRelaySettings
+                {
+                    Function = ProtectiveRelayService.RelayFunction.Function51,
+                    Curve = ProtectiveRelayService.CurveType.ExtremelyInverse,
+                    CtRatio = 800,
+                    PickupAmps = 650,
+                    TimeDial = 0.7,
+                    InstantaneousAmps = 0,
+                },
+            },
+        });
+
+        var filePath = Path.Combine(_tempDir, "protection.ecproj");
+
+        await _service.SaveProjectAsync(project, filePath);
+        var loaded = await _service.LoadProjectAsync(filePath);
+
+        Assert.NotNull(loaded);
+        var panel = Assert.IsType<PanelComponent>(Assert.Single(loaded.Components));
+        Assert.Equal(ProtectiveRelayService.RelayFunction.Function51, panel.ProtectionSettings.StudyRelay.Function);
+        Assert.Equal(ProtectiveRelayService.CurveType.VeryInverse, panel.ProtectionSettings.StudyRelay.Curve);
+        Assert.Equal(800, panel.ProtectionSettings.StudyRelay.CtRatio);
+        Assert.Equal(600, panel.ProtectionSettings.StudyRelay.PickupAmps);
+        Assert.Equal(0.55, panel.ProtectionSettings.StudyRelay.TimeDial);
+        Assert.Equal(3200, panel.ProtectionSettings.StudyRelay.InstantaneousAmps);
+        Assert.Equal(ProtectiveRelayService.CurveType.ExtremelyInverse, panel.ProtectionSettings.FieldRelay.Curve);
+        Assert.Equal(650, panel.ProtectionSettings.FieldRelay.PickupAmps);
+        Assert.Equal(0.7, panel.ProtectionSettings.FieldRelay.TimeDial);
+        Assert.Equal(0, panel.ProtectionSettings.FieldRelay.InstantaneousAmps);
+    }
+
+    [Fact]
     public async Task SaveAndLoad_MarkupReviewSnapshots_RoundTrips()
     {
         var publishedUtc = new DateTime(2026, 4, 8, 13, 20, 0, DateTimeKind.Utc);

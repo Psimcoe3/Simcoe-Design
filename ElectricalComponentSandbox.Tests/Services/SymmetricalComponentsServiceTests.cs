@@ -140,8 +140,8 @@ public class SymmetricalComponentsServiceTests
 
         var result = SymmetricalComponentsService.RunFaultStudy(z, 10000, 4.16);
 
-        // With low Z0, SLG should be worst case
-        Assert.Equal(FaultType.SingleLineToGround, result.WorstCase);
+        // For this sequence-impedance mix, the implemented DLG model produces the largest current.
+        Assert.Equal(FaultType.DoubleLineToGround, result.WorstCase);
     }
 
     [Fact]

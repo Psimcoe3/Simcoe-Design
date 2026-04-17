@@ -144,6 +144,36 @@ public partial class MainWindow
             "Panel Schedules", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
+    private void ProtectionProgramSummary_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var protectionReport = BuildProtectionProgramReport();
+            if (!ProjectProtectionProgramService.HasMeaningfulContent(protectionReport))
+            {
+                MessageBox.Show(
+                    "No protection-study content is available yet. Add source and downstream components, or store relay settings on components first.",
+                    "Protection Program Summary",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            var reportService = new ElectricalReportService();
+            MessageBox.Show(
+                reportService.GenerateProtectionProgramReport(protectionReport),
+                "Protection Program Summary",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (System.Exception ex)
+        {
+            ActionLogService.Instance.LogError(LogCategory.Component, "Failed to build protection program summary", ex);
+            MessageBox.Show($"Protection summary failed: {ex.Message}",
+                "Protection Program Summary", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     // ── Add Circuit ──────────────────────────────────────────────────────────
 
     private void AddCircuit_Click(object sender, RoutedEventArgs e)
@@ -452,61 +482,25 @@ public partial class MainWindow
 
     private void ExportElectricalReport_Click(object sender, RoutedEventArgs e)
     {
-        if (!_viewModel.Circuits.Any() && !_viewModel.PanelSchedules.Any())
-        {
-            MessageBox.Show("No circuits or panels defined.",
-                "Export Report", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        var dlg = new SaveFileDialog
-        {
-            Filter = "Text Files (*.txt)|*.txt|CSV Files (*.csv)|*.csv",
-            FileName = "electrical_report.txt",
-            Title = "Export Electrical Report"
-        };
-        if (dlg.ShowDialog() != true) return;
-
         try
         {
-            _viewModel.RebuildPanelSchedules();
             var reportService = new ElectricalReportService();
             var panels = _viewModel.Components.OfType<PanelComponent>().ToList();
+            var protectionReport = BuildProtectionProgramReport();
 
-            string content;
-            if (dlg.FileName.EndsWith(".csv", System.StringComparison.OrdinalIgnoreCase))
+            if (!HasExportableElectricalData(protectionReport))
             {
-                var sb = new StringBuilder();
-                if (_viewModel.Circuits.Any())
-                    sb.Append(reportService.ExportVoltageDropCsv(
-                        _viewModel.Circuits.ToList(), panels, _viewModel.ElectricalCalc));
-                if (_viewModel.PanelSchedules.Any())
-                {
-                    sb.AppendLine();
-                    sb.Append(reportService.ExportPanelLoadCsv(
-                        _viewModel.PanelSchedules.ToList(), _viewModel.ElectricalCalc));
-                }
-                content = sb.ToString();
+                MessageBox.Show("No circuits, panels, or protection-study data defined.",
+                    "Export Report", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
             }
-            else
-            {
-                var sb = new StringBuilder();
-                if (_viewModel.Circuits.Any())
-                {
-                    sb.AppendLine(reportService.GenerateVoltageDropReport(
-                        _viewModel.Circuits.ToList(), panels, _viewModel.ElectricalCalc));
-                    sb.AppendLine();
-                    sb.AppendLine(reportService.GenerateWireSizeReport(
-                        _viewModel.Circuits.ToList(), _viewModel.ElectricalCalc));
-                }
-                if (_viewModel.PanelSchedules.Any())
-                {
-                    sb.AppendLine();
-                    sb.AppendLine(reportService.GeneratePanelLoadReport(
-                        _viewModel.PanelSchedules.ToList(), _viewModel.ElectricalCalc));
-                }
-                content = sb.ToString();
-            }
+
+            var dlg = CreateElectricalReportDialog();
+            if (dlg.ShowDialog() != true) return;
+
+            string content = dlg.FileName.EndsWith(".csv", System.StringComparison.OrdinalIgnoreCase)
+                ? BuildElectricalReportCsv(reportService, panels, protectionReport)
+                : BuildElectricalReportText(reportService, panels, protectionReport);
 
             reportService.SaveReport(content, dlg.FileName);
             ActionLogService.Instance.Log(LogCategory.FileOperation, "Electrical report exported",
@@ -520,5 +514,102 @@ public partial class MainWindow
             MessageBox.Show($"Export failed:\n{ex.Message}", "Export Report",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    private bool HasExportableElectricalData(ProtectionProgramService.ProgramReport protectionReport)
+    {
+        return _viewModel.Circuits.Any()
+            || _viewModel.PanelSchedules.Any()
+            || ProjectProtectionProgramService.HasMeaningfulContent(protectionReport);
+    }
+
+    private static SaveFileDialog CreateElectricalReportDialog() => new()
+    {
+        Filter = "Text Files (*.txt)|*.txt|CSV Files (*.csv)|*.csv",
+        FileName = "electrical_report.txt",
+        Title = "Export Electrical Report"
+    };
+
+    private ProtectionProgramService.ProgramReport BuildProtectionProgramReport()
+    {
+        _viewModel.RebuildPanelSchedules();
+
+        var protectionProgramService = new ProjectProtectionProgramService();
+        return protectionProgramService.BuildReport(
+            _viewModel.Components.ToList(),
+            _viewModel.PanelSchedules.ToList());
+    }
+
+    private string BuildElectricalReportCsv(
+        ElectricalReportService reportService,
+        IReadOnlyList<PanelComponent> panels,
+        ProtectionProgramService.ProgramReport protectionReport)
+    {
+        var sb = new StringBuilder();
+
+        if (_viewModel.Circuits.Any())
+        {
+            AppendReportSection(
+                sb,
+                reportService.ExportVoltageDropCsv(
+                    _viewModel.Circuits.ToList(), panels, _viewModel.ElectricalCalc));
+        }
+
+        if (_viewModel.PanelSchedules.Any())
+        {
+            AppendReportSection(
+                sb,
+                reportService.ExportPanelLoadCsv(
+                    _viewModel.PanelSchedules.ToList(), _viewModel.ElectricalCalc));
+        }
+
+        if (ProjectProtectionProgramService.HasMeaningfulContent(protectionReport))
+            AppendReportSection(sb, reportService.ExportProtectionProgramCsv(protectionReport));
+
+        return sb.ToString();
+    }
+
+    private string BuildElectricalReportText(
+        ElectricalReportService reportService,
+        IReadOnlyList<PanelComponent> panels,
+        ProtectionProgramService.ProgramReport protectionReport)
+    {
+        var sb = new StringBuilder();
+
+        if (_viewModel.Circuits.Any())
+        {
+            AppendReportSection(
+                sb,
+                reportService.GenerateVoltageDropReport(
+                    _viewModel.Circuits.ToList(), panels, _viewModel.ElectricalCalc));
+            AppendReportSection(
+                sb,
+                reportService.GenerateWireSizeReport(
+                    _viewModel.Circuits.ToList(), _viewModel.ElectricalCalc));
+        }
+
+        if (_viewModel.PanelSchedules.Any())
+        {
+            AppendReportSection(
+                sb,
+                reportService.GeneratePanelLoadReport(
+                    _viewModel.PanelSchedules.ToList(), _viewModel.ElectricalCalc));
+        }
+
+        if (ProjectProtectionProgramService.HasMeaningfulContent(protectionReport))
+            AppendReportSection(sb, reportService.GenerateProtectionProgramReport(protectionReport));
+
+        return sb.ToString();
+    }
+
+    private static void AppendReportSection(StringBuilder sb, string section)
+    {
+        if (string.IsNullOrWhiteSpace(section))
+            return;
+
+        if (sb.Length > 0)
+            sb.AppendLine();
+
+        sb.Append(section.TrimEnd());
     }
 }

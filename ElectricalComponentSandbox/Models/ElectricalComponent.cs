@@ -1,5 +1,6 @@
 using System;
 using System.Windows.Media.Media3D;
+using ElectricalComponentSandbox.Services;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 
@@ -11,6 +12,7 @@ namespace ElectricalComponentSandbox.Models;
 public abstract class ElectricalComponent
 {
     private ComponentInteropMetadata _interopMetadata = new();
+    private ComponentProtectionSettings _protectionSettings = new();
 
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = string.Empty;
@@ -48,6 +50,12 @@ public abstract class ElectricalComponent
         get => _interopMetadata;
         set => _interopMetadata = value ?? new ComponentInteropMetadata();
     }
+
+    public ComponentProtectionSettings ProtectionSettings
+    {
+        get => _protectionSettings;
+        set => _protectionSettings = value ?? new ComponentProtectionSettings();
+    }
 }
 
 public class ComponentInteropMetadata
@@ -82,6 +90,49 @@ public class ComponentInteropMetadata
         LastReviewedUtc.HasValue ||
         LastImportedUtc.HasValue ||
         LastExportedUtc.HasValue;
+}
+
+public class ComponentProtectionSettings
+{
+    private StoredProtectiveRelaySettings _studyRelay = new();
+    private StoredProtectiveRelaySettings _fieldRelay = new();
+
+    public StoredProtectiveRelaySettings StudyRelay
+    {
+        get => _studyRelay;
+        set => _studyRelay = value ?? new StoredProtectiveRelaySettings();
+    }
+
+    public StoredProtectiveRelaySettings FieldRelay
+    {
+        get => _fieldRelay;
+        set => _fieldRelay = value ?? new StoredProtectiveRelaySettings();
+    }
+
+    [JsonIgnore]
+    public bool HasAnySettings => StudyRelay.HasValues || FieldRelay.HasValues;
+}
+
+public class StoredProtectiveRelaySettings
+{
+    [JsonConverter(typeof(StringEnumConverter))]
+    public ProtectiveRelayService.RelayFunction? Function { get; set; }
+
+    [JsonConverter(typeof(StringEnumConverter))]
+    public ProtectiveRelayService.CurveType? Curve { get; set; }
+
+    public double? CtRatio { get; set; }
+    public double? PickupAmps { get; set; }
+    public double? TimeDial { get; set; }
+    public double? InstantaneousAmps { get; set; }
+
+    [JsonIgnore]
+    public bool HasValues => Function.HasValue
+        || Curve.HasValue
+        || CtRatio.HasValue
+        || PickupAmps.HasValue
+        || TimeDial.HasValue
+        || InstantaneousAmps.HasValue;
 }
 
     public enum ComponentInteropReviewStatus

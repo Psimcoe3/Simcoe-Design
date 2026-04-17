@@ -232,6 +232,7 @@
                 <MenuItem Header="Conduit Fill Check..." Click="ConduitFillCheck_Click"/>
                 <Separator/>
                 <MenuItem Header="Run NEC Design Check..." Click="RunNecCheck_Click"/>
+                <MenuItem Header="Protection Program Summary..." Click="ProtectionProgramSummary_Click"/>
                 <MenuItem Header="Export Electrical Report..." Click="ExportElectricalReport_Click"/>
             </MenuItem>
             <MenuItem x:Name="ReferencesMenuItem" Header="References"/>
