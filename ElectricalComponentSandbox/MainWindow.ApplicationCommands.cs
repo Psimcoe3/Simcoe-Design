@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -112,6 +113,22 @@ public partial class MainWindow
             stagedProjectParameterTextValues, ref projectParametersTouched);
         ApplySingleTextField(component, ReferenceUrlTextBox, ReferenceUrlParameterBindingComboBox, ProjectParameterBindingTarget.ReferenceUrl, "Reference URL",
             stagedProjectParameterTextValues, ref projectParametersTouched);
+        ApplyRelayEditorValues(component.ProtectionSettings.StudyRelay,
+            StudyRelayFunctionComboBox,
+            StudyRelayCurveComboBox,
+            StudyRelayCtRatioTextBox,
+            StudyRelayPickupAmpsTextBox,
+            StudyRelayTimeDialTextBox,
+            StudyRelayInstantaneousAmpsTextBox,
+            "Study relay");
+        ApplyRelayEditorValues(component.ProtectionSettings.FieldRelay,
+            FieldRelayFunctionComboBox,
+            FieldRelayCurveComboBox,
+            FieldRelayCtRatioTextBox,
+            FieldRelayPickupAmpsTextBox,
+            FieldRelayTimeDialTextBox,
+            FieldRelayInstantaneousAmpsTextBox,
+            "Field relay");
 
         var changedParameterIds = CommitProjectParameterValueChanges(stagedProjectParameterValues);
         changedParameterIds.UnionWith(CommitProjectParameterTextValueChanges(stagedProjectParameterTextValues));
@@ -160,10 +177,25 @@ public partial class MainWindow
             stagedProjectParameterTextValues, ref projectParametersTouched);
         var applyReferenceUrl = TryApplySharedTextField(components, ReferenceUrlTextBox, ReferenceUrlParameterBindingComboBox, ProjectParameterBindingTarget.ReferenceUrl, "Reference URL",
             stagedProjectParameterTextValues, ref projectParametersTouched);
+        var applyStudyFunction = TryGetSelectedRelayFunction(StudyRelayFunctionComboBox, out var studyFunction);
+        var applyStudyCurve = TryGetSelectedRelayCurve(StudyRelayCurveComboBox, out var studyCurve);
+        var applyStudyCtRatio = TryParseSharedRelayNumber(StudyRelayCtRatioTextBox.Text, "Study relay CT ratio", out var studyCtRatio);
+        var applyStudyPickup = TryParseSharedRelayNumber(StudyRelayPickupAmpsTextBox.Text, "Study relay pickup amps", out var studyPickupAmps);
+        var applyStudyTimeDial = TryParseSharedRelayNumber(StudyRelayTimeDialTextBox.Text, "Study relay time dial", out var studyTimeDial);
+        var applyStudyInstantaneous = TryParseSharedRelayNumber(StudyRelayInstantaneousAmpsTextBox.Text, "Study relay instantaneous amps", out var studyInstantaneousAmps);
+        var applyFieldFunction = TryGetSelectedRelayFunction(FieldRelayFunctionComboBox, out var fieldFunction);
+        var applyFieldCurve = TryGetSelectedRelayCurve(FieldRelayCurveComboBox, out var fieldCurve);
+        var applyFieldCtRatio = TryParseSharedRelayNumber(FieldRelayCtRatioTextBox.Text, "Field relay CT ratio", out var fieldCtRatio);
+        var applyFieldPickup = TryParseSharedRelayNumber(FieldRelayPickupAmpsTextBox.Text, "Field relay pickup amps", out var fieldPickupAmps);
+        var applyFieldTimeDial = TryParseSharedRelayNumber(FieldRelayTimeDialTextBox.Text, "Field relay time dial", out var fieldTimeDial);
+        var applyFieldInstantaneous = TryParseSharedRelayNumber(FieldRelayInstantaneousAmpsTextBox.Text, "Field relay instantaneous amps", out var fieldInstantaneousAmps);
         var applyLayer = LayerComboBox.SelectedItem is Layer;
 
         if (!applyWidth && !applyHeight && !applyDepth && !applyMaterial && !applyElevation && !applyColor &&
-            !applyManufacturer && !applyPartNumber && !applyReferenceUrl && !applyLayer)
+            !applyManufacturer && !applyPartNumber && !applyReferenceUrl && !applyStudyFunction && !applyStudyCurve &&
+            !applyStudyCtRatio && !applyStudyPickup && !applyStudyTimeDial && !applyStudyInstantaneous &&
+            !applyFieldFunction && !applyFieldCurve && !applyFieldCtRatio && !applyFieldPickup &&
+            !applyFieldTimeDial && !applyFieldInstantaneous && !applyLayer)
         {
             MessageBox.Show("Enter one or more shared property values or choose a project-parameter binding to apply to the current selection.",
                 "Apply Shared Changes", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -185,6 +217,33 @@ public partial class MainWindow
             if (layer != null)
                 component.LayerId = layer.Id;
 
+            ApplySharedRelayEditorValues(component.ProtectionSettings.StudyRelay,
+                applyStudyFunction,
+                studyFunction,
+                applyStudyCurve,
+                studyCurve,
+                applyStudyCtRatio,
+                studyCtRatio,
+                applyStudyPickup,
+                studyPickupAmps,
+                applyStudyTimeDial,
+                studyTimeDial,
+                applyStudyInstantaneous,
+                studyInstantaneousAmps);
+            ApplySharedRelayEditorValues(component.ProtectionSettings.FieldRelay,
+                applyFieldFunction,
+                fieldFunction,
+                applyFieldCurve,
+                fieldCurve,
+                applyFieldCtRatio,
+                fieldCtRatio,
+                applyFieldPickup,
+                fieldPickupAmps,
+                applyFieldTimeDial,
+                fieldTimeDial,
+                applyFieldInstantaneous,
+                fieldInstantaneousAmps);
+
             if (component is ConduitComponent conduitComponent)
                 ApplyImperialDefaultsToConduit(conduitComponent);
 
@@ -203,6 +262,121 @@ public partial class MainWindow
         }
 
         return catalogDataCleared;
+    }
+
+    private static void ApplyRelayEditorValues(
+        StoredProtectiveRelaySettings settings,
+        ComboBox functionComboBox,
+        ComboBox curveComboBox,
+        TextBox ctRatioTextBox,
+        TextBox pickupAmpsTextBox,
+        TextBox timeDialTextBox,
+        TextBox instantaneousAmpsTextBox,
+        string scopeLabel)
+    {
+        settings.Function = GetSelectedRelayFunction(functionComboBox);
+        settings.Curve = GetSelectedRelayCurve(curveComboBox);
+        settings.CtRatio = ParseOptionalRelayNumber(ctRatioTextBox.Text, $"{scopeLabel} CT ratio");
+        settings.PickupAmps = ParseOptionalRelayNumber(pickupAmpsTextBox.Text, $"{scopeLabel} pickup amps");
+        settings.TimeDial = ParseOptionalRelayNumber(timeDialTextBox.Text, $"{scopeLabel} time dial");
+        settings.InstantaneousAmps = ParseOptionalRelayNumber(instantaneousAmpsTextBox.Text, $"{scopeLabel} instantaneous amps");
+    }
+
+    private static void ApplySharedRelayEditorValues(
+        StoredProtectiveRelaySettings settings,
+        bool applyFunction,
+        ProtectiveRelayService.RelayFunction function,
+        bool applyCurve,
+        ProtectiveRelayService.CurveType curve,
+        bool applyCtRatio,
+        double ctRatio,
+        bool applyPickupAmps,
+        double pickupAmps,
+        bool applyTimeDial,
+        double timeDial,
+        bool applyInstantaneousAmps,
+        double instantaneousAmps)
+    {
+        if (applyFunction)
+            settings.Function = function;
+        if (applyCurve)
+            settings.Curve = curve;
+        if (applyCtRatio)
+            settings.CtRatio = ctRatio;
+        if (applyPickupAmps)
+            settings.PickupAmps = pickupAmps;
+        if (applyTimeDial)
+            settings.TimeDial = timeDial;
+        if (applyInstantaneousAmps)
+            settings.InstantaneousAmps = instantaneousAmps;
+    }
+
+    private static ProtectiveRelayService.RelayFunction? GetSelectedRelayFunction(ComboBox comboBox)
+        => comboBox.SelectedItem is ProtectiveRelayService.RelayFunction value ? value : null;
+
+    private static bool TryGetSelectedRelayFunction(ComboBox comboBox, out ProtectiveRelayService.RelayFunction value)
+    {
+        if (comboBox.SelectedItem is ProtectiveRelayService.RelayFunction relayFunction)
+        {
+            value = relayFunction;
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static ProtectiveRelayService.CurveType? GetSelectedRelayCurve(ComboBox comboBox)
+        => comboBox.SelectedItem is ProtectiveRelayService.CurveType value ? value : null;
+
+    private static bool TryGetSelectedRelayCurve(ComboBox comboBox, out ProtectiveRelayService.CurveType value)
+    {
+        if (comboBox.SelectedItem is ProtectiveRelayService.CurveType curveType)
+        {
+            value = curveType;
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static double? ParseOptionalRelayNumber(string? input, string fieldName)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return null;
+
+        if (TryParsePositiveRelayNumber(input, out var value))
+            return value;
+
+        throw new FormatException($"Invalid {fieldName} value. Enter a positive number.");
+    }
+
+    private static bool TryParseSharedRelayNumber(string? input, string fieldName, out double value)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            value = 0;
+            return false;
+        }
+
+        if (TryParsePositiveRelayNumber(input, out value))
+            return true;
+
+        throw new FormatException($"Invalid {fieldName} value. Enter a positive number.");
+    }
+
+    private static bool TryParsePositiveRelayNumber(string input, out double value)
+    {
+        var trimmed = input.Trim();
+        if (double.TryParse(trimmed, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out value) ||
+            double.TryParse(trimmed, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.CurrentCulture, out value))
+        {
+            return value > 0;
+        }
+
+        value = 0;
+        return false;
     }
 
     private void ApplySingleTextField(

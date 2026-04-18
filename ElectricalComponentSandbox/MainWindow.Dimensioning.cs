@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Media3D;
 using ElectricalComponentSandbox.Models;
@@ -14,6 +15,17 @@ namespace ElectricalComponentSandbox;
 public partial class MainWindow
 {
     internal void UpdatePropertiesPanelForTesting() => UpdatePropertiesPanel();
+
+    private void InitializeProtectionSettingsEditor()
+    {
+        var relayFunctions = Enum.GetValues<ProtectiveRelayService.RelayFunction>();
+        var curveTypes = Enum.GetValues<ProtectiveRelayService.CurveType>();
+
+        StudyRelayFunctionComboBox.ItemsSource = relayFunctions;
+        FieldRelayFunctionComboBox.ItemsSource = relayFunctions;
+        StudyRelayCurveComboBox.ItemsSource = curveTypes;
+        FieldRelayCurveComboBox.ItemsSource = curveTypes;
+    }
 
     private DimensionAxisOffsets GetDimensionAxisOffsets(ElectricalComponent component)
     {
@@ -1054,6 +1066,7 @@ public partial class MainWindow
         ManufacturerTextBox.Text = component.Parameters.Manufacturer;
         PartNumberTextBox.Text = component.Parameters.PartNumber;
         ReferenceUrlTextBox.Text = component.Parameters.ReferenceUrl;
+        UpdateProtectionSettingsPanel(new[] { component });
         UpdateComponentInteropPropertiesPanel(new[] { component });
         UpdateReferenceAssignmentUi(new[] { component });
         UpdateSelectedDimensionsDisplay(component);
@@ -1099,6 +1112,7 @@ public partial class MainWindow
         ManufacturerTextBox.Text = TryGetSharedValue(components, component => component.Parameters.Manufacturer, value => value) ?? string.Empty;
         PartNumberTextBox.Text = TryGetSharedValue(components, component => component.Parameters.PartNumber, value => value) ?? string.Empty;
         ReferenceUrlTextBox.Text = TryGetSharedValue(components, component => component.Parameters.ReferenceUrl, value => value) ?? string.Empty;
+        UpdateProtectionSettingsPanel(components);
         UpdateComponentInteropPropertiesPanel(components);
         UpdateReferenceAssignmentUi(components);
         UpdateSelectedDimensionsDisplay(components);
@@ -1135,6 +1149,158 @@ public partial class MainWindow
         RotationYTextBox.IsEnabled = !isMultiSelection;
         RotationZTextBox.IsEnabled = !isMultiSelection;
         OpenReferenceButton.IsEnabled = !isMultiSelection;
+    }
+
+    private void UpdateProtectionSettingsPanel(IReadOnlyList<ElectricalComponent> components)
+    {
+        if (components.Count == 0)
+        {
+            ClearProtectionSettingsPanel();
+            return;
+        }
+
+        if (components.Count == 1)
+        {
+            SetRelayEditorValues(
+                StudyRelayFunctionComboBox,
+                StudyRelayCurveComboBox,
+                StudyRelayCtRatioTextBox,
+                StudyRelayPickupAmpsTextBox,
+                StudyRelayTimeDialTextBox,
+                StudyRelayInstantaneousAmpsTextBox,
+                components[0].ProtectionSettings.StudyRelay);
+            SetRelayEditorValues(
+                FieldRelayFunctionComboBox,
+                FieldRelayCurveComboBox,
+                FieldRelayCtRatioTextBox,
+                FieldRelayPickupAmpsTextBox,
+                FieldRelayTimeDialTextBox,
+                FieldRelayInstantaneousAmpsTextBox,
+                components[0].ProtectionSettings.FieldRelay);
+            return;
+        }
+
+        SetRelayEditorValues(
+            StudyRelayFunctionComboBox,
+            StudyRelayCurveComboBox,
+            StudyRelayCtRatioTextBox,
+            StudyRelayPickupAmpsTextBox,
+            StudyRelayTimeDialTextBox,
+            StudyRelayInstantaneousAmpsTextBox,
+            TryGetSharedNullableValue(components, component => component.ProtectionSettings.StudyRelay.Function),
+            TryGetSharedNullableValue(components, component => component.ProtectionSettings.StudyRelay.Curve),
+            TryGetSharedValue(components, component => component.ProtectionSettings.StudyRelay.CtRatio, FormatOptionalRelayNumber) ?? string.Empty,
+            TryGetSharedValue(components, component => component.ProtectionSettings.StudyRelay.PickupAmps, FormatOptionalRelayNumber) ?? string.Empty,
+            TryGetSharedValue(components, component => component.ProtectionSettings.StudyRelay.TimeDial, FormatOptionalRelayNumber) ?? string.Empty,
+            TryGetSharedValue(components, component => component.ProtectionSettings.StudyRelay.InstantaneousAmps, FormatOptionalRelayNumber) ?? string.Empty);
+        SetRelayEditorValues(
+            FieldRelayFunctionComboBox,
+            FieldRelayCurveComboBox,
+            FieldRelayCtRatioTextBox,
+            FieldRelayPickupAmpsTextBox,
+            FieldRelayTimeDialTextBox,
+            FieldRelayInstantaneousAmpsTextBox,
+            TryGetSharedNullableValue(components, component => component.ProtectionSettings.FieldRelay.Function),
+            TryGetSharedNullableValue(components, component => component.ProtectionSettings.FieldRelay.Curve),
+            TryGetSharedValue(components, component => component.ProtectionSettings.FieldRelay.CtRatio, FormatOptionalRelayNumber) ?? string.Empty,
+            TryGetSharedValue(components, component => component.ProtectionSettings.FieldRelay.PickupAmps, FormatOptionalRelayNumber) ?? string.Empty,
+            TryGetSharedValue(components, component => component.ProtectionSettings.FieldRelay.TimeDial, FormatOptionalRelayNumber) ?? string.Empty,
+            TryGetSharedValue(components, component => component.ProtectionSettings.FieldRelay.InstantaneousAmps, FormatOptionalRelayNumber) ?? string.Empty);
+    }
+
+    private static void SetRelayEditorValues(
+        ComboBox functionComboBox,
+        ComboBox curveComboBox,
+        TextBox ctRatioTextBox,
+        TextBox pickupAmpsTextBox,
+        TextBox timeDialTextBox,
+        TextBox instantaneousAmpsTextBox,
+        StoredProtectiveRelaySettings settings)
+    {
+        SetRelayEditorValues(
+            functionComboBox,
+            curveComboBox,
+            ctRatioTextBox,
+            pickupAmpsTextBox,
+            timeDialTextBox,
+            instantaneousAmpsTextBox,
+            settings.Function,
+            settings.Curve,
+            FormatOptionalRelayNumber(settings.CtRatio),
+            FormatOptionalRelayNumber(settings.PickupAmps),
+            FormatOptionalRelayNumber(settings.TimeDial),
+            FormatOptionalRelayNumber(settings.InstantaneousAmps));
+    }
+
+    private static void SetRelayEditorValues(
+        ComboBox functionComboBox,
+        ComboBox curveComboBox,
+        TextBox ctRatioTextBox,
+        TextBox pickupAmpsTextBox,
+        TextBox timeDialTextBox,
+        TextBox instantaneousAmpsTextBox,
+        ProtectiveRelayService.RelayFunction? function,
+        ProtectiveRelayService.CurveType? curve,
+        string ctRatio,
+        string pickupAmps,
+        string timeDial,
+        string instantaneousAmps)
+    {
+        functionComboBox.SelectedItem = function;
+        curveComboBox.SelectedItem = curve;
+        ctRatioTextBox.Text = ctRatio;
+        pickupAmpsTextBox.Text = pickupAmps;
+        timeDialTextBox.Text = timeDial;
+        instantaneousAmpsTextBox.Text = instantaneousAmps;
+    }
+
+    private void ClearProtectionSettingsPanel()
+    {
+        SetRelayEditorValues(
+            StudyRelayFunctionComboBox,
+            StudyRelayCurveComboBox,
+            StudyRelayCtRatioTextBox,
+            StudyRelayPickupAmpsTextBox,
+            StudyRelayTimeDialTextBox,
+            StudyRelayInstantaneousAmpsTextBox,
+            function: null,
+            curve: null,
+            ctRatio: string.Empty,
+            pickupAmps: string.Empty,
+            timeDial: string.Empty,
+            instantaneousAmps: string.Empty);
+        SetRelayEditorValues(
+            FieldRelayFunctionComboBox,
+            FieldRelayCurveComboBox,
+            FieldRelayCtRatioTextBox,
+            FieldRelayPickupAmpsTextBox,
+            FieldRelayTimeDialTextBox,
+            FieldRelayInstantaneousAmpsTextBox,
+            function: null,
+            curve: null,
+            ctRatio: string.Empty,
+            pickupAmps: string.Empty,
+            timeDial: string.Empty,
+            instantaneousAmps: string.Empty);
+    }
+
+    private static string FormatOptionalRelayNumber(double? value)
+        => value?.ToString("0.###", CultureInfo.InvariantCulture) ?? string.Empty;
+
+    private static T? TryGetSharedNullableValue<T>(IReadOnlyList<ElectricalComponent> components, Func<ElectricalComponent, T?> selector)
+        where T : struct
+    {
+        if (components.Count == 0)
+            return null;
+
+        var first = selector(components[0]);
+        for (var index = 1; index < components.Count; index++)
+        {
+            if (!Nullable.Equals(first, selector(components[index])))
+                return null;
+        }
+
+        return first;
     }
 
     private static string? TryGetSharedValue<T>(IReadOnlyList<ElectricalComponent> components, Func<ElectricalComponent, T> selector, Func<T, string> formatter)
@@ -1672,6 +1838,7 @@ public partial class MainWindow
         ManufacturerTextBox.Text = string.Empty;
         PartNumberTextBox.Text = string.Empty;
         ReferenceUrlTextBox.Text = string.Empty;
+        ClearProtectionSettingsPanel();
         ClearComponentInteropPropertiesPanel();
         RefreshProjectParameterBindingsUi(Array.Empty<ElectricalComponent>(), isMultiSelection: false);
         UpdateReferenceAssignmentUi(Array.Empty<ElectricalComponent>());

@@ -132,6 +132,7 @@ public partial class MainWindow
         DataContext = _viewModel;
         UpdateWindowTitle();
         InitializeDimensionDisplayDefaults();
+        InitializeProtectionSettingsEditor();
         _revitIntrospectionOptions = RevitIntrospectionOptions.FromEnvironment();
         _revitIntrospectionService = RevitGeometryMeasurementIntrospectionService.CreateDefault(_revitIntrospectionOptions);
         _customDimensionSnapMode = GetSelectedCustomDimensionSnapMode();

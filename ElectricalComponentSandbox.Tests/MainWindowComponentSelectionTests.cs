@@ -22,12 +22,18 @@ public class MainWindowComponentSelectionTests
             selected[1].Parameters.Width = 2.5;
             selected[0].Parameters.Material = "Steel";
             selected[1].Parameters.Material = "PVC";
+            selected[0].ProtectionSettings.StudyRelay.CtRatio = 200;
+            selected[1].ProtectionSettings.StudyRelay.CtRatio = 200;
+            selected[0].ProtectionSettings.StudyRelay.PickupAmps = 600;
+            selected[1].ProtectionSettings.StudyRelay.PickupAmps = 450;
 
             viewModel.SetSelectedComponents(selected, selected[0]);
             window.UpdatePropertiesPanelForTesting();
 
             var widthTextBox = FindRequired<TextBox>(window, "WidthTextBox");
             var materialTextBox = FindRequired<TextBox>(window, "MaterialTextBox");
+            var studyRelayCtRatioTextBox = FindRequired<TextBox>(window, "StudyRelayCtRatioTextBox");
+            var studyRelayPickupAmpsTextBox = FindRequired<TextBox>(window, "StudyRelayPickupAmpsTextBox");
             var summaryTextBlock = FindRequired<TextBlock>(window, "MultiSelectionSummaryTextBlock");
             var nameTextBox = FindRequired<TextBox>(window, "NameTextBox");
             var applyButton = FindRequired<Button>(window, "ApplyPropertiesButton");
@@ -35,6 +41,8 @@ public class MainWindowComponentSelectionTests
             return (
                 widthText: widthTextBox.Text,
                 materialText: materialTextBox.Text,
+                studyCtRatioText: studyRelayCtRatioTextBox.Text,
+                studyPickupText: studyRelayPickupAmpsTextBox.Text,
                 summaryVisibility: summaryTextBlock.Visibility,
                 summaryText: summaryTextBlock.Text,
                 nameEnabled: nameTextBox.IsEnabled,
@@ -43,10 +51,51 @@ public class MainWindowComponentSelectionTests
 
         Assert.Equal("2'-6\"", outcome.widthText);
         Assert.Equal(string.Empty, outcome.materialText);
+        Assert.Equal("200", outcome.studyCtRatioText);
+        Assert.Equal(string.Empty, outcome.studyPickupText);
         Assert.Equal(Visibility.Visible, outcome.summaryVisibility);
         Assert.Contains("Editing 2 selected components", outcome.summaryText);
         Assert.False(outcome.nameEnabled);
         Assert.Equal("Apply Shared Changes", outcome.buttonCaption);
+    }
+
+    [Fact]
+    public void UpdatePropertiesPanelForTesting_SingleSelectionShowsStoredRelaySettings()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            selected[0].ProtectionSettings.StudyRelay.Function = ProtectiveRelayService.RelayFunction.Function51;
+            selected[0].ProtectionSettings.StudyRelay.Curve = ProtectiveRelayService.CurveType.VeryInverse;
+            selected[0].ProtectionSettings.StudyRelay.CtRatio = 400;
+            selected[0].ProtectionSettings.StudyRelay.PickupAmps = 725;
+            selected[0].ProtectionSettings.StudyRelay.TimeDial = 1.35;
+            selected[0].ProtectionSettings.StudyRelay.InstantaneousAmps = 2800;
+
+            selected[0].ProtectionSettings.FieldRelay.Function = ProtectiveRelayService.RelayFunction.Function50N;
+            selected[0].ProtectionSettings.FieldRelay.Curve = ProtectiveRelayService.CurveType.DefiniteTime;
+            selected[0].ProtectionSettings.FieldRelay.CtRatio = 200;
+            selected[0].ProtectionSettings.FieldRelay.PickupAmps = 90;
+            selected[0].ProtectionSettings.FieldRelay.TimeDial = 0.45;
+            selected[0].ProtectionSettings.FieldRelay.InstantaneousAmps = 600;
+
+            viewModel.SelectSingleComponent(selected[0]);
+            window.UpdatePropertiesPanelForTesting();
+
+            Assert.Equal(ProtectiveRelayService.RelayFunction.Function51, FindRequired<ComboBox>(window, "StudyRelayFunctionComboBox").SelectedItem);
+            Assert.Equal(ProtectiveRelayService.CurveType.VeryInverse, FindRequired<ComboBox>(window, "StudyRelayCurveComboBox").SelectedItem);
+            Assert.Equal("400", FindRequired<TextBox>(window, "StudyRelayCtRatioTextBox").Text);
+            Assert.Equal("725", FindRequired<TextBox>(window, "StudyRelayPickupAmpsTextBox").Text);
+            Assert.Equal("1.35", FindRequired<TextBox>(window, "StudyRelayTimeDialTextBox").Text);
+            Assert.Equal("2800", FindRequired<TextBox>(window, "StudyRelayInstantaneousAmpsTextBox").Text);
+
+            Assert.Equal(ProtectiveRelayService.RelayFunction.Function50N, FindRequired<ComboBox>(window, "FieldRelayFunctionComboBox").SelectedItem);
+            Assert.Equal(ProtectiveRelayService.CurveType.DefiniteTime, FindRequired<ComboBox>(window, "FieldRelayCurveComboBox").SelectedItem);
+            Assert.Equal("200", FindRequired<TextBox>(window, "FieldRelayCtRatioTextBox").Text);
+            Assert.Equal("90", FindRequired<TextBox>(window, "FieldRelayPickupAmpsTextBox").Text);
+            Assert.Equal("0.45", FindRequired<TextBox>(window, "FieldRelayTimeDialTextBox").Text);
+            Assert.Equal("600", FindRequired<TextBox>(window, "FieldRelayInstantaneousAmpsTextBox").Text);
+            return 0;
+        });
     }
 
     [Fact]
@@ -79,6 +128,73 @@ public class MainWindowComponentSelectionTests
             Assert.Equal("Red", selected[0].Parameters.Color);
             Assert.Equal("Blue", selected[1].Parameters.Color);
 
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void ApplyPropertiesForTesting_SingleSelectionUpdatesStoredRelaySettings()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            viewModel.SelectSingleComponent(selected[0]);
+            window.UpdatePropertiesPanelForTesting();
+
+            FindRequired<ComboBox>(window, "StudyRelayFunctionComboBox").SelectedItem = ProtectiveRelayService.RelayFunction.Function51N;
+            FindRequired<ComboBox>(window, "StudyRelayCurveComboBox").SelectedItem = ProtectiveRelayService.CurveType.ExtremelyInverse;
+            FindRequired<TextBox>(window, "StudyRelayCtRatioTextBox").Text = "300";
+            FindRequired<TextBox>(window, "StudyRelayPickupAmpsTextBox").Text = "180";
+            FindRequired<TextBox>(window, "StudyRelayTimeDialTextBox").Text = "0.8";
+            FindRequired<TextBox>(window, "StudyRelayInstantaneousAmpsTextBox").Text = "900";
+
+            FindRequired<ComboBox>(window, "FieldRelayFunctionComboBox").SelectedItem = ProtectiveRelayService.RelayFunction.Function50;
+            FindRequired<ComboBox>(window, "FieldRelayCurveComboBox").SelectedItem = ProtectiveRelayService.CurveType.DefiniteTime;
+            FindRequired<TextBox>(window, "FieldRelayCtRatioTextBox").Text = "150";
+            FindRequired<TextBox>(window, "FieldRelayPickupAmpsTextBox").Text = "250";
+            FindRequired<TextBox>(window, "FieldRelayTimeDialTextBox").Text = "0.25";
+            FindRequired<TextBox>(window, "FieldRelayInstantaneousAmpsTextBox").Text = "1200";
+
+            Assert.False(window.ApplyPropertiesForTesting());
+
+            Assert.Equal(ProtectiveRelayService.RelayFunction.Function51N, selected[0].ProtectionSettings.StudyRelay.Function);
+            Assert.Equal(ProtectiveRelayService.CurveType.ExtremelyInverse, selected[0].ProtectionSettings.StudyRelay.Curve);
+            Assert.Equal(300, selected[0].ProtectionSettings.StudyRelay.CtRatio);
+            Assert.Equal(180, selected[0].ProtectionSettings.StudyRelay.PickupAmps);
+            Assert.Equal(0.8, selected[0].ProtectionSettings.StudyRelay.TimeDial);
+            Assert.Equal(900, selected[0].ProtectionSettings.StudyRelay.InstantaneousAmps);
+
+            Assert.Equal(ProtectiveRelayService.RelayFunction.Function50, selected[0].ProtectionSettings.FieldRelay.Function);
+            Assert.Equal(ProtectiveRelayService.CurveType.DefiniteTime, selected[0].ProtectionSettings.FieldRelay.Curve);
+            Assert.Equal(150, selected[0].ProtectionSettings.FieldRelay.CtRatio);
+            Assert.Equal(250, selected[0].ProtectionSettings.FieldRelay.PickupAmps);
+            Assert.Equal(0.25, selected[0].ProtectionSettings.FieldRelay.TimeDial);
+            Assert.Equal(1200, selected[0].ProtectionSettings.FieldRelay.InstantaneousAmps);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void ApplyPropertiesForTesting_MultiSelectionUpdatesOnlyFilledRelayFields()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            selected[0].ProtectionSettings.StudyRelay.Function = ProtectiveRelayService.RelayFunction.Function51;
+            selected[1].ProtectionSettings.StudyRelay.Function = ProtectiveRelayService.RelayFunction.Function50N;
+            selected[0].ProtectionSettings.FieldRelay.PickupAmps = 100;
+            selected[1].ProtectionSettings.FieldRelay.PickupAmps = 200;
+
+            viewModel.SetSelectedComponents(selected, selected[0]);
+            window.UpdatePropertiesPanelForTesting();
+
+            FindRequired<ComboBox>(window, "StudyRelayCurveComboBox").SelectedItem = ProtectiveRelayService.CurveType.ModeratelyInverse;
+            FindRequired<TextBox>(window, "FieldRelayPickupAmpsTextBox").Text = "350";
+
+            Assert.False(window.ApplyPropertiesForTesting());
+
+            Assert.Equal(ProtectiveRelayService.RelayFunction.Function51, selected[0].ProtectionSettings.StudyRelay.Function);
+            Assert.Equal(ProtectiveRelayService.RelayFunction.Function50N, selected[1].ProtectionSettings.StudyRelay.Function);
+            Assert.All(selected, component => Assert.Equal(ProtectiveRelayService.CurveType.ModeratelyInverse, component.ProtectionSettings.StudyRelay.Curve));
+            Assert.All(selected, component => Assert.Equal(350, component.ProtectionSettings.FieldRelay.PickupAmps));
             return 0;
         });
     }
@@ -1311,29 +1427,19 @@ public class MainWindowComponentSelectionTests
             Assert.Equal("Draw\nPlan", navigation.CanvasLabel);
             Assert.Equal("Add\nParts", navigation.LibraryLabel);
             Assert.Equal("Inspect\nNext", navigation.PropertiesLabel);
-            Assert.Contains("Import Reference", primaryMenuHeaders);
-            Assert.Contains("Open Project", primaryMenuHeaders);
-            Assert.DoesNotContain("Add Conduit", primaryMenuHeaders);
-            Assert.Contains("Open Project...", overflowMenuHeaders);
-            Assert.Contains("Save Project", overflowMenuHeaders);
-            Assert.Contains("Import PDF Underlay...", overflowMenuHeaders);
-            Assert.Contains("Dismiss Walkthrough", overflowMenuHeaders);
-            Assert.DoesNotContain("Delete Selected", overflowMenuHeaders);
+            AssertHeadersContain(primaryMenuHeaders, "Import Reference", "Open Project");
+            AssertHeadersDoNotContain(primaryMenuHeaders, "Add Conduit");
+            AssertHeadersContain(overflowMenuHeaders,
+                "Open Project...",
+                "Save Project",
+                "Import PDF Underlay...",
+                "Protection Program Summary...",
+                "Export Electrical Report...",
+                "Dismiss Walkthrough");
+            AssertHeadersDoNotContain(overflowMenuHeaders, "Delete Selected");
 
             Assert.True(window.ExecuteMobileOnboardingInlineActionForTesting("dismiss"));
-
-            state = window.GetMobileTopBarStateForTesting();
-            onboardingState = window.GetMobileOnboardingInlineStateForTesting();
-            primaryMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: true);
-            overflowMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: false);
-
-            Assert.Equal("Plan", state.SectionTitle);
-            Assert.Equal("Start", state.AddLabel);
-            Assert.Contains("Import a reference", state.Summary, StringComparison.OrdinalIgnoreCase);
-            Assert.False(onboardingState.IsVisible);
-            Assert.Contains("Import Reference", primaryMenuHeaders);
-            Assert.Contains("Add Conduit", primaryMenuHeaders);
-            Assert.DoesNotContain("Dismiss Walkthrough", overflowMenuHeaders);
+            AssertMobileStarterMenuAfterDismiss(window);
             return 0;
         });
     }
@@ -1457,6 +1563,8 @@ public class MainWindowComponentSelectionTests
             Assert.Contains("Duplicate", primaryMenuHeaders);
             Assert.Contains("Delete Selected", overflowMenuHeaders);
             Assert.Contains("Measure Distance", overflowMenuHeaders);
+            Assert.Contains("Protection Program Summary...", overflowMenuHeaders);
+            Assert.Contains("Export Electrical Report...", overflowMenuHeaders);
             Assert.DoesNotContain("Open Project...", overflowMenuHeaders);
             Assert.DoesNotContain("Save Project", overflowMenuHeaders);
             Assert.DoesNotContain("Import PDF Underlay...", overflowMenuHeaders);
@@ -1644,6 +1752,33 @@ public class MainWindowComponentSelectionTests
     {
         return root.FindName(name) as T
             ?? throw new Xunit.Sdk.XunitException($"Expected control '{name}' of type {typeof(T).Name}.");
+    }
+
+    private static void AssertHeadersContain(IEnumerable<string> headers, params string[] expected)
+    {
+        foreach (var header in expected)
+            Assert.Contains(header, headers);
+    }
+
+    private static void AssertHeadersDoNotContain(IEnumerable<string> headers, params string[] unexpected)
+    {
+        foreach (var header in unexpected)
+            Assert.DoesNotContain(header, headers);
+    }
+
+    private static void AssertMobileStarterMenuAfterDismiss(MainWindow window)
+    {
+        var state = window.GetMobileTopBarStateForTesting();
+        var onboardingState = window.GetMobileOnboardingInlineStateForTesting();
+        var primaryMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: true);
+        var overflowMenuHeaders = window.GetMobileMenuHeadersForTesting(primaryMenu: false);
+
+        Assert.Equal("Plan", state.SectionTitle);
+        Assert.Equal("Start", state.AddLabel);
+        Assert.Contains("Import a reference", state.Summary, StringComparison.OrdinalIgnoreCase);
+        Assert.False(onboardingState.IsVisible);
+        AssertHeadersContain(primaryMenuHeaders, "Import Reference", "Add Conduit");
+        AssertHeadersDoNotContain(overflowMenuHeaders, "Dismiss Walkthrough");
     }
 
     private static bool AreClose(Point3D actual, Point3D expected, double tolerance = 0.001)

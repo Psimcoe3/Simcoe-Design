@@ -812,6 +812,56 @@
                                 <TextBox x:Name="ReferenceUrlTextBox"/>
                                 <Button Content="Open Reference" Click="OpenReference_Click" Margin="0,4,0,0"/>
 
+                                <TextBlock Text="Protection Settings" FontWeight="Bold" Margin="0,10,0,0"/>
+                                <TextBlock Text="Leave a field blank to fall back to derived heuristics. Shared edits only apply fields you explicitly set."
+                                           Foreground="Gray"
+                                           FontStyle="Italic"
+                                           TextWrapping="Wrap"
+                                           Margin="0,2,0,6"/>
+                                <Expander Header="Study Relay" IsExpanded="True">
+                                    <StackPanel Margin="0,6,0,0">
+                                        <TextBlock Text="Function:"/>
+                                        <ComboBox x:Name="StudyRelayFunctionComboBox" Margin="0,0,0,4"/>
+
+                                        <TextBlock Text="Curve:"/>
+                                        <ComboBox x:Name="StudyRelayCurveComboBox" Margin="0,0,0,4"/>
+
+                                        <TextBlock Text="CT Ratio:"/>
+                                        <TextBox x:Name="StudyRelayCtRatioTextBox" Margin="0,0,0,4"/>
+
+                                        <TextBlock Text="Pickup Amps:"/>
+                                        <TextBox x:Name="StudyRelayPickupAmpsTextBox" Margin="0,0,0,4"/>
+
+                                        <TextBlock Text="Time Dial:"/>
+                                        <TextBox x:Name="StudyRelayTimeDialTextBox" Margin="0,0,0,4"/>
+
+                                        <TextBlock Text="Instantaneous Amps:"/>
+                                        <TextBox x:Name="StudyRelayInstantaneousAmpsTextBox" Margin="0,0,0,0"/>
+                                    </StackPanel>
+                                </Expander>
+
+                                <Expander Header="Field Relay" IsExpanded="False" Margin="0,6,0,0">
+                                    <StackPanel Margin="0,6,0,0">
+                                        <TextBlock Text="Function:"/>
+                                        <ComboBox x:Name="FieldRelayFunctionComboBox" Margin="0,0,0,4"/>
+
+                                        <TextBlock Text="Curve:"/>
+                                        <ComboBox x:Name="FieldRelayCurveComboBox" Margin="0,0,0,4"/>
+
+                                        <TextBlock Text="CT Ratio:"/>
+                                        <TextBox x:Name="FieldRelayCtRatioTextBox" Margin="0,0,0,4"/>
+
+                                        <TextBlock Text="Pickup Amps:"/>
+                                        <TextBox x:Name="FieldRelayPickupAmpsTextBox" Margin="0,0,0,4"/>
+
+                                        <TextBlock Text="Time Dial:"/>
+                                        <TextBox x:Name="FieldRelayTimeDialTextBox" Margin="0,0,0,4"/>
+
+                                        <TextBlock Text="Instantaneous Amps:"/>
+                                        <TextBox x:Name="FieldRelayInstantaneousAmpsTextBox" Margin="0,0,0,0"/>
+                                    </StackPanel>
+                                </Expander>
+
                                 <TextBlock Text="Source &amp; Interop" FontWeight="Bold" Margin="0,10,0,0"/>
                                 <Border BorderBrush="#FFD7E0E7"
                                         BorderThickness="1"

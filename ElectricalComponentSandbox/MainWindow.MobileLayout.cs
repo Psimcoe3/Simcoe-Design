@@ -654,6 +654,24 @@ public partial class MainWindow
             ? WorkspaceOnboardingState.Hidden
             : BuildWorkspaceOnboardingState(selectedComponentCount, selectedMarkup != null);
 
+        AddMobilePaneSwitchMenuItems();
+        AddMobileReviewMenuItem(selectedMarkup);
+        AddMobileCancelToolMenuItem();
+        AddMobileSelectedMarkupOverflowItems(selectedMarkup);
+        AddMobileSelectedComponentOverflowItems(selectedComponentCount);
+        AddMobileElectricalReportMenuItems();
+
+        if (onboardingState.IsVisible)
+            AddMobileMenuItem(MobileMoreMenu, "Dismiss Walkthrough", DismissWorkspaceOnboarding_Click);
+
+        if (!hasFocusedWorkflow)
+            AddMobileProjectOverflowItems();
+
+        AddMobileThemeAndLayoutMenuItems();
+    }
+
+    private void AddMobilePaneSwitchMenuItems()
+    {
         if (_activeMobilePane != MobilePane.Canvas)
             AddMobileMenuItem(MobileMoreMenu, "Show Plan", (_, _) => SetMobilePane(MobilePane.Canvas));
 
@@ -662,51 +680,79 @@ public partial class MainWindow
 
         if (_activeMobilePane != MobilePane.Properties)
             AddMobileMenuItem(MobileMoreMenu, "Show Inspector", (_, _) => SetMobilePane(MobilePane.Properties));
+    }
 
+    private void AddMobileReviewMenuItem(object? selectedMarkup)
+    {
         if (_viewModel.MarkupTool.TotalCount > 0 && selectedMarkup == null)
             AddMobileMenuItem(MobileMoreMenu, "Review Markups", ShowMobileMarkupReview_Click);
+    }
 
+    private void AddMobileCancelToolMenuItem()
+    {
         if (_isDrawingConduit || _isEditingConduitPath || _isSketchLineMode || _isSketchRectangleMode || _isPendingMarkupVertexInsertion || _isFreehandDrawing)
             AddMobileMenuItem(MobileMoreMenu, "Cancel Active Tool", CancelMobileActiveTool_Click);
+    }
 
-        if (selectedMarkup != null)
-        {
-            if (_viewModel.MarkupTool.HasGeometryEditableSelection)
-                AddMobileMenuItem(MobileMoreMenu, "Edit Geometry...", EditSelectedMarkupGeometry_Click);
+    private void AddMobileSelectedMarkupOverflowItems(object? selectedMarkup)
+    {
+        if (selectedMarkup == null)
+            return;
 
-            if (_viewModel.MarkupTool.HasAppearanceEditableSelection)
-                AddMobileMenuItem(MobileMoreMenu, "Edit Appearance...", EditSelectedMarkupAppearance_Click);
+        if (_viewModel.MarkupTool.HasGeometryEditableSelection)
+            AddMobileMenuItem(MobileMoreMenu, "Edit Geometry...", EditSelectedMarkupGeometry_Click);
 
-            if (_viewModel.MarkupTool.HasPathVertexInsertCandidate)
-                AddMobileMenuItem(MobileMoreMenu, "Insert Vertex", InsertSelectedMarkupVertex_Click);
+        if (_viewModel.MarkupTool.HasAppearanceEditableSelection)
+            AddMobileMenuItem(MobileMoreMenu, "Edit Appearance...", EditSelectedMarkupAppearance_Click);
 
-            if (_viewModel.MarkupTool.HasPathVertexDeleteCandidate)
-                AddMobileMenuItem(MobileMoreMenu, "Delete Active Vertex", DeleteSelectedMarkupVertex_Click);
-        }
+        if (_viewModel.MarkupTool.HasPathVertexInsertCandidate)
+            AddMobileMenuItem(MobileMoreMenu, "Insert Vertex", InsertSelectedMarkupVertex_Click);
 
-        if (selectedComponentCount > 0)
-        {
-            AddMobileMenuItem(MobileMoreMenu, "Delete Selected", DeleteComponent_Click);
+        if (_viewModel.MarkupTool.HasPathVertexDeleteCandidate)
+            AddMobileMenuItem(MobileMoreMenu, "Delete Active Vertex", DeleteSelectedMarkupVertex_Click);
+    }
 
-            if (selectedComponentCount > 1)
-                AddMobileMenuItem(MobileMoreMenu, "Measure Distance", MeasureDistance_Click);
-        }
+    private void AddMobileSelectedComponentOverflowItems(int selectedComponentCount)
+    {
+        if (selectedComponentCount <= 0)
+            return;
 
-        if (onboardingState.IsVisible)
-            AddMobileMenuItem(MobileMoreMenu, "Dismiss Walkthrough", DismissWorkspaceOnboarding_Click);
+        AddMobileMenuItem(MobileMoreMenu, "Delete Selected", DeleteComponent_Click);
 
-        if (!hasFocusedWorkflow)
-        {
-            AddMobileSeparator(MobileMoreMenu);
-            AddMobileMenuItem(MobileMoreMenu, "Open Project...", OpenProject_Click);
-            AddMobileMenuItem(MobileMoreMenu, "Save Project", SaveProject_Click);
-            AddMobileMenuItem(MobileMoreMenu, "Import PDF Underlay...", ImportPdf_Click);
-        }
+        if (selectedComponentCount > 1)
+            AddMobileMenuItem(MobileMoreMenu, "Measure Distance", MeasureDistance_Click);
+    }
 
+    private void AddMobileElectricalReportMenuItems()
+    {
+        if (!HasMobileElectricalReportActions())
+            return;
+
+        AddMobileMenuItem(MobileMoreMenu, "Protection Program Summary...", ProtectionProgramSummary_Click);
+        AddMobileMenuItem(MobileMoreMenu, "Export Electrical Report...", ExportElectricalReport_Click);
+    }
+
+    private void AddMobileProjectOverflowItems()
+    {
+        AddMobileSeparator(MobileMoreMenu);
+        AddMobileMenuItem(MobileMoreMenu, "Open Project...", OpenProject_Click);
+        AddMobileMenuItem(MobileMoreMenu, "Save Project", SaveProject_Click);
+        AddMobileMenuItem(MobileMoreMenu, "Import PDF Underlay...", ImportPdf_Click);
+    }
+
+    private void AddMobileThemeAndLayoutMenuItems()
+    {
         AddMobileSeparator(MobileMoreMenu);
         AddMobileMenuItem(MobileMoreMenu, "Theme: iOS", MobileThemeIosMenuItem_Click, isCheckable: true, isChecked: _mobileTheme == MobileTheme.IOS);
         AddMobileMenuItem(MobileMoreMenu, "Theme: Android", MobileThemeAndroidMenuItem_Click, isCheckable: true, isChecked: _mobileTheme == MobileTheme.AndroidMaterial);
         AddMobileMenuItem(MobileMoreMenu, "Desktop View", MobileViewButton_Click);
+    }
+
+    private bool HasMobileElectricalReportActions()
+    {
+        return _viewModel.Components.Any()
+            || _viewModel.Circuits.Any()
+            || _viewModel.PanelSchedules.Any();
     }
 
     private bool HasFocusedMobileWorkflow(int selectedComponentCount, bool hasSelectedMarkup)
