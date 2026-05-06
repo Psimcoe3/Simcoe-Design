@@ -94,6 +94,36 @@ public class AutoRouteService
         return run;
     }
 
+    /// <summary>
+    /// Routes a bundle of parallel conduit runs from a centerline path.
+    /// Each run is offset from the centerline and then processed through the
+    /// same obstacle-aware auto-routing workflow as a single run.
+    /// </summary>
+    public IReadOnlyList<ConduitRun> AutoRouteParallel(
+        IReadOnlyList<XYZ> centerPath,
+        int runCount,
+        double spacing,
+        RoutingOptions options,
+        XYZ? offsetDirection = null)
+    {
+        if (centerPath.Count < 2)
+            throw new ArgumentException("AutoRouteParallel requires at least two points.", nameof(centerPath));
+        if (runCount < 1)
+            throw new ArgumentOutOfRangeException(nameof(runCount), "Run count must be at least 1.");
+        if (spacing < 0)
+            throw new ArgumentOutOfRangeException(nameof(spacing), "Spacing must be non-negative.");
+
+        var paths = ParallelRunService.GenerateParallelPaths(centerPath, runCount, spacing, offsetDirection);
+        var runs = new List<ConduitRun>(paths.Count);
+
+        foreach (var path in paths)
+        {
+            runs.Add(AutoRoute(path, options));
+        }
+
+        return runs;
+    }
+
     private static List<XYZ> NormalizePath(IReadOnlyList<XYZ> pathway, RoutingOptions options)
     {
         var normalized = new List<XYZ>(pathway.Count);

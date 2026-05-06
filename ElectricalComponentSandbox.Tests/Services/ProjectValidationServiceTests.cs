@@ -4,7 +4,7 @@ using Xunit;
 
 namespace ElectricalComponentSandbox.Tests.Services;
 
-public class ProjectValidationServiceTests
+public partial class ProjectValidationServiceTests
 {
     private static ProjectValidationService CreateService()
     {
@@ -329,44 +329,10 @@ public class ProjectValidationServiceTests
     public void ElectricalCircuit_WithValidConnectorTopology_NoCircuitTopologyFinding()
     {
         var svc = CreateService();
-        var panelConnector = new ElectricalConnector
-        {
-            Id = "panel-conn",
-            ComponentId = "P1",
-            PortName = "Main",
-            SystemType = ElectricalSystemType.PowerCircuit,
-            Domain = ConnectorDomain.Electrical,
-            Voltage = 120,
-            Phase = "ABC"
-        };
-        var deviceConnector = new ElectricalConnector
-        {
-            Id = "device-conn",
-            ComponentId = "D1",
-            PortName = "Line",
-            SystemType = ElectricalSystemType.PowerCircuit,
-            Domain = ConnectorDomain.Electrical,
-            Voltage = 120,
-            Phase = "A"
-        };
-        var panel = new PanelComponent
-        {
-            Id = "P1",
-            Name = "Panel P1",
-            ElectricalConnectors = new ElectricalConnectorManager
-            {
-                Connectors = { panelConnector }
-            }
-        };
-        var device = new BoxComponent
-        {
-            Id = "D1",
-            Name = "Device D1",
-            ElectricalConnectors = new ElectricalConnectorManager
-            {
-                Connectors = { deviceConnector }
-            }
-        };
+        var panelConnector = CreatePowerConnector("panel-conn", "P1", "Main", 120, "ABC");
+        var deviceConnector = CreatePowerConnector("device-conn", "D1", "Line", 120, "A");
+        var panel = CreatePanelWithConnector("P1", "Panel P1", panelConnector);
+        var device = CreateBoxWithConnector("D1", "Device D1", deviceConnector);
         var circuit = ElectricalCircuitService.Create(
             panelConnector,
             deviceConnector,
@@ -525,50 +491,12 @@ public class ProjectValidationServiceTests
 
     private static PanelSchedule MakeThreePhaseSchedule(string panelId, string panelName, double[] phaseLoads)
     {
-        // Build circuits to create desired phase loading
-        var circuits = new List<Circuit>();
-        // Phase A
-        circuits.Add(new Circuit
+        var circuits = new List<Circuit>
         {
-            CircuitNumber = "1",
-            Voltage = 277,
-            Poles = 1,
-            Phase = "A",
-            Breaker = new CircuitBreaker { TripAmps = 20, Poles = 1 },
-            ConnectedLoadVA = phaseLoads[0],
-            DemandFactor = 1.0,
-            Wire = new WireSpec { Size = "12", Conductors = 2, GroundSize = "12", Material = ConductorMaterial.Copper },
-            SlotType = CircuitSlotType.Circuit,
-            LoadClassification = LoadClassification.Lighting,
-        });
-        // Phase B
-        circuits.Add(new Circuit
-        {
-            CircuitNumber = "2",
-            Voltage = 277,
-            Poles = 1,
-            Phase = "B",
-            Breaker = new CircuitBreaker { TripAmps = 20, Poles = 1 },
-            ConnectedLoadVA = phaseLoads[1],
-            DemandFactor = 1.0,
-            Wire = new WireSpec { Size = "12", Conductors = 2, GroundSize = "12", Material = ConductorMaterial.Copper },
-            SlotType = CircuitSlotType.Circuit,
-            LoadClassification = LoadClassification.Lighting,
-        });
-        // Phase C
-        circuits.Add(new Circuit
-        {
-            CircuitNumber = "3",
-            Voltage = 277,
-            Poles = 1,
-            Phase = "C",
-            Breaker = new CircuitBreaker { TripAmps = 20, Poles = 1 },
-            ConnectedLoadVA = phaseLoads[2],
-            DemandFactor = 1.0,
-            Wire = new WireSpec { Size = "12", Conductors = 2, GroundSize = "12", Material = ConductorMaterial.Copper },
-            SlotType = CircuitSlotType.Circuit,
-            LoadClassification = LoadClassification.Lighting,
-        });
+            CreatePhaseCircuit("1", "A", phaseLoads[0]),
+            CreatePhaseCircuit("2", "B", phaseLoads[1]),
+            CreatePhaseCircuit("3", "C", phaseLoads[2]),
+        };
 
         return new PanelSchedule
         {
@@ -580,4 +508,5 @@ public class ProjectValidationServiceTests
             Circuits = circuits,
         };
     }
+
 }
