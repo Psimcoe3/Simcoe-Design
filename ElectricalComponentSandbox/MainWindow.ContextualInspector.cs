@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using ElectricalComponentSandbox.Markup.Models;
+using ElectricalComponentSandbox.Models;
 
 namespace ElectricalComponentSandbox;
 
@@ -150,16 +151,10 @@ public partial class MainWindow
         }
 
         if (selectedComponentCount > 1)
-            return $"Editing {selectedComponentCount} selected components with shared fields and mixed-value protection.";
+            return BuildMultiSelectionInspectorSummary(GetSelectedComponents());
 
         if (selectedComponentCount == 1)
-        {
-            var component = GetSelectedComponents().First();
-            var provenance = component.InteropMetadata.HasAnyValue
-                ? $", {BuildInspectorInteropPhrase(component.InteropMetadata)},"
-                : string.Empty;
-            return $"Editing {component.Name} in component details, dimensions{provenance} and catalog reference sections.";
-        }
+            return BuildSingleComponentInspectorSummary(GetSelectedComponents().First());
 
         return "Select a component or markup to focus the inspector on the task at hand.";
     }
@@ -170,9 +165,39 @@ public partial class MainWindow
             return "Use Review & Markups for threaded replies, status updates, assignments, and geometry or appearance edits.";
 
         if (selectedComponentCount > 0)
-            return "Use Component Details for transforms, shared properties, dimensions, part references, and source provenance.";
+            return "Use Component Details for transforms, shared properties, protection settings, dimensions, part references, and source provenance.";
 
         return "Choose Component Details when laying out equipment, or switch to Review & Markups when triaging review comments.";
+    }
+
+    private static string BuildProtectionSelectionSummary(IReadOnlyList<ElectricalComponent> components)
+    {
+        var configuredCount = components.Count(component => component.ProtectionSettings.HasAnySettings);
+        if (configuredCount == 0)
+            return string.Empty;
+
+        return configuredCount == components.Count
+            ? "stored relay settings on every selected component"
+            : $"stored relay settings on {configuredCount} of {components.Count} selected components";
+    }
+
+    private string BuildMultiSelectionInspectorSummary(IReadOnlyList<ElectricalComponent> components)
+    {
+        var protectionSummary = BuildProtectionSelectionSummary(components);
+        return string.IsNullOrWhiteSpace(protectionSummary)
+            ? $"Editing {components.Count} selected components with shared fields and mixed-value protection."
+            : $"Editing {components.Count} selected components with shared fields, mixed-value protection, and {protectionSummary}.";
+    }
+
+    private string BuildSingleComponentInspectorSummary(ElectricalComponent component)
+    {
+        var provenance = component.InteropMetadata.HasAnyValue
+            ? $", {BuildInspectorInteropPhrase(component.InteropMetadata)},"
+            : string.Empty;
+        var protectionSummary = component.ProtectionSettings.HasAnySettings
+            ? " Stored relay settings are available in protection sections."
+            : string.Empty;
+        return $"Editing {component.Name} in component details, dimensions{provenance} and catalog reference sections.{protectionSummary}";
     }
 
     private void UpdateInspectorTaskActions(int selectedComponentCount, MarkupRecord? selectedMarkup)

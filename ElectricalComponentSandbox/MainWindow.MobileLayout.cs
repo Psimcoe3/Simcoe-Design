@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using ElectricalComponentSandbox.Markup.Models;
+using ElectricalComponentSandbox.Models;
 using ElectricalComponentSandbox.Services;
 
 namespace ElectricalComponentSandbox;
@@ -466,26 +467,8 @@ public partial class MainWindow
         var selectedMarkup = _viewModel.MarkupTool.SelectedMarkup;
         var selectedComponentCount = GetSelectedComponents().Count;
 
-        if (_isDrawingConduit)
-            return "Place bend points, then finish or cancel the active conduit route.";
-
-        if (_isEditingConduitPath)
-            return "Adjust conduit bends directly in plan, then finish the path edit.";
-
-        if (_isSketchLineMode)
-            return "Sketch a draft path in plan, then finish the line or cancel the tool.";
-
-        if (_isSketchRectangleMode)
-            return "Drag out a sketch rectangle, then leave the tool or keep drafting.";
-
-        if (_selectedSketchPrimitive != null)
-            return "The selected sketch can be converted into modeled elements from here.";
-
-        if (_isPendingMarkupVertexInsertion)
-            return "Tap a markup segment to insert a new vertex, or cancel the pending edit.";
-
-        if (_isFreehandDrawing)
-            return "Continue tracing the freehand route, then release or cancel to stop drawing.";
+        if (TryBuildFocusedMobileTaskSummary(out var focusedTaskSummary))
+            return focusedTaskSummary;
 
         var onboardingState = BuildMobileOnboardingState(selectedComponentCount, selectedMarkup != null);
         if (onboardingState.IsVisible)
@@ -499,11 +482,8 @@ public partial class MainWindow
         if (selectedMarkup != null)
             return "Reply, resolve, or assign the selected issue without leaving mobile review.";
 
-        if (selectedComponentCount > 1)
-            return "Apply shared edits, duplicate, or zoom to the current selection.";
-
-        if (selectedComponentCount == 1)
-            return "Apply property edits, zoom to the part, or duplicate it while you refine the layout.";
+        if (selectedComponentCount > 0)
+            return BuildMobileSelectionTaskSummary(GetSelectedComponents());
 
         return _activeMobilePane switch
         {
@@ -511,6 +491,82 @@ public partial class MainWindow
             MobilePane.Properties => "Select a component or markup to turn the inspector into the next action workspace.",
             _ => "Import a reference, place the first conduit run, or switch into review when issues arrive."
         };
+    }
+
+    private bool TryBuildFocusedMobileTaskSummary(out string summary)
+    {
+        if (_isDrawingConduit)
+        {
+            summary = "Place bend points, then finish or cancel the active conduit route.";
+            return true;
+        }
+
+        if (_isEditingConduitPath)
+        {
+            summary = "Adjust conduit bends directly in plan, then finish the path edit.";
+            return true;
+        }
+
+        if (_isSketchLineMode)
+        {
+            summary = "Sketch a draft path in plan, then finish the line or cancel the tool.";
+            return true;
+        }
+
+        if (_isSketchRectangleMode)
+        {
+            summary = "Drag out a sketch rectangle, then leave the tool or keep drafting.";
+            return true;
+        }
+
+        if (_selectedSketchPrimitive != null)
+        {
+            summary = "The selected sketch can be converted into modeled elements from here.";
+            return true;
+        }
+
+        if (_isPendingMarkupVertexInsertion)
+        {
+            summary = "Tap a markup segment to insert a new vertex, or cancel the pending edit.";
+            return true;
+        }
+
+        if (_isFreehandDrawing)
+        {
+            summary = "Continue tracing the freehand route, then release or cancel to stop drawing.";
+            return true;
+        }
+
+        summary = string.Empty;
+        return false;
+    }
+
+    private string BuildMobileSelectionTaskSummary(IReadOnlyList<ElectricalComponent> components)
+    {
+        if (components.Count > 1)
+        {
+            var protectionSummary = BuildMobileProtectionSelectionSummary(components);
+            return string.IsNullOrWhiteSpace(protectionSummary)
+                ? "Apply shared edits, duplicate, or zoom to the current selection."
+                : $"Apply shared edits, compare {protectionSummary}, or duplicate and zoom the current selection.";
+        }
+
+        return components[0].ProtectionSettings.HasAnySettings
+            ? "Apply property edits, tune stored relay settings, or duplicate and zoom the part while you refine the layout."
+            : "Apply property edits, zoom to the part, or duplicate it while you refine the layout.";
+    }
+
+    private static string BuildMobileProtectionSelectionSummary(IReadOnlyList<ElectricalComponent> components)
+    {
+        var configuredCount = components.Count(component => component.ProtectionSettings.HasAnySettings);
+        if (configuredCount == 0)
+            return string.Empty;
+
+        if (configuredCount == components.Count)
+            return "stored relay settings across the full selection";
+
+        var componentLabel = configuredCount == 1 ? "component" : "components";
+        return $"stored relay settings on {configuredCount} selected {componentLabel}";
     }
 
     private string BuildMobilePrimaryActionLabel()

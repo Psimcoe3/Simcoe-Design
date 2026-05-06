@@ -4,7 +4,7 @@ using Xunit;
 
 namespace ElectricalComponentSandbox.Tests.Services;
 
-public class ElectricalCircuitServiceTests
+public partial class ElectricalCircuitServiceTests
 {
     // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -100,8 +100,13 @@ public class ElectricalCircuitServiceTests
     [Fact]
     public void Create_MultipleDevices()
     {
-        var panelConn = MakeConnector("p1");
-        var devices = new[] { MakeConnector("d1"), MakeConnector("d2"), MakeConnector("d3") };
+        var panelConn = MakeConnector("p1", systemType: ElectricalSystemType.Data);
+        var devices = new[]
+        {
+            MakeConnector("d1", systemType: ElectricalSystemType.Data),
+            MakeConnector("d2", systemType: ElectricalSystemType.Data),
+            MakeConnector("d3", systemType: ElectricalSystemType.Data)
+        };
 
         var circuit = ElectricalCircuitService.Create(
             panelConn, devices, ElectricalSystemType.Data);
@@ -361,8 +366,8 @@ public class ElectricalCircuitServiceTests
     [InlineData(ElectricalSystemType.Security)]
     public void Create_SupportsAllSystemTypes(ElectricalSystemType systemType)
     {
-        var panelConn = MakeConnector("p1");
-        var d1 = MakeConnector("d1");
+        var panelConn = MakeConnector("p1", systemType: systemType);
+        var d1 = MakeConnector("d1", systemType: systemType);
 
         var circuit = ElectricalCircuitService.Create(panelConn, d1, systemType);
         Assert.Equal(systemType, circuit.SystemType);

@@ -1183,6 +1183,25 @@ public class MainWindowComponentSelectionTests
     }
 
     [Fact]
+    public void UpdateContextualInspectorForTesting_WithProtectionConfiguredSelection_SurfacesProtectionSummary()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            selected[0].ProtectionSettings.StudyRelay.PickupAmps = 450;
+            viewModel.SetSelectedComponents(selected, selected[0]);
+
+            window.UpdateContextualInspectorForTesting();
+
+            var summaryText = FindRequired<TextBlock>(window, "InspectorSummaryTextBlock");
+            var hintText = FindRequired<TextBlock>(window, "InspectorHintTextBlock");
+
+            Assert.Contains("stored relay settings on 1 of 2 selected components", summaryText.Text, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("protection settings", hintText.Text, StringComparison.OrdinalIgnoreCase);
+            return 0;
+        });
+    }
+
+    [Fact]
     public void UpdateContextualInspectorForTesting_WithComponentSelection_ShowsTaskActions()
     {
         RunWithSelectedComponentsWindow((window, viewModel, selected) =>
@@ -1224,6 +1243,25 @@ public class MainWindowComponentSelectionTests
             Assert.Contains("Revit", summaryText.Text);
             Assert.Contains("Campus Power.rvt", summaryText.Text);
             Assert.Contains("source provenance", hintText.Text, StringComparison.OrdinalIgnoreCase);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdateContextualInspectorForTesting_WithProtectionConfiguredSingleComponent_IncludesProtectionSummary()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            selected[0].ProtectionSettings.FieldRelay.TimeDial = 0.6;
+
+            viewModel.SelectSingleComponent(selected[0]);
+            window.UpdateContextualInspectorForTesting();
+
+            var summaryText = FindRequired<TextBlock>(window, "InspectorSummaryTextBlock");
+            var hintText = FindRequired<TextBlock>(window, "InspectorHintTextBlock");
+
+            Assert.Contains("Stored relay settings are available in protection sections", summaryText.Text, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("protection settings", hintText.Text, StringComparison.OrdinalIgnoreCase);
             return 0;
         });
     }
@@ -1573,6 +1611,46 @@ public class MainWindowComponentSelectionTests
             Assert.Equal(4, viewModel.Components.Count);
             Assert.Contains(viewModel.Components, component => component.Name == "Box 1 (Copy)");
             Assert.Contains(viewModel.Components, component => component.Name == "Box 2 (Copy)");
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdateMobileTopBarForTesting_WithProtectionConfiguredSingleSelection_ShowsProtectionSummary()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            selected[0].ProtectionSettings.StudyRelay.CtRatio = 300;
+
+            window.EnableMobileViewForTesting();
+            viewModel.SelectSingleComponent(selected[0]);
+            window.UpdateMobileTopBarForTesting();
+
+            var state = window.GetMobileTopBarStateForTesting();
+
+            Assert.Equal("Selection", state.SectionTitle);
+            Assert.Contains("stored relay settings", state.Summary, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("Act", state.AddLabel);
+            return 0;
+        });
+    }
+
+    [Fact]
+    public void UpdateMobileTopBarForTesting_WithProtectionConfiguredMultiSelection_ShowsProtectionSummary()
+    {
+        RunWithSelectedComponentsWindow((window, viewModel, selected) =>
+        {
+            selected[0].ProtectionSettings.StudyRelay.CtRatio = 300;
+
+            window.EnableMobileViewForTesting();
+            viewModel.SetSelectedComponents(selected, selected[0]);
+            window.UpdateMobileTopBarForTesting();
+
+            var state = window.GetMobileTopBarStateForTesting();
+
+            Assert.Equal("Selection", state.SectionTitle);
+            Assert.Contains("stored relay settings on 1 selected component", state.Summary, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("Act", state.AddLabel);
             return 0;
         });
     }

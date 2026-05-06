@@ -6,7 +6,7 @@ namespace ElectricalComponentSandbox.Services;
 /// Service for creating and managing connector-based electrical circuits.
 /// Mirrors Revit's <c>ElectricalSystem.Create</c> API and circuit editing operations.
 /// </summary>
-public static class ElectricalCircuitService
+public static partial class ElectricalCircuitService
 {
     /// <summary>
     /// Creates a new <see cref="ElectricalCircuit"/> from a panel connector and a device connector.
@@ -31,6 +31,12 @@ public static class ElectricalCircuitService
         if (deviceConnector.IsConnected)
             throw new InvalidOperationException(
                 $"Device connector '{deviceConnector.Id}' is already wired to circuit '{deviceConnector.CircuitId}'.");
+
+        var issues = ValidateNewCircuitConnection(
+            panelConnector,
+            [deviceConnector],
+            systemType);
+        ThrowIfInvalidConnection(issues);
 
         var circuit = new ElectricalCircuit
         {
@@ -62,6 +68,19 @@ public static class ElectricalCircuitService
             throw new InvalidOperationException(
                 $"Panel connector '{panelConnector.Id}' is already wired to circuit '{panelConnector.CircuitId}'.");
 
+        var issues = ValidateNewCircuitConnection(
+            panelConnector,
+            deviceConnectors,
+            systemType);
+        ThrowIfInvalidConnection(issues);
+
+        foreach (var dc in deviceConnectors)
+        {
+            if (dc.IsConnected)
+                throw new InvalidOperationException(
+                    $"Device connector '{dc.Id}' is already wired to circuit '{dc.CircuitId}'.");
+        }
+
         var circuit = new ElectricalCircuit
         {
             SystemType = systemType,
@@ -72,10 +91,6 @@ public static class ElectricalCircuitService
 
         foreach (var dc in deviceConnectors)
         {
-            if (dc.IsConnected)
-                throw new InvalidOperationException(
-                    $"Device connector '{dc.Id}' is already wired to circuit '{dc.CircuitId}'.");
-
             circuit.ConnectorIds.Add(dc.Id);
             dc.CircuitId = circuit.Id;
         }
@@ -96,6 +111,9 @@ public static class ElectricalCircuitService
         if (deviceConnector.IsConnected)
             throw new InvalidOperationException(
                 $"Device connector '{deviceConnector.Id}' is already wired to circuit '{deviceConnector.CircuitId}'.");
+
+        var issues = ValidateDeviceForCircuit(circuit, deviceConnector);
+        ThrowIfInvalidConnection(issues);
 
         circuit.ConnectorIds.Add(deviceConnector.Id);
         deviceConnector.CircuitId = circuit.Id;

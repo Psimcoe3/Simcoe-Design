@@ -44,6 +44,7 @@ public class ProjectValidationService
         VoltageDrop,
         PhaseBalance,
         GeneratorEmergency,
+        CircuitTopology,
     }
 
     /// <summary>Severity level.</summary>
@@ -72,6 +73,7 @@ public class ProjectValidationService
         public string ProjectName { get; init; } = "";
         public List<ElectricalComponent> Components { get; init; } = new();
         public List<Circuit> Circuits { get; init; } = new();
+        public List<ElectricalCircuit> ElectricalCircuits { get; init; } = new();
         public List<PanelSchedule> Schedules { get; init; } = new();
         public double MaxVoltageDropPercent { get; init; } = 3.0;
         public double MaxPhaseImbalancePercent { get; init; } = 10.0;
@@ -158,7 +160,33 @@ public class ProjectValidationService
             }
         }
 
-        // 4. Voltage drop
+        // 4. Connector-based electrical circuit topology
+        if (input.ElectricalCircuits.Count > 0)
+        {
+            var circuitFindings = ElectricalCircuitService.ValidateCircuitSet(
+                input.ElectricalCircuits,
+                input.Components);
+            checksRun++;
+
+            foreach (var finding in circuitFindings)
+            {
+                findings.Add(new ValidationFinding
+                {
+                    Id = $"V-{findingIndex++:D4}",
+                    Category = FindingCategory.CircuitTopology,
+                    Severity = finding.Severity == ElectricalCircuitValidationSeverity.Error
+                        ? FindingSeverity.Error
+                        : finding.Severity == ElectricalCircuitValidationSeverity.Warning
+                            ? FindingSeverity.Warning
+                            : FindingSeverity.Info,
+                    Title = finding.Title,
+                    Description = finding.Description,
+                    ComponentId = finding.ComponentId ?? finding.ConnectorId ?? finding.CircuitId,
+                });
+            }
+        }
+
+        // 5. Voltage drop
         foreach (var circuit in input.Circuits)
         {
             if (circuit.WireLengthFeet <= 0) continue;
@@ -180,7 +208,7 @@ public class ProjectValidationService
             }
         }
 
-        // 5. Phase balance
+        // 6. Phase balance
         foreach (var schedule in input.Schedules)
         {
             checksRun++;
@@ -206,7 +234,7 @@ public class ProjectValidationService
             }
         }
 
-        // 6. Bundle derating spot-check
+        // 7. Bundle derating spot-check
         foreach (var schedule in input.Schedules)
         {
             var activeCircuits = schedule.Circuits.Where(c => c.SlotType == CircuitSlotType.Circuit).ToList();

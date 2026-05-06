@@ -279,6 +279,111 @@ public class ProjectValidationServiceTests
         Assert.NotEmpty(scErrors);
     }
 
+    // ── Connector-based electrical circuit topology ─────────────────────────
+
+    [Fact]
+    public void ElectricalCircuit_WithMissingConnector_ReportsCircuitTopologyError()
+    {
+        var svc = CreateService();
+        var panelConnector = new ElectricalConnector
+        {
+            Id = "panel-conn",
+            ComponentId = "P1",
+            PortName = "Main",
+            SystemType = ElectricalSystemType.PowerCircuit,
+            Domain = ConnectorDomain.Electrical,
+            Voltage = 120,
+            Phase = "A",
+            CircuitId = "EC-1"
+        };
+        var panel = new PanelComponent
+        {
+            Id = "P1",
+            Name = "Panel P1",
+            ElectricalConnectors = new ElectricalConnectorManager
+            {
+                Connectors = { panelConnector }
+            }
+        };
+        var circuit = new ElectricalCircuit
+        {
+            Id = "EC-1",
+            SystemType = ElectricalSystemType.PowerCircuit,
+            ConnectorIds = { panelConnector.Id, "missing-device" }
+        };
+
+        var report = svc.Validate(new ProjectValidationService.ProjectValidationInput
+        {
+            Components = new List<ElectricalComponent> { panel },
+            ElectricalCircuits = new List<ElectricalCircuit> { circuit },
+        });
+
+        var findings = report.Findings
+            .Where(f => f.Category == ProjectValidationService.FindingCategory.CircuitTopology)
+            .ToList();
+        Assert.NotEmpty(findings);
+        Assert.Contains(findings, f => f.Severity == ProjectValidationService.FindingSeverity.Error);
+    }
+
+    [Fact]
+    public void ElectricalCircuit_WithValidConnectorTopology_NoCircuitTopologyFinding()
+    {
+        var svc = CreateService();
+        var panelConnector = new ElectricalConnector
+        {
+            Id = "panel-conn",
+            ComponentId = "P1",
+            PortName = "Main",
+            SystemType = ElectricalSystemType.PowerCircuit,
+            Domain = ConnectorDomain.Electrical,
+            Voltage = 120,
+            Phase = "ABC"
+        };
+        var deviceConnector = new ElectricalConnector
+        {
+            Id = "device-conn",
+            ComponentId = "D1",
+            PortName = "Line",
+            SystemType = ElectricalSystemType.PowerCircuit,
+            Domain = ConnectorDomain.Electrical,
+            Voltage = 120,
+            Phase = "A"
+        };
+        var panel = new PanelComponent
+        {
+            Id = "P1",
+            Name = "Panel P1",
+            ElectricalConnectors = new ElectricalConnectorManager
+            {
+                Connectors = { panelConnector }
+            }
+        };
+        var device = new BoxComponent
+        {
+            Id = "D1",
+            Name = "Device D1",
+            ElectricalConnectors = new ElectricalConnectorManager
+            {
+                Connectors = { deviceConnector }
+            }
+        };
+        var circuit = ElectricalCircuitService.Create(
+            panelConnector,
+            deviceConnector,
+            ElectricalSystemType.PowerCircuit);
+
+        var report = svc.Validate(new ProjectValidationService.ProjectValidationInput
+        {
+            Components = new List<ElectricalComponent> { panel, device },
+            ElectricalCircuits = new List<ElectricalCircuit> { circuit },
+        });
+
+        var findings = report.Findings
+            .Where(f => f.Category == ProjectValidationService.FindingCategory.CircuitTopology)
+            .ToList();
+        Assert.Empty(findings);
+    }
+
     // ── Report aggregation ───────────────────────────────────────────────────
 
     [Fact]
