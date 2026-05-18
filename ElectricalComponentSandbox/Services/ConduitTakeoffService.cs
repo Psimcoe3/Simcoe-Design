@@ -169,7 +169,8 @@ public static class ConduitTakeoffService
             TotalDeductInches: totalDeductIn,
             Fittings: fittingTakeoffs,
             RecommendedSupportCount: supportCount,
-            SupportSpacingFeet: spacingFeet);
+            SupportSpacingFeet: spacingFeet,
+            AuditTrace: BuildRunAuditTrace(run, grossFeet, totalDeductIn, adjustedFeet, spacingFeet, supportCount));
     }
 
     // ── Private helpers ──────────────────────────────────────────────────
@@ -182,37 +183,61 @@ public static class ConduitTakeoffService
         {
             var fitting = store.GetFitting(fid);
             if (fitting == null) continue;
-            var (category, deduct) = ClassifyFitting(fitting, run.Material);
+            var (category, deduct, basis) = ClassifyFitting(fitting, run.Material);
             list.Add(new ConduitFittingTakeoff(
                 FittingId: fid,
                 Category: category,
                 TradeSize: fitting.TradeSize,
                 AngleDegrees: fitting.AngleDegrees,
-                DeductInches: deduct));
+                DeductInches: deduct,
+                CalculationBasis: basis,
+                AuditTrace: BuildFittingAuditTrace(fitting, category, deduct, basis, run.Material)));
         }
 
         return list;
     }
 
-    private static (TakeoffFittingCategory category, double deductInches) ClassifyFitting(
+    private static (TakeoffFittingCategory category, double deductInches, string basis) ClassifyFitting(
         ConduitFitting fitting, ConduitMaterialType material)
     {
         // Use stored DeductLength when it has been explicitly set
         if (fitting.DeductLength > 0)
-            return (MapCategory(fitting.Type), fitting.DeductLength);
+            return (MapCategory(fitting.Type), fitting.DeductLength, "stored-deduct");
 
         return fitting.Type switch
         {
             FittingType.Elbow90 =>
-                (TakeoffFittingCategory.Elbow90, GetDeduct90(fitting.TradeSize, material)),
+                (TakeoffFittingCategory.Elbow90, GetDeduct90(fitting.TradeSize, material), "deduct90-table"),
             FittingType.Elbow45 =>
-                (TakeoffFittingCategory.Elbow45, GetDeduct45(fitting.TradeSize, material)),
+                (TakeoffFittingCategory.Elbow45, GetDeduct45(fitting.TradeSize, material), "deduct45-table"),
             FittingType.Offset =>
                 (TakeoffFittingCategory.Offset,
-                    ComputeOffsetDeduct(fitting.AngleDegrees, 45)),   // default 45° offset bend
+                    ComputeOffsetDeduct(fitting.AngleDegrees, 45),
+                    "offset-formula-default45"),   // default 45° offset bend
             _ =>
-                (MapCategory(fitting.Type), 0),
+                (MapCategory(fitting.Type), 0, "no-deduct"),
         };
+    }
+
+    private static string BuildFittingAuditTrace(
+        ConduitFitting fitting,
+        TakeoffFittingCategory category,
+        double deductInches,
+        string basis,
+        ConduitMaterialType material)
+    {
+        return $"fitting={fitting.Id}; type={fitting.Type}; category={category}; tradeSize={fitting.TradeSize}; angleDeg={fitting.AngleDegrees:F2}; material={material}; basis={basis}; deductIn={deductInches:F3}";
+    }
+
+    private static string BuildRunAuditTrace(
+        ConduitRun run,
+        double grossFeet,
+        double totalDeductInches,
+        double adjustedFeet,
+        double spacingFeet,
+        int supportCount)
+    {
+        return $"run={run.RunId}; material={run.Material}; tradeSize={run.TradeSize}; grossFt={grossFeet:F3}; totalDeductIn={totalDeductInches:F3}; adjustedFt={adjustedFeet:F3}; supportSpacingFt={spacingFeet:F3}; supportCount={supportCount}; formula=adjusted=max(0,gross-deduct/12)";
     }
 
     private static TakeoffFittingCategory MapCategory(FittingType t) =>

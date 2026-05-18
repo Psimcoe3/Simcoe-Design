@@ -181,6 +181,59 @@ public partial class MainWindow
         await _viewModel.FileService.ExportToJsonAsync(selectedComponents, filePath);
     }
 
+    private async void ImportComponentsJson_Click(object sender, RoutedEventArgs e)
+    {
+        ActionLogService.Instance.Log(LogCategory.FileOperation, "Import components JSON requested");
+        var dialog = new OpenFileDialog
+        {
+            Filter = "JSON Files (*.json)|*.json|All Files (*.*)|*.*",
+            Title = "Import Components JSON"
+        };
+
+        if (dialog.ShowDialog() != true)
+            return;
+
+        try
+        {
+            var mergeResult = await ImportComponentsFromJsonForTesting(dialog.FileName);
+            ActionLogService.Instance.Log(LogCategory.FileOperation, "Components JSON import complete",
+                $"File: {dialog.FileName}, Imported: {mergeResult.ImportedCount}, Added: {mergeResult.AddedCount}, Updated: {mergeResult.UpdatedCount}, UnmatchedExisting: {mergeResult.UnmatchedExistingCount}");
+
+            MessageBox.Show(
+                $"Imported {mergeResult.ImportedCount} component(s). Added {mergeResult.AddedCount}, updated {mergeResult.UpdatedCount}." +
+                (mergeResult.UnmatchedExistingCount > 0
+                    ? $" {mergeResult.UnmatchedExistingCount} existing imported component(s) were not present in this import."
+                    : string.Empty),
+                "Import Components JSON",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            ActionLogService.Instance.LogError(LogCategory.FileOperation, "Components JSON import failed", ex);
+            MessageBox.Show($"Component import failed:\n{ex.Message}", "Import Components JSON",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    internal async Task<InteropImportMergeResult> ImportComponentsFromJsonForTesting(
+        string filePath,
+        InteropImportMergeOptions? options = null)
+    {
+        var importedComponents = await _viewModel.FileService.LoadComponentsFromJsonAsync(filePath);
+        if (importedComponents.Count == 0)
+            throw new InvalidOperationException("No components were found in the selected file.");
+
+        var mergeResult = _viewModel.MergeImportedComponents(importedComponents, options);
+        QueueSceneRefresh(update2D: true, update3D: true, updateProperties: true);
+        return mergeResult;
+    }
+
+    internal InteropImportMergeResult ImportComponentsFromJsonSynchronouslyForTesting(
+        string filePath,
+        InteropImportMergeOptions? options = null)
+        => ImportComponentsFromJsonForTesting(filePath, options).GetAwaiter().GetResult();
+
     internal void ExportSelectedComponentsToJsonSynchronouslyForTesting(string filePath)
         => ExportSelectedComponentsToJsonForTesting(filePath).GetAwaiter().GetResult();
 

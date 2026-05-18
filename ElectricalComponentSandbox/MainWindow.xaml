@@ -68,6 +68,7 @@
                 <MenuItem Header="Save Project As..." Click="SaveProjectAs_Click" InputGestureText="Ctrl+Shift+S"/>
                 <Separator/>
                 <MenuItem Header="Import">
+                    <MenuItem Header="Import Components JSON..." Click="ImportComponentsJson_Click"/>
                     <MenuItem Header="Import PDF Underlay..." Click="ImportPdf_Click"/>
                     <MenuItem Header="Import XFDF Markups..." Click="ImportXfdf_Click"/>
                 </MenuItem>

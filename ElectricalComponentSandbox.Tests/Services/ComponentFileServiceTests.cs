@@ -170,6 +170,38 @@ public class ComponentFileServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task LoadComponentsFromJsonAsync_SingleExportJson_LoadsSingleComponent()
+    {
+        var conduit = new ConduitComponent { Name = "Single Import" };
+        var filePath = Path.Combine(_tempDir, "single-import.json");
+
+        await _service.ExportToJsonAsync(conduit, filePath);
+        var loaded = await _service.LoadComponentsFromJsonAsync(filePath);
+
+        var loadedConduit = Assert.Single(loaded);
+        Assert.IsType<ConduitComponent>(loadedConduit);
+        Assert.Equal("Single Import", loadedConduit.Name);
+    }
+
+    [Fact]
+    public async Task LoadComponentsFromJsonAsync_ArrayExportJson_LoadsAllComponents()
+    {
+        var components = new ElectricalComponent[]
+        {
+            new ConduitComponent { Name = "Conduit Import" },
+            new BoxComponent { Name = "Box Import" },
+        };
+        var filePath = Path.Combine(_tempDir, "array-import.json");
+
+        await _service.ExportToJsonAsync(components, filePath);
+        var loaded = await _service.LoadComponentsFromJsonAsync(filePath);
+
+        Assert.Equal(2, loaded.Count);
+        Assert.Contains(loaded, component => component is ConduitComponent && component.Name == "Conduit Import");
+        Assert.Contains(loaded, component => component is BoxComponent && component.Name == "Box Import");
+    }
+
+    [Fact]
     public async Task LoadComponent_LegacyFileWithoutInteropMetadata_InitializesEmptyMetadata()
     {
         var conduit = new ConduitComponent { Name = "Legacy Component" };

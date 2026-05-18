@@ -1,5 +1,9 @@
+using System.IO;
 using System.Windows;
 using ElectricalComponentSandbox.Markup.Models;
+using ElectricalComponentSandbox.Models;
+using Newtonsoft.Json;
+using ElectricalComponentSandbox.Services;
 using ElectricalComponentSandbox.Services.Export;
 using ElectricalComponentSandbox.ViewModels;
 
@@ -164,6 +168,97 @@ public class MainWindowFileOperationsTests
             finally
             {
                 window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void ImportComponentsFromJsonSynchronouslyForTesting_MergesByInteropIdentity()
+    {
+        RunOnSta(() =>
+        {
+            var filePath = Path.Combine(Path.GetTempPath(), $"interop-import-{Guid.NewGuid():N}.json");
+            try
+            {
+                var importedUtc = new DateTime(2026, 5, 13, 12, 0, 0, DateTimeKind.Utc);
+                var viewModel = new MainViewModel();
+                var existing = new ConduitComponent
+                {
+                    Id = "local-1",
+                    Name = "Old Name",
+                    InteropMetadata = new ComponentInteropMetadata
+                    {
+                        SourceSystem = "Revit",
+                        SourceDocumentId = "doc-1",
+                        SourceElementId = "el-1"
+                    }
+                };
+                viewModel.Components.Add(existing);
+
+                var imported = new ElectricalComponent[]
+                {
+                    new ConduitComponent
+                    {
+                        Name = "Updated Name",
+                        InteropMetadata = new ComponentInteropMetadata
+                        {
+                            SourceSystem = "Revit",
+                            SourceDocumentId = "doc-1",
+                            SourceElementId = "el-1"
+                        }
+                    },
+                    new BoxComponent
+                    {
+                        Name = "New Box",
+                        InteropMetadata = new ComponentInteropMetadata
+                        {
+                            SourceSystem = "Revit",
+                            SourceDocumentId = "doc-1",
+                            SourceElementId = "el-2"
+                        }
+                    }
+                };
+
+                var json = JsonConvert.SerializeObject(imported, new JsonSerializerSettings
+                {
+                    TypeNameHandling = TypeNameHandling.Auto,
+                    Formatting = Formatting.Indented,
+                });
+                File.WriteAllText(filePath, json);
+
+                var window = new MainWindow(viewModel);
+                try
+                {
+                    var result = window.ImportComponentsFromJsonSynchronouslyForTesting(
+                        filePath,
+                        InteropImportMergeOptions.Default with
+                        {
+                            ImportedUtc = importedUtc,
+                            InterchangeFormat = "IFC4",
+                        });
+
+                    Assert.Equal(2, result.ImportedCount);
+                    Assert.Equal(1, result.UpdatedCount);
+                    Assert.Equal(1, result.AddedCount);
+                    Assert.Equal(0, result.UnmatchedExistingCount);
+                    Assert.Equal(2, viewModel.Components.Count);
+
+                    var updated = Assert.Single(viewModel.Components.OfType<ConduitComponent>().Where(component => component.Id == "local-1"));
+                    Assert.Equal("Updated Name", updated.Name);
+                    Assert.Equal(importedUtc, updated.InteropMetadata.LastImportedUtc);
+                    Assert.Equal("IFC4", updated.InteropMetadata.LastInterchangeFormat);
+
+                    Assert.Single(viewModel.Components.OfType<BoxComponent>().Where(component => component.Name == "New Box"));
+                }
+                finally
+                {
+                    window.Close();
+                }
+            }
+            finally
+            {
+                if (File.Exists(filePath))
+                    File.Delete(filePath);
             }
         });
     }

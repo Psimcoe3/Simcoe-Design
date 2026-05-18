@@ -1,5 +1,7 @@
 namespace ElectricalComponentSandbox.Models;
 
+using ElectricalComponentSandbox.Services;
+
 /// <summary>
 /// Classifies the panel equipment type, paralleling Revit's
 /// IsSwitchboard / ElectricalAnalyticalNodeType distinctions.
@@ -18,6 +20,11 @@ public class PanelComponent : ElectricalComponent
     public int CircuitCount { get; set; } = 24;
     public double Amperage { get; set; } = 200.0;
     public string PanelType { get; set; } = "Distribution Panel";
+
+    /// <summary>
+    /// Nominal system voltage at the panel for validation checks that depend on voltage-to-ground.
+    /// </summary>
+    public double NominalVoltage { get; set; } = 208.0;
 
     /// <summary>
     /// Structured equipment subtype (LoadCenter, Switchboard, etc.).
@@ -53,6 +60,64 @@ public class PanelComponent : ElectricalComponent
     /// Null for panels fed directly from a power source or when unassigned.
     /// </summary>
     public string? FeederId { get; set; }
+
+    /// <summary>
+    /// NEC 110.26(A)(1) installation condition used for working clearance depth.
+    /// </summary>
+    public ElectricalRoomClearanceService.ClearanceCondition WorkingClearanceCondition { get; set; }
+        = ElectricalRoomClearanceService.ClearanceCondition.Condition2;
+
+    /// <summary>
+    /// Provided working clearance depth (feet) in front of the panel.
+    /// A value of 0 means the project has not supplied clearance data yet.
+    /// </summary>
+    public double ProvidedWorkingClearanceDepthFeet { get; set; }
+
+    /// <summary>
+    /// Provided working clearance width (inches) in front of the panel.
+    /// A value of 0 means the project has not supplied clearance data yet.
+    /// </summary>
+    public double ProvidedWorkingClearanceWidthInches { get; set; }
+
+    /// <summary>
+    /// Provided working clearance headroom (feet) at the panel location.
+    /// A value of 0 means the project has not supplied clearance data yet.
+    /// </summary>
+    public double ProvidedWorkingClearanceHeightFeet { get; set; }
+
+    /// <summary>
+    /// True when all three working-clearance dimensions are populated.
+    /// </summary>
+    public bool HasWorkingClearanceData =>
+        ProvidedWorkingClearanceDepthFeet > 0 &&
+        ProvidedWorkingClearanceWidthInches > 0 &&
+        ProvidedWorkingClearanceHeightFeet > 0;
+
+    /// <summary>
+    /// Provided dedicated equipment-space width (inches) per NEC 110.26(E).
+    /// A value of 0 means the project has not supplied dedicated-space data yet.
+    /// </summary>
+    public double ProvidedDedicatedSpaceWidthInches { get; set; }
+
+    /// <summary>
+    /// Provided dedicated equipment-space depth (inches) per NEC 110.26(E).
+    /// A value of 0 means the project has not supplied dedicated-space data yet.
+    /// </summary>
+    public double ProvidedDedicatedSpaceDepthInches { get; set; }
+
+    /// <summary>
+    /// Provided dedicated equipment-space height (feet) per NEC 110.26(E).
+    /// A value of 0 means the project has not supplied dedicated-space data yet.
+    /// </summary>
+    public double ProvidedDedicatedSpaceHeightFeet { get; set; }
+
+    /// <summary>
+    /// True when all three dedicated equipment-space dimensions are populated.
+    /// </summary>
+    public bool HasDedicatedSpaceData =>
+        ProvidedDedicatedSpaceWidthInches > 0 &&
+        ProvidedDedicatedSpaceDepthInches > 0 &&
+        ProvidedDedicatedSpaceHeightFeet > 0;
     
     public PanelComponent()
     {

@@ -191,6 +191,8 @@ public class ConduitTakeoffServiceTests
         Assert.Equal(20.0 - 6.0 / 12.0, result.AdjustedLengthFeet, precision: 6);
         Assert.Single(result.Fittings);
         Assert.Equal(TakeoffFittingCategory.Elbow90, result.Fittings[0].Category);
+        Assert.Equal("deduct90-table", result.Fittings[0].CalculationBasis);
+        Assert.Contains("basis=deduct90-table", result.Fittings[0].AuditTrace);
     }
 
     [Fact]
@@ -231,6 +233,8 @@ public class ConduitTakeoffServiceTests
         var result = ConduitTakeoffService.ComputeRunTakeoff(store, run.Id);
 
         Assert.Equal(7.5, result.TotalDeductInches, precision: 3);
+        Assert.Equal("stored-deduct", result.Fittings[0].CalculationBasis);
+        Assert.Contains("basis=stored-deduct", result.Fittings[0].AuditTrace);
     }
 
     [Fact]
@@ -264,6 +268,8 @@ public class ConduitTakeoffServiceTests
 
         Assert.Equal(10.0, result.SupportSpacingFeet);
         Assert.Equal(6, result.RecommendedSupportCount);
+        Assert.Contains("supportSpacingFt=10.000", result.AuditTrace);
+        Assert.Contains("supportCount=6", result.AuditTrace);
     }
 
     [Fact]

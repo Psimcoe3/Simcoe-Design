@@ -279,6 +279,100 @@ public partial class ProjectValidationServiceTests
         Assert.NotEmpty(scErrors);
     }
 
+    // ── Equipment clearance ─────────────────────────────────────────────────
+
+    [Fact]
+    public void Panel_WithInsufficientWorkingClearance_ReportsEquipmentClearanceError()
+    {
+        var svc = CreateService();
+        var panel = new PanelComponent
+        {
+            Id = "P-CLEAR-1",
+            Name = "Panel Clearance 1",
+            NominalVoltage = 480,
+            WorkingClearanceCondition = ElectricalRoomClearanceService.ClearanceCondition.Condition3,
+            ProvidedWorkingClearanceDepthFeet = 3.0,
+            ProvidedWorkingClearanceWidthInches = 24.0,
+            ProvidedWorkingClearanceHeightFeet = 6.0,
+        };
+        panel.Parameters.Width = 36.0;
+        panel.Parameters.Height = 84.0;
+        panel.Parameters.Depth = 6.0;
+
+        var report = svc.Validate(new ProjectValidationService.ProjectValidationInput
+        {
+            Components = new List<ElectricalComponent> { panel },
+        });
+
+        var finding = Assert.Single(report.Findings
+            .Where(f => f.Category == ProjectValidationService.FindingCategory.EquipmentClearance));
+        Assert.Equal(ProjectValidationService.FindingSeverity.Error, finding.Severity);
+        Assert.Equal("P-CLEAR-1", finding.ComponentId);
+        Assert.Equal("NEC 110.26(A)", finding.NecReference);
+        Assert.Contains("110.26(A)(1)", finding.Description);
+        Assert.Contains("110.26(A)(2)", finding.Description);
+        Assert.Contains("110.26(A)(3)", finding.Description);
+    }
+
+    [Fact]
+    public void Panel_WithInsufficientDedicatedSpace_ReportsEquipmentClearanceWarning()
+    {
+        var svc = CreateService();
+        var panel = new PanelComponent
+        {
+            Id = "P-CLEAR-2",
+            Name = "Panel Clearance 2",
+            ProvidedDedicatedSpaceWidthInches = 24.0,
+            ProvidedDedicatedSpaceDepthInches = 3.0,
+            ProvidedDedicatedSpaceHeightFeet = 8.0,
+        };
+        panel.Parameters.Width = 36.0;
+        panel.Parameters.Height = 72.0;
+        panel.Parameters.Depth = 6.0;
+
+        var report = svc.Validate(new ProjectValidationService.ProjectValidationInput
+        {
+            Components = new List<ElectricalComponent> { panel },
+        });
+
+        var finding = Assert.Single(report.Findings
+            .Where(f => f.Category == ProjectValidationService.FindingCategory.EquipmentClearance));
+        Assert.Equal(ProjectValidationService.FindingSeverity.Warning, finding.Severity);
+        Assert.Equal("NEC 110.26(E)", finding.NecReference);
+        Assert.Contains("110.26(E)", finding.Description);
+    }
+
+    [Fact]
+    public void Panel_WithCompliantClearanceData_HasNoEquipmentClearanceFinding()
+    {
+        var svc = CreateService();
+        var panel = new PanelComponent
+        {
+            Id = "P-CLEAR-3",
+            Name = "Panel Clearance 3",
+            NominalVoltage = 208,
+            WorkingClearanceCondition = ElectricalRoomClearanceService.ClearanceCondition.Condition1,
+            ProvidedWorkingClearanceDepthFeet = 3.5,
+            ProvidedWorkingClearanceWidthInches = 36.0,
+            ProvidedWorkingClearanceHeightFeet = 7.0,
+            ProvidedDedicatedSpaceWidthInches = 36.0,
+            ProvidedDedicatedSpaceDepthInches = 12.0,
+            ProvidedDedicatedSpaceHeightFeet = 13.0,
+        };
+        panel.Parameters.Width = 30.0;
+        panel.Parameters.Height = 72.0;
+        panel.Parameters.Depth = 6.0;
+
+        var report = svc.Validate(new ProjectValidationService.ProjectValidationInput
+        {
+            Components = new List<ElectricalComponent> { panel },
+        });
+
+        Assert.DoesNotContain(
+            report.Findings,
+            finding => finding.Category == ProjectValidationService.FindingCategory.EquipmentClearance);
+    }
+
     // ── Connector-based electrical circuit topology ─────────────────────────
 
     [Fact]
@@ -329,10 +423,44 @@ public partial class ProjectValidationServiceTests
     public void ElectricalCircuit_WithValidConnectorTopology_NoCircuitTopologyFinding()
     {
         var svc = CreateService();
-        var panelConnector = CreatePowerConnector("panel-conn", "P1", "Main", 120, "ABC");
-        var deviceConnector = CreatePowerConnector("device-conn", "D1", "Line", 120, "A");
-        var panel = CreatePanelWithConnector("P1", "Panel P1", panelConnector);
-        var device = CreateBoxWithConnector("D1", "Device D1", deviceConnector);
+        var panelConnector = new ElectricalConnector
+        {
+            Id = "panel-conn",
+            ComponentId = "P1",
+            PortName = "Main",
+            SystemType = ElectricalSystemType.PowerCircuit,
+            Domain = ConnectorDomain.Electrical,
+            Voltage = 120,
+            Phase = "ABC"
+        };
+        var deviceConnector = new ElectricalConnector
+        {
+            Id = "device-conn",
+            ComponentId = "D1",
+            PortName = "Line",
+            SystemType = ElectricalSystemType.PowerCircuit,
+            Domain = ConnectorDomain.Electrical,
+            Voltage = 120,
+            Phase = "A"
+        };
+        var panel = new PanelComponent
+        {
+            Id = "P1",
+            Name = "Panel P1",
+            ElectricalConnectors = new ElectricalConnectorManager
+            {
+                Connectors = { panelConnector }
+            }
+        };
+        var device = new BoxComponent
+        {
+            Id = "D1",
+            Name = "Device D1",
+            ElectricalConnectors = new ElectricalConnectorManager
+            {
+                Connectors = { deviceConnector }
+            }
+        };
         var circuit = ElectricalCircuitService.Create(
             panelConnector,
             deviceConnector,
@@ -491,12 +619,50 @@ public partial class ProjectValidationServiceTests
 
     private static PanelSchedule MakeThreePhaseSchedule(string panelId, string panelName, double[] phaseLoads)
     {
-        var circuits = new List<Circuit>
+        // Build circuits to create desired phase loading
+        var circuits = new List<Circuit>();
+        // Phase A
+        circuits.Add(new Circuit
         {
-            CreatePhaseCircuit("1", "A", phaseLoads[0]),
-            CreatePhaseCircuit("2", "B", phaseLoads[1]),
-            CreatePhaseCircuit("3", "C", phaseLoads[2]),
-        };
+            CircuitNumber = "1",
+            Voltage = 277,
+            Poles = 1,
+            Phase = "A",
+            Breaker = new CircuitBreaker { TripAmps = 20, Poles = 1 },
+            ConnectedLoadVA = phaseLoads[0],
+            DemandFactor = 1.0,
+            Wire = new WireSpec { Size = "12", Conductors = 2, GroundSize = "12", Material = ConductorMaterial.Copper },
+            SlotType = CircuitSlotType.Circuit,
+            LoadClassification = LoadClassification.Lighting,
+        });
+        // Phase B
+        circuits.Add(new Circuit
+        {
+            CircuitNumber = "2",
+            Voltage = 277,
+            Poles = 1,
+            Phase = "B",
+            Breaker = new CircuitBreaker { TripAmps = 20, Poles = 1 },
+            ConnectedLoadVA = phaseLoads[1],
+            DemandFactor = 1.0,
+            Wire = new WireSpec { Size = "12", Conductors = 2, GroundSize = "12", Material = ConductorMaterial.Copper },
+            SlotType = CircuitSlotType.Circuit,
+            LoadClassification = LoadClassification.Lighting,
+        });
+        // Phase C
+        circuits.Add(new Circuit
+        {
+            CircuitNumber = "3",
+            Voltage = 277,
+            Poles = 1,
+            Phase = "C",
+            Breaker = new CircuitBreaker { TripAmps = 20, Poles = 1 },
+            ConnectedLoadVA = phaseLoads[2],
+            DemandFactor = 1.0,
+            Wire = new WireSpec { Size = "12", Conductors = 2, GroundSize = "12", Material = ConductorMaterial.Copper },
+            SlotType = CircuitSlotType.Circuit,
+            LoadClassification = LoadClassification.Lighting,
+        });
 
         return new PanelSchedule
         {
@@ -508,5 +674,4 @@ public partial class ProjectValidationServiceTests
             Circuits = circuits,
         };
     }
-
 }

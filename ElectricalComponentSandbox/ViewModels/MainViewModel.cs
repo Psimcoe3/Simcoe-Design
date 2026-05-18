@@ -80,6 +80,7 @@ public class MainViewModel : INotifyPropertyChanged
     public BomExportService BomExport { get; }
     public SnapService SnapService { get; }
     public PdfCalibrationService CalibrationService { get; }
+    public InteropImportMergeService InteropImportMerge { get; } = new();
 
     /// <summary>Dispatch-based markup renderer; used by the canvas paint loop</summary>
     public MarkupRenderService MarkupRenderer { get; }
@@ -1676,6 +1677,21 @@ public class MainViewModel : INotifyPropertyChanged
     {
         var component = ElectricalComponentCatalog.CloneTemplate(template);
         AddComponentInstance(component);
+    }
+
+    public InteropImportMergeResult MergeImportedComponents(
+        IReadOnlyList<ElectricalComponent> importedComponents,
+        InteropImportMergeOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(importedComponents);
+
+        var mergeResult = InteropImportMerge.MergeInto(Components, importedComponents, options);
+        if (mergeResult.AddedCount > 0 || mergeResult.UpdatedCount > 0)
+        {
+            OnPropertyChanged(nameof(Components));
+        }
+
+        return mergeResult;
     }
 
     private void AddComponentInstance(ElectricalComponent component)

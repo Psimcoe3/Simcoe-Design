@@ -22,7 +22,9 @@ public sealed record ConduitFittingTakeoff(
     TakeoffFittingCategory Category,
     string TradeSize,
     double AngleDegrees,
-    double DeductInches);
+    double DeductInches,
+    string CalculationBasis,
+    string AuditTrace);
 
 /// <summary>
 /// Complete takeoff result for a conduit run including adjusted footage,
@@ -35,4 +37,5 @@ public sealed record ConduitRunTakeoff(
     double TotalDeductInches,
     IReadOnlyList<ConduitFittingTakeoff> Fittings,
     int RecommendedSupportCount,
-    double SupportSpacingFeet);
+    double SupportSpacingFeet,
+    string AuditTrace);
